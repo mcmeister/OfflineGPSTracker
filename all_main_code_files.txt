@@ -1,0 +1,1449 @@
+MainActivity.kt:
+
+package com.example.offlinegpstracker
+
+import android.Manifest
+import android.content.pm.PackageManager
+import android.os.Bundle
+import android.widget.Toast
+import androidx.activity.compose.BackHandler
+import androidx.activity.compose.setContent
+import androidx.activity.viewModels
+import androidx.appcompat.app.AppCompatActivity
+import androidx.compose.foundation.layout.padding
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.List
+import androidx.compose.material.icons.filled.LocationOn
+import androidx.compose.material3.Icon
+import androidx.compose.material3.NavigationBar
+import androidx.compose.material3.NavigationBarItem
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Text
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.ui.Modifier
+import androidx.core.app.ActivityCompat
+import androidx.navigation.compose.rememberNavController
+import com.example.offlinegpstracker.ui.theme.OfflineGPSTrackerTheme
+import com.google.accompanist.pager.ExperimentalPagerApi
+import com.google.accompanist.pager.HorizontalPager
+import com.google.accompanist.pager.rememberPagerState
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+
+@OptIn(ExperimentalPagerApi::class)
+class MainActivity : AppCompatActivity() {
+
+    private val locationViewModel: LocationViewModel by viewModels {
+        LocationViewModelFactory(application, (application as MyApplication).repository)
+    }
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        setContent {
+            OfflineGPSTrackerTheme {
+                val navController = rememberNavController()
+                val pagerState = rememberPagerState()
+                val scope = rememberCoroutineScope()
+
+                BackHandler(pagerState.currentPage == 0) {
+                    finish() // Exit app when back pressed on GPS Tracker screen
+                }
+
+                Scaffold(
+                    bottomBar = {
+                        NavigationBar {
+                            NavigationBarItem(
+                                selected = pagerState.currentPage == 0,
+                                onClick = {
+                                    scope.launch {
+                                        withContext(Dispatchers.Main.immediate) {
+                                            pagerState.animateScrollToPage(0)
+                                        }
+                                    }
+                                },
+                                label = { Text("GPS Tracker") },
+                                icon = { Icon(Icons.Default.LocationOn, contentDescription = null) }
+                            )
+                            NavigationBarItem(
+                                selected = pagerState.currentPage == 1,
+                                onClick = {
+                                    scope.launch {
+                                        withContext(Dispatchers.Main.immediate) {
+                                            pagerState.animateScrollToPage(1)
+                                        }
+                                    }
+                                },
+                                label = { Text("Locations") },
+                                icon = { Icon(Icons.AutoMirrored.Filled.List, contentDescription = null) }
+                            )
+                        }
+                    }
+                ) { innerPadding ->
+                    HorizontalPager(
+                        count = 2,
+                        state = pagerState,
+                        modifier = Modifier.padding(innerPadding)
+                    ) { page ->
+                        when (page) {
+                            0 -> GPSTrackerScreen(locationViewModel)
+                            1 -> LocationNavGraph(navController = navController, locationViewModel = locationViewModel)
+                        }
+                    }
+                }
+            }
+        }
+
+        requestLocationPermission()
+    }
+
+    private fun requestLocationPermission() {
+        if (ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED &&
+            ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_COARSE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
+            ActivityCompat.requestPermissions(this, arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION), 1)
+        } else {
+            locationViewModel.startLocationUpdates()
+        }
+    }
+
+    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode == 1 && grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+            locationViewModel.startLocationUpdates()
+        } else {
+            Toast.makeText(this, "Location permissions are required to use this app", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        locationViewModel.stopLocationUpdates()
+    }
+}
+
+
+GPSTrackerScreen.kt:
+
+package com.example.offlinegpstracker
+
+import android.content.Context
+import android.content.Intent
+import android.net.Uri
+import android.widget.Toast
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material3.Button
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Text
+import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.TextFieldValue
+import androidx.compose.ui.unit.dp
+import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.compose.runtime.livedata.observeAsState
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+
+@Composable
+fun GPSTrackerScreen(locationViewModel: LocationViewModel = viewModel()) {
+    var name by remember { mutableStateOf(TextFieldValue("")) }
+    val latitude by locationViewModel.latitude.observeAsState("")
+    val longitude by locationViewModel.longitude.observeAsState("")
+    val altitude by locationViewModel.altitude.observeAsState("")
+
+    val context = LocalContext.current
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(16.dp),
+        verticalArrangement = Arrangement.Center,
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Text(
+            text = "Amazon Jungle",
+            modifier = Modifier.align(Alignment.CenterHorizontally)
+        )
+
+        CompassView(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(300.dp)
+                .align(Alignment.CenterHorizontally)
+        )
+
+        OutlinedTextField(
+            value = name,
+            onValueChange = { name = it },
+            label = { Text("Location Name") },
+            modifier = Modifier.fillMaxWidth()
+        )
+
+        OutlinedTextField(
+            value = TextFieldValue(latitude),
+            onValueChange = {},
+            label = { Text("Latitude") },
+            modifier = Modifier.fillMaxWidth(),
+            keyboardOptions = KeyboardOptions.Default.copy(keyboardType = KeyboardType.Decimal),
+            readOnly = true
+        )
+
+        OutlinedTextField(
+            value = TextFieldValue(longitude),
+            onValueChange = {},
+            label = { Text("Longitude") },
+            modifier = Modifier.fillMaxWidth(),
+            keyboardOptions = KeyboardOptions.Default.copy(keyboardType = KeyboardType.Decimal),
+            readOnly = true
+        )
+
+        OutlinedTextField(
+            value = TextFieldValue(altitude),
+            onValueChange = {},
+            label = { Text("Altitude") },
+            modifier = Modifier.fillMaxWidth(),
+            keyboardOptions = KeyboardOptions.Default.copy(keyboardType = KeyboardType.Decimal),
+            readOnly = true
+        )
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Button(onClick = {
+                if (name.text.isEmpty()) {
+                    name = TextFieldValue(generateLocationName())
+                }
+                saveLocation(context, name.text, latitude, longitude, altitude, locationViewModel)
+            }) {
+                Text("Save")
+            }
+
+            Button(onClick = {
+                shareLocation(context, latitude, longitude)
+            }) {
+                Text("Share")
+            }
+        }
+    }
+}
+
+private fun generateLocationName(): String {
+    return "Location_${System.currentTimeMillis()}"
+}
+
+private fun saveLocation(
+    context: Context,
+    name: String,
+    latitude: String,
+    longitude: String,
+    altitude: String,
+    locationViewModel: LocationViewModel
+) {
+    if (latitude.isNotEmpty() && longitude.isNotEmpty()) {
+        val location = Location(
+            name = name,
+            latitude = latitude.toDouble(),
+            longitude = longitude.toDouble(),
+            altitude = altitude.toDoubleOrNull() ?: 0.0
+        )
+        locationViewModel.saveLocation(location)
+        Toast.makeText(context, "Location saved", Toast.LENGTH_SHORT).show()
+    } else {
+        Toast.makeText(context, "Latitude and Longitude are required", Toast.LENGTH_SHORT).show()
+    }
+}
+
+private fun shareLocation(context: Context, latitude: String, longitude: String) {
+    if (latitude.isNotEmpty() && longitude.isNotEmpty()) {
+        val uri = Uri.parse("geo:0,0?q=$latitude,$longitude(Location)")
+        val intent = Intent(Intent.ACTION_VIEW, uri).apply {
+            setPackage("com.google.android.apps.maps")
+        }
+        if (intent.resolveActivity(context.packageManager) != null) {
+            context.startActivity(intent)
+        } else {
+            Toast.makeText(context, "Google Maps app is not installed", Toast.LENGTH_SHORT).show()
+        }
+    } else {
+        Toast.makeText(context, "Location data is missing", Toast.LENGTH_SHORT).show()
+    }
+}
+
+
+NavGraph.kt:
+
+package com.example.offlinegpstracker
+
+import androidx.compose.runtime.Composable
+import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.navigation.NavHostController
+import androidx.navigation.compose.NavHost
+import androidx.navigation.compose.composable
+
+@Composable
+fun SetupNavGraph(navController: NavHostController, locationViewModel: LocationViewModel) {
+    NavHost(
+        navController = navController,
+        startDestination = "gps_tracker"
+    ) {
+        composable("gps_tracker") {
+            GPSTrackerScreen(locationViewModel = locationViewModel)
+        }
+        composable("locations") {
+            LocationsScreen(navController = navController, locationViewModel = locationViewModel)
+        }
+        composable("location_details/{locationId}") { backStackEntry ->
+            val locationId = backStackEntry.arguments?.getString("locationId")?.toIntOrNull()
+            locationId?.let {
+                LocationDetailsScreen(navController = navController, locationId = it, locationViewModel = locationViewModel)
+            }
+        }
+    }
+}
+
+
+PagerState.kt:
+
+package com.example.offlinegpstracker
+
+import androidx.compose.runtime.*
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+
+class PagerState(
+    initialPage: Int = 0
+) {
+    var currentPage by mutableStateOf(initialPage)
+        private set
+
+    private val mutex = Mutex()
+
+    suspend fun animateScrollToPage(
+        page: Int,
+        animationSpec: androidx.compose.animation.core.AnimationSpec<Float> = androidx.compose.animation.core.TweenSpec()
+    ) {
+        mutex.withLock {
+            // Dummy animation logic, to be implemented as needed
+            currentPage = page
+        }
+    }
+
+    fun animateScrollToPage(
+        scope: CoroutineScope,
+        page: Int,
+        animationSpec: androidx.compose.animation.core.AnimationSpec<Float> = androidx.compose.animation.core.TweenSpec()
+    ) {
+        scope.launch {
+            animateScrollToPage(page, animationSpec)
+        }
+    }
+}
+
+
+LocationViewModel.kt:
+
+package com.example.offlinegpstracker
+
+import android.annotation.SuppressLint
+import android.app.Application
+import android.os.Looper
+import androidx.lifecycle.AndroidViewModel
+import androidx.lifecycle.LiveData
+import androidx.lifecycle.MutableLiveData
+import androidx.lifecycle.viewModelScope
+import com.google.android.gms.location.*
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.launch
+
+class LocationViewModel(application: Application, private val repository: LocationRepository) : AndroidViewModel(application) {
+
+    val locations = repository.getAllLocations().stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
+
+    private val _latitude = MutableLiveData<String>()
+    val latitude: LiveData<String> = _latitude
+
+    private val _longitude = MutableLiveData<String>()
+    val longitude: LiveData<String> = _longitude
+
+    private val _altitude = MutableLiveData<String>()
+    val altitude: LiveData<String> = _altitude
+
+    private var fusedLocationClient: FusedLocationProviderClient = LocationServices.getFusedLocationProviderClient(application)
+    private var locationCallback: LocationCallback? = null
+
+    init {
+        startLocationUpdates()
+    }
+
+    fun saveLocation(location: Location) {
+        viewModelScope.launch {
+            repository.insertLocation(location)
+        }
+    }
+
+    fun getLocationById(locationId: Int): kotlinx.coroutines.flow.Flow<Location?> {
+        return repository.getLocationById(locationId)
+    }
+
+    fun updateLocation(location: Location) {
+        viewModelScope.launch {
+            repository.updateLocation(location)
+        }
+    }
+
+    fun deleteLocation(locationId: Int) {
+        viewModelScope.launch {
+            repository.deleteLocation(locationId)
+        }
+    }
+
+    @SuppressLint("MissingPermission")
+    fun startLocationUpdates() {
+        val locationRequest = LocationRequest.Builder(Priority.PRIORITY_HIGH_ACCURACY, 10000L).apply {
+            setMinUpdateIntervalMillis(5000L)
+        }.build()
+
+        locationCallback = object : LocationCallback() {
+            override fun onLocationResult(locationResult: LocationResult) {
+                for (location in locationResult.locations) {
+                    _latitude.value = location.latitude.toString()
+                    _longitude.value = location.longitude.toString()
+                    _altitude.value = location.altitude.toString()
+                }
+            }
+        }
+
+        locationCallback?.let {
+            fusedLocationClient.requestLocationUpdates(locationRequest, it, Looper.getMainLooper())
+        }
+    }
+
+    fun stopLocationUpdates() {
+        locationCallback?.let {
+            fusedLocationClient.removeLocationUpdates(it)
+        }
+    }
+
+    override fun onCleared() {
+        super.onCleared()
+        stopLocationUpdates()
+    }
+
+    fun updateCurrentLocation(latitude: String, longitude: String, altitude: String) {
+        _latitude.value = latitude
+        _longitude.value = longitude
+        _altitude.value = altitude
+    }
+}
+
+
+LocationsScreen.kt:
+
+package com.example.offlinegpstracker
+
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.*
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
+import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.navigation.NavHostController
+import androidx.navigation.compose.NavHost
+import androidx.navigation.compose.composable
+
+@Composable
+fun LocationsScreen(navController: NavHostController, locationViewModel: LocationViewModel) {
+    val locations by locationViewModel.locations.collectAsState(initial = emptyList())
+    val activeLocations = locations.filter { !it.deleted } // Filter out deleted locations
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(16.dp)
+    ) {
+        Text(
+            "Amazon Jungle Locations (${activeLocations.size})",
+            style = MaterialTheme.typography.titleLarge
+        ) // Display count of locations
+        Spacer(modifier = Modifier.height(16.dp))
+
+        activeLocations.forEachIndexed { index, location -> // Use activeLocations and index
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(8.dp)
+                    .clickable {
+                        navController.navigate("location_details/${location.id}")
+                    }
+            ) {
+                Text(
+                    "${index + 1}. ${location.name}",
+                    style = MaterialTheme.typography.bodyLarge
+                ) // Display location number before name
+            }
+        }
+    }
+}
+
+@Composable
+fun LocationDetailsScreen(locationId: Int?, locationViewModel: LocationViewModel) {
+    // Fetch the location details using the ID and display them
+    val location by locationViewModel.getLocationById(locationId ?: 0).collectAsState(initial = null)
+
+    location?.let {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(16.dp)
+        ) {
+            Text(
+                "Location Details",
+                style = MaterialTheme.typography.titleLarge
+            )
+            Spacer(modifier = Modifier.height(16.dp))
+            Text("Name: ${it.name}", style = MaterialTheme.typography.bodyLarge)
+            Text("Latitude: ${it.latitude}", style = MaterialTheme.typography.bodyLarge)
+            Text("Longitude: ${it.longitude}", style = MaterialTheme.typography.bodyLarge)
+            Text("Altitude: ${it.altitude}", style = MaterialTheme.typography.bodyLarge)
+        }
+    } ?: run {
+        Text("Location not found", style = MaterialTheme.typography.bodyLarge)
+    }
+}
+
+@Composable
+fun LocationNavGraph(navController: NavHostController, locationViewModel: LocationViewModel) {
+    NavHost(navController, startDestination = "locations_list") {
+        composable("locations_list") {
+            LocationsScreen(navController = navController, locationViewModel = locationViewModel)
+        }
+        composable("location_details/{locationId}") { backStackEntry ->
+            val locationId = backStackEntry.arguments?.getString("locationId")?.toIntOrNull()
+            LocationDetailsScreen(locationId = locationId, locationViewModel = locationViewModel)
+        }
+    }
+}
+
+
+LocationViewModelFactory.kt:
+
+package com.example.offlinegpstracker
+
+import android.app.Application
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.ViewModelProvider
+
+class LocationViewModelFactory(
+    private val application: Application,
+    private val repository: LocationRepository
+) : ViewModelProvider.Factory {
+    override fun <T : ViewModel> create(modelClass: Class<T>): T {
+        if (modelClass.isAssignableFrom(LocationViewModel::class.java)) {
+            @Suppress("UNCHECKED_CAST")
+            return LocationViewModel(application, repository) as T
+        }
+        throw IllegalArgumentException("Unknown ViewModel class")
+    }
+}
+
+
+SplashActivity.kt:
+
+package com.example.offlinegpstracker
+
+import android.content.Intent
+import android.os.Bundle
+import androidx.appcompat.app.AppCompatActivity
+
+class SplashActivity : AppCompatActivity() {
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        setContentView(R.layout.activity_splash)
+
+        // Simulate a loading process
+        window.decorView.postDelayed({
+            val intent = Intent(this, MainActivity::class.java)
+            startActivity(intent)
+            finish()
+        }, 2000) // 2 seconds delay
+    }
+}
+
+
+LocationRepository.kt:
+
+package com.example.offlinegpstracker
+
+import kotlinx.coroutines.flow.Flow
+
+class LocationRepository(private val locationDao: LocationDao) {
+
+    fun getAllLocations(): Flow<List<Location>> = locationDao.getAllLocations()
+
+    suspend fun insertLocation(location: Location) {
+        locationDao.insertLocation(location)
+    }
+
+    fun getLocationById(locationId: Int): Flow<Location?> {
+        return locationDao.getLocationById(locationId)
+    }
+
+    suspend fun updateLocation(location: Location) {
+        locationDao.updateLocation(location)
+    }
+
+    suspend fun deleteLocation(locationId: Int) {
+        locationDao.deleteLocation(locationId)
+    }
+}
+
+
+LocationDetailsScreen.kt:
+
+package com.example.offlinegpstracker
+
+import android.content.Context
+import android.content.Intent
+import android.net.Uri
+import android.widget.Toast
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material3.Button
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Text
+import androidx.compose.runtime.*
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.TextFieldValue
+import androidx.compose.ui.unit.dp
+import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.navigation.NavHostController
+
+@Composable
+fun LocationDetailsScreen(
+    navController: NavHostController,
+    locationId: Int,
+    locationViewModel: LocationViewModel = viewModel()
+) {
+    val location by locationViewModel.getLocationById(locationId).collectAsState(initial = null)
+    var name by remember { mutableStateOf(TextFieldValue("")) }
+    var latitude by remember { mutableStateOf(TextFieldValue("")) }
+    var longitude by remember { mutableStateOf(TextFieldValue("")) }
+    var altitude by remember { mutableStateOf(TextFieldValue("")) }
+
+    val context = LocalContext.current
+
+    LaunchedEffect(location) {
+        location?.let {
+            name = TextFieldValue(it.name)
+            latitude = TextFieldValue(it.latitude.toString())
+            longitude = TextFieldValue(it.longitude.toString())
+            altitude = TextFieldValue(it.altitude.toString())
+        }
+    }
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(16.dp),
+        verticalArrangement = Arrangement.Center
+    ) {
+        OutlinedTextField(
+            value = name,
+            onValueChange = { name = it },
+            label = { Text("Location Name") },
+            modifier = Modifier.fillMaxWidth()
+        )
+
+        OutlinedTextField(
+            value = latitude,
+            onValueChange = { latitude = it },
+            label = { Text("Latitude") },
+            modifier = Modifier.fillMaxWidth(),
+            keyboardOptions = KeyboardOptions.Default.copy(keyboardType = KeyboardType.Decimal)
+        )
+
+        OutlinedTextField(
+            value = longitude,
+            onValueChange = { longitude = it },
+            label = { Text("Longitude") },
+            modifier = Modifier.fillMaxWidth(),
+            keyboardOptions = KeyboardOptions.Default.copy(keyboardType = KeyboardType.Decimal)
+        )
+
+        OutlinedTextField(
+            value = altitude,
+            onValueChange = { altitude = it },
+            label = { Text("Altitude") },
+            modifier = Modifier.fillMaxWidth(),
+            keyboardOptions = KeyboardOptions.Default.copy(keyboardType = KeyboardType.Decimal)
+        )
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        Button(onClick = {
+            val updatedLocation = location?.copy(
+                name = name.text,
+                latitude = latitude.text.toDoubleOrNull() ?: 0.0,
+                longitude = longitude.text.toDoubleOrNull() ?: 0.0,
+                altitude = altitude.text.toDoubleOrNull() ?: 0.0
+            )
+            if (updatedLocation != null) {
+                locationViewModel.updateLocation(updatedLocation)
+                Toast.makeText(context, "Location updated", Toast.LENGTH_SHORT).show()
+                navController.popBackStack()
+            }
+        }) {
+            Text("Save")
+        }
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        Button(onClick = {
+            location?.let {
+                val updatedLocation = it.copy(status = "deleted")
+                locationViewModel.updateLocation(updatedLocation)
+                Toast.makeText(context, "Location flagged as deleted", Toast.LENGTH_SHORT).show()
+                navController.popBackStack()
+            }
+        }) {
+            Text("Delete")
+        }
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        Button(onClick = {
+            shareLocationDetails(context, latitude.text, longitude.text)
+        }) {
+            Text("Share")
+        }
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        Button(onClick = {
+            navController.popBackStack()
+        }) {
+            Text("Back")
+        }
+    }
+}
+
+private fun shareLocationDetails(context: Context, latitude: String, longitude: String) {
+    if (latitude.isNotEmpty() && longitude.isNotEmpty()) {
+        val uri = Uri.parse("geo:0,0?q=$latitude,$longitude(Location)")
+        val intent = Intent(Intent.ACTION_VIEW, uri).apply {
+            setPackage("com.google.android.apps.maps")
+        }
+        if (intent.resolveActivity(context.packageManager) != null) {
+            context.startActivity(intent)
+        } else {
+            Toast.makeText(context, "Google Maps app is not installed", Toast.LENGTH_SHORT).show()
+        }
+    } else {
+        Toast.makeText(context, "Location data is missing", Toast.LENGTH_SHORT).show()
+    }
+}
+
+
+CompassView.kt:
+
+package com.example.offlinegpstracker
+
+import android.content.Context
+import android.hardware.Sensor
+import android.hardware.SensorEvent
+import android.hardware.SensorEventListener
+import android.hardware.SensorManager
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
+import androidx.compose.ui.graphics.drawscope.rotate
+import androidx.compose.ui.graphics.nativeCanvas
+import androidx.compose.ui.platform.LocalContext
+
+@Composable
+fun CompassView(modifier: Modifier = Modifier) {
+    val context = LocalContext.current
+    var azimuth by remember { mutableFloatStateOf(0f) }
+    val isDarkTheme = isSystemInDarkTheme()
+
+    val sensorManager = context.getSystemService(Context.SENSOR_SERVICE) as SensorManager
+    val rotationVectorSensor = sensorManager.getDefaultSensor(Sensor.TYPE_ROTATION_VECTOR)
+
+    val sensorEventListener = remember {
+        object : SensorEventListener {
+            override fun onSensorChanged(event: SensorEvent) {
+                if (event.sensor.type == Sensor.TYPE_ROTATION_VECTOR) {
+                    val rotationMatrix = FloatArray(9)
+                    SensorManager.getRotationMatrixFromVector(rotationMatrix, event.values)
+                    val orientation = FloatArray(3)
+                    SensorManager.getOrientation(rotationMatrix, orientation)
+                    azimuth = Math.toDegrees(orientation[0].toDouble()).toFloat()
+                }
+            }
+
+            override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {}
+        }
+    }
+
+    DisposableEffect(Unit) {
+        sensorManager.registerListener(sensorEventListener, rotationVectorSensor, SensorManager.SENSOR_DELAY_UI)
+        onDispose {
+            sensorManager.unregisterListener(sensorEventListener)
+        }
+    }
+
+    Canvas(modifier = modifier) {
+        rotate(-azimuth) {
+            drawLine(Color.Red, start = center, end = center.copy(y = 0f), strokeWidth = 8f)
+        }
+
+        drawIntoCanvas { canvas ->
+            val paint = android.graphics.Paint().apply {
+                color = if (isDarkTheme) android.graphics.Color.WHITE else android.graphics.Color.BLACK
+                textSize = 48f
+                textAlign = android.graphics.Paint.Align.CENTER
+            }
+
+            val centerX = size.width / 2
+            val centerY = size.height / 2
+
+            canvas.nativeCanvas.drawText("N", centerX, centerY - centerY + 50, paint)
+            canvas.nativeCanvas.drawText("S", centerX, centerY + centerY - 20, paint)
+            canvas.nativeCanvas.drawText("E", centerX + centerX - 40, centerY + 20, paint)
+            canvas.nativeCanvas.drawText("W", centerX - centerX + 40, centerY + 20, paint)
+        }
+    }
+}
+
+
+Compass.kt:
+
+package com.example.offlinegpstracker
+
+import android.content.Context
+import android.hardware.Sensor
+import android.hardware.SensorEvent
+import android.hardware.SensorEventListener
+import android.hardware.SensorManager
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.runtime.*
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.drawscope.rotate
+import androidx.compose.ui.platform.LocalContext
+
+@Composable
+fun Compass() {
+    val context = LocalContext.current
+    var azimuth by remember { mutableStateOf(0f) }
+
+    val sensorManager = remember { context.getSystemService(Context.SENSOR_SERVICE) as SensorManager }
+    val accelerometer = remember { sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER) }
+    val magnetometer = remember { sensorManager.getDefaultSensor(Sensor.TYPE_MAGNETIC_FIELD) }
+
+    val sensorEventListener = remember {
+        object : SensorEventListener {
+            private val gravity = FloatArray(3)
+            private val geomagnetic = FloatArray(3)
+            private val R = FloatArray(9)
+            private val I = FloatArray(9)
+
+            override fun onSensorChanged(event: SensorEvent) {
+                when (event.sensor.type) {
+                    Sensor.TYPE_ACCELEROMETER -> System.arraycopy(event.values, 0, gravity, 0, event.values.size)
+                    Sensor.TYPE_MAGNETIC_FIELD -> System.arraycopy(event.values, 0, geomagnetic, 0, event.values.size)
+                }
+                if (SensorManager.getRotationMatrix(R, I, gravity, geomagnetic)) {
+                    val orientation = FloatArray(3)
+                    SensorManager.getOrientation(R, orientation)
+                    azimuth = Math.toDegrees(orientation[0].toDouble()).toFloat()
+                }
+            }
+
+            override fun onAccuracyChanged(sensor: Sensor, accuracy: Int) {}
+        }
+    }
+
+    DisposableEffect(Unit) {
+        sensorManager.registerListener(sensorEventListener, accelerometer, SensorManager.SENSOR_DELAY_UI)
+        sensorManager.registerListener(sensorEventListener, magnetometer, SensorManager.SENSOR_DELAY_UI)
+        onDispose {
+            sensorManager.unregisterListener(sensorEventListener)
+        }
+    }
+
+    Canvas(modifier = Modifier.fillMaxSize()) {
+        rotate(-azimuth) {
+            drawLine(Color.Red, start = center, end = center.copy(y = 0f), strokeWidth = 5f)
+            drawLine(Color.Black, start = center, end = center.copy(y = size.height), strokeWidth = 5f)
+            drawLine(Color.Black, start = center, end = center.copy(x = 0f), strokeWidth = 5f)
+            drawLine(Color.Black, start = center, end = center.copy(x = size.width), strokeWidth = 5f)
+        }
+    }
+}
+
+
+Color.kt:
+
+package com.example.offlinegpstracker.ui.theme
+
+import androidx.compose.ui.graphics.Color
+
+val Purple80 = Color(0xFFD0BCFF)
+val PurpleGrey80 = Color(0xFFCCC2DC)
+val Pink80 = Color(0xFFEFB8C8)
+
+val Purple40 = Color(0xFF6650a4)
+val PurpleGrey40 = Color(0xFF625b71)
+val Pink40 = Color(0xFF7D5260)
+
+Shape.kt:
+
+package com.example.offlinegpstracker.ui.theme
+
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Shapes
+import androidx.compose.ui.unit.dp
+
+val Shapes = Shapes(
+    small = RoundedCornerShape(4.dp),
+    medium = RoundedCornerShape(4.dp),
+    large = RoundedCornerShape(0.dp)
+)
+
+
+Theme.kt:
+
+package com.example.offlinegpstracker.ui.theme
+
+import android.os.Build
+import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.darkColorScheme
+import androidx.compose.material3.dynamicDarkColorScheme
+import androidx.compose.material3.dynamicLightColorScheme
+import androidx.compose.material3.lightColorScheme
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.platform.LocalContext
+
+private val DarkColorScheme = darkColorScheme(
+    primary = Purple80,
+    secondary = PurpleGrey80,
+    tertiary = Pink80
+)
+
+private val LightColorScheme = lightColorScheme(
+    primary = Purple40,
+    secondary = PurpleGrey40,
+    tertiary = Pink40
+
+    /* Other default colors to override
+    background = Color(0xFFFFFBFE),
+    surface = Color(0xFFFFFBFE),
+    onPrimary = Color.White,
+    onSecondary = Color.White,
+    onTertiary = Color.White,
+    onBackground = Color(0xFF1C1B1F),
+    onSurface = Color(0xFF1C1B1F),
+    */
+)
+
+@Composable
+fun OfflineGPSTrackerTheme(
+    darkTheme: Boolean = isSystemInDarkTheme(),
+    // Dynamic color is available on Android 12+
+    dynamicColor: Boolean = true,
+    content: @Composable () -> Unit
+) {
+    val colorScheme = when {
+        dynamicColor && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S -> {
+            val context = LocalContext.current
+            if (darkTheme) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
+        }
+        darkTheme -> DarkColorScheme
+        else -> LightColorScheme
+    }
+
+    MaterialTheme(
+        colorScheme = colorScheme,
+        typography = Typography,
+        content = content
+    )
+}
+
+
+Type.kt:
+
+package com.example.offlinegpstracker.ui.theme
+
+import androidx.compose.material3.Typography
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.sp
+
+// Set of Material typography styles to start with
+val Typography = Typography(
+    bodyLarge = TextStyle(
+        fontFamily = FontFamily.Default,
+        fontWeight = FontWeight.Normal,
+        fontSize = 16.sp,
+        lineHeight = 24.sp,
+        letterSpacing = 0.5.sp
+    )
+    /* Other default text styles to override
+    titleLarge = TextStyle(
+        fontFamily = FontFamily.Default,
+        fontWeight = FontWeight.Normal,
+        fontSize = 22.sp,
+        lineHeight = 28.sp,
+        letterSpacing = 0.sp
+    ),
+    labelSmall = TextStyle(
+        fontFamily = FontFamily.Default,
+        fontWeight = FontWeight.Medium,
+        fontSize = 11.sp,
+        lineHeight = 16.sp,
+        letterSpacing = 0.5.sp
+    )
+    */
+)
+
+
+AppDatabase.kt:
+
+package com.example.offlinegpstracker
+
+import android.content.Context
+import androidx.room.Database
+import androidx.room.Room
+import androidx.room.RoomDatabase
+
+@Database(entities = [Location::class], version = 2, exportSchema = false) // Set exportSchema to false
+abstract class AppDatabase : RoomDatabase() {
+    abstract fun locationDao(): LocationDao
+
+    companion object {
+        @Volatile
+        private var INSTANCE: AppDatabase? = null
+
+        fun getDatabase(context: Context): AppDatabase {
+            return INSTANCE ?: synchronized(this) {
+                val instance = Room.databaseBuilder(
+                    context.applicationContext,
+                    AppDatabase::class.java,
+                    "location_database"
+                ).fallbackToDestructiveMigration().build()
+                INSTANCE = instance
+                instance
+            }
+        }
+    }
+}
+
+
+Location.kt:
+
+package com.example.offlinegpstracker
+
+import androidx.room.Entity
+import androidx.room.PrimaryKey
+
+@Entity(tableName = "location")
+data class Location(
+    @PrimaryKey(autoGenerate = true) val id: Int = 0,  // Changed to Int
+    val name: String,
+    val latitude: Double,
+    val longitude: Double,
+    val altitude: Double,
+    val status: String = "active"
+) {
+    val deleted: Boolean
+        get() = status == "deleted"
+}
+
+
+LocationDao.kt:
+
+package com.example.offlinegpstracker
+
+import androidx.room.Dao
+import androidx.room.Insert
+import androidx.room.Query
+import androidx.room.Update
+import kotlinx.coroutines.flow.Flow
+
+@Dao
+interface LocationDao {
+    @Query("SELECT * FROM location WHERE status = 'active'")
+    fun getAllLocations(): Flow<List<Location>>
+
+    @Insert
+    suspend fun insertLocation(location: Location)
+
+    @Query("SELECT * FROM location WHERE id = :locationId")
+    fun getLocationById(locationId: Int): Flow<Location?>
+
+    @Update
+    suspend fun updateLocation(location: Location)
+
+    @Query("UPDATE location SET status = 'deleted' WHERE id = :locationId")
+    suspend fun deleteLocation(locationId: Int)
+}
+
+
+activity_main.xml:
+
+<?xml version="1.0" encoding="utf-8"?>
+<RelativeLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    tools:context=".MainActivity">
+
+    <EditText
+        android:id="@+id/nameField"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:hint="Location Name"
+        android:layout_margin="16dp"/>
+
+    <EditText
+        android:id="@+id/latitudeField"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:hint="Latitude"
+        android:inputType="numberDecimal"
+        android:layout_below="@id/nameField"
+        android:layout_margin="16dp"/>
+
+    <EditText
+        android:id="@+id/longitudeField"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:hint="Longitude"
+        android:inputType="numberDecimal"
+        android:layout_below="@id/latitudeField"
+        android:layout_margin="16dp"/>
+
+    <EditText
+        android:id="@+id/altitudeField"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:hint="Altitude"
+        android:inputType="numberDecimal"
+        android:layout_below="@id/longitudeField"
+        android:layout_margin="16dp"/>
+
+    <Button
+        android:id="@+id/saveButton"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Save"
+        android:layout_below="@id/altitudeField"
+        android:layout_centerHorizontal="true"
+        android:layout_marginTop="16dp"/>
+
+    <Button
+        android:id="@+id/shareButton"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Share"
+        android:layout_below="@id/saveButton"
+        android:layout_centerHorizontal="true"
+        android:layout_marginTop="16dp"/>
+</RelativeLayout>
+
+
+activity_splash.xml:
+
+<?xml version="1.0" encoding="utf-8"?>
+<RelativeLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@android:color/black"
+    android:gravity="center">
+
+    <ImageView
+        android:id="@+id/logo"
+        android:layout_width="200dp"
+        android:layout_height="200dp"
+        android:layout_centerInParent="true"
+        android:src="@drawable/aj_logo_circle"
+        android:scaleType="centerInside"/>
+
+</RelativeLayout>
+
+
+themes.xml:
+
+<resources xmlns:tools="http://schemas.android.com/tools">
+    <!-- Base application theme -->
+    <style name="Theme.AmazonJungle" parent="Theme.Material3.DayNight.NoActionBar">
+        <!-- Customize your theme here -->
+        <item name="colorPrimary">@color/purple_500</item>
+        <item name="colorPrimaryDark">@color/purple_700</item>
+        <item name="colorAccent">@color/teal_200</item>
+        <item name="windowActionBar">false</item>
+        <item name="windowNoTitle">true</item>
+    </style>
+
+    <!-- Splash screen theme -->
+    <style name="SplashTheme" parent="Theme.Material3.DayNight.NoActionBar">
+        <item name="android:windowBackground">@color/black</item>
+        <item name="android:windowNoTitle">true</item>
+        <item name="android:windowFullscreen">true</item>
+    </style>
+</resources>
+
+
+
+build.gradle(project):
+
+buildscript {
+    repositories {
+        google()
+        mavenCentral()
+    }
+    dependencies {
+        classpath("com.android.tools.build:gradle:8.4.1")
+        classpath("org.jetbrains.kotlin:kotlin-gradle-plugin:1.9.10")
+    }
+}
+
+allprojects {
+    repositories {
+        google()
+        mavenCentral()
+        maven { url = uri("https://jitpack.io") }
+    }
+}
+
+
+
+build.gradle(app):
+
+plugins {
+    id("com.android.application")
+    id("org.jetbrains.kotlin.android")
+    id("kotlin-kapt")
+}
+
+android {
+    namespace = "com.example.offlinegpstracker"
+    compileSdk = 34
+
+    defaultConfig {
+        applicationId = "com.example.offlinegpstracker"
+        minSdk = 21
+        targetSdk = 34
+        versionCode = 1
+        versionName = "1.0"
+
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+        javaCompileOptions {
+            annotationProcessorOptions {
+                arguments += mapOf(
+                    "room.schemaLocation" to "$projectDir/schemas".toString()
+                )
+            }
+        }
+    }
+
+    buildTypes {
+        release {
+            isMinifyEnabled = false
+            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+        }
+    }
+    compileOptions {
+        sourceCompatibility = JavaVersion.VERSION_1_8
+        targetCompatibility = JavaVersion.VERSION_1_8
+    }
+    kotlinOptions {
+        jvmTarget = "1.8"
+    }
+    buildFeatures {
+        compose = true
+    }
+    composeOptions {
+        kotlinCompilerExtensionVersion = "1.5.3"
+    }
+}
+
+dependencies {
+    implementation("org.jetbrains.kotlin:kotlin-stdlib:1.9.10")
+    implementation("androidx.core:core-ktx:1.13.1")
+    implementation("androidx.appcompat:appcompat:1.7.0")
+    implementation("com.google.android.material:material:1.10.0")
+    implementation("androidx.constraintlayout:constraintlayout:2.1.4")
+    implementation ("androidx.compose.runtime:runtime-livedata:1.3.1")
+
+    // Room
+    implementation("androidx.room:room-runtime:2.6.1")
+    implementation("androidx.room:room-ktx:2.6.1")
+    kapt("androidx.room:room-compiler:2.6.1")
+
+    // Compose
+    implementation("androidx.compose.ui:ui:1.6.7")
+    implementation("androidx.compose.material3:material3:1.2.1")
+    implementation("androidx.compose.ui:ui-tooling-preview:1.6.7")
+    implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.1")
+    implementation("androidx.activity:activity-compose:1.9.0")
+
+    // Google services
+    implementation("com.google.android.gms:play-services-location:21.0.1")
+
+    testImplementation("junit:junit:4.13.2")
+    androidTestImplementation("androidx.test.ext:junit:1.1.5")
+    androidTestImplementation("androidx.test.espresso:espresso-core:3.5.1")
+
+    // Jetpack Compose Testing
+    androidTestImplementation("androidx.compose.ui:ui-test-junit4:1.6.7")
+    debugImplementation("androidx.compose.ui:ui-tooling:1.6.7")
+
+    // Navigation
+    implementation("androidx.navigation:navigation-compose:2.7.2")
+
+    // Accompanist dependencies
+    implementation("com.google.accompanist:accompanist-pager:0.21.2-beta")
+    implementation("com.google.accompanist:accompanist-pager-indicators:0.21.2-beta")
+}
+
+kapt {
+    correctErrorTypes = true
+}
+
+
+gradle.properties:
+
+# Project-wide Gradle settings.
+# IDE (e.g. Android Studio) users:
+# Gradle settings configured through the IDE *will override*
+# any settings specified in this file.
+# For more details on how to configure your build environment visit
+# http://www.gradle.org/docs/current/userguide/build_environment.html
+
+# Specifies the JVM arguments used for the daemon process.
+# The setting is particularly useful for tweaking memory settings.
+org.gradle.jvmargs=\
+    --add-opens=jdk.compiler/com.sun.tools.javac.api=ALL-UNNAMED \
+    --add-opens=jdk.compiler/com.sun.tools.javac.code=ALL-UNNAMED \
+    --add-opens=jdk.compiler/com.sun.tools.javac.comp=ALL-UNNAMED \
+    --add-opens=jdk.compiler/com.sun.tools.javac.file=ALL-UNNAMED \
+    --add-opens=jdk.compiler/com.sun.tools.javac.main=ALL-UNNAMED \
+    --add-opens=jdk.compiler/com.sun.tools.javac.model=ALL-UNNAMED \
+    --add-opens=jdk.compiler/com.sun.tools.javac.parser=ALL-UNNAMED \
+    --add-opens=jdk.compiler/com.sun.tools.javac.processing=ALL-UNNAMED \
+    --add-opens=jdk.compiler/com.sun.tools.javac.tree=ALL-UNNAMED \
+    --add-opens=jdk.compiler/com.sun.tools.javac.util=ALL-UNNAMED \
+    -Xmx2048m -Dfile.encoding=UTF-8
+
+android.useAndroidX=true
+kotlin.code.style=official
+android.nonTransitiveRClass=true
+
+# Specify the JDK home directory
+org.gradle.java.home=C:\\\\Program Files\\\\Eclipse Adoptium\\\\jdk-17.0.11.9-hotspot
+
+
+
+gradle-wrapper.properties:
+
+#Wed Jun 05 19:38:58 ICT 2024
+distributionBase=GRADLE_USER_HOME
+distributionPath=wrapper/dists
+distributionUrl=https\://services.gradle.org/distributions/gradle-8.6-bin.zip
+zipStoreBase=GRADLE_USER_HOME
+zipStorePath=wrapper/dists
+
+
+
+settings.gradle.kts:
+
+pluginManagement {
+    repositories {
+        google()
+        mavenCentral()
+        gradlePluginPortal()
+    }
+}
+
+dependencyResolutionManagement {
+    repositories {
+        google()
+        mavenCentral()
+    }
+}
+
+rootProject.name = "OfflineGPSTracker"
+include(":app")
+
+
+AndroidManifest.xml:
+
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <queries>
+        <package android:name="com.google.android.apps.maps" />
+    </queries>
+
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION" />
+    <uses-permission android:name="android.permission.INTERNET" />
+
+    <application
+        android:name=".MyApplication"
+        android:allowBackup="true"
+        android:icon="@mipmap/ic_launcher"
+        android:label="Amazon Jungle"
+        android:roundIcon="@mipmap/ic_launcher_round"
+        android:supportsRtl="true"
+        android:theme="@style/Theme.AmazonJungle">
+
+        <!-- SplashActivity is the launcher activity -->
+        <activity
+            android:name=".SplashActivity"
+            android:theme="@style/SplashTheme"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <!-- MainActivity as a regular activity -->
+        <activity
+            android:name=".MainActivity"
+            android:exported="true">
+        </activity>
+
+    </application>
+
+</manifest>
