@@ -12,7 +12,7 @@ interface LocationDao {
     fun getAllLocations(): Flow<List<Location>>
 
     @Insert
-    suspend fun insertLocation(location: Location)
+    suspend fun insertLocation(location: Location) // Changed from String to Location
 
     @Query("SELECT * FROM location WHERE id = :locationId")
     fun getLocationById(locationId: Int): Flow<Location?>

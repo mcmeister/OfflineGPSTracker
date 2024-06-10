@@ -1,22 +1,59 @@
 package com.example.offlinegpstracker
 
+import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
+import com.google.accompanist.pager.ExperimentalPagerApi
+import com.google.accompanist.pager.HorizontalPager
 
+@OptIn(ExperimentalPagerApi::class)
 @Composable
-fun NavGraph(navController: NavHostController, locationViewModel: LocationViewModel) {
+fun NavGraph(navController: NavHostController, locationViewModel: LocationViewModel, modifier: Modifier = Modifier, pagerState: com.google.accompanist.pager.PagerState?, locations: List<Location>) {
+
     NavHost(
         navController = navController,
-        startDestination = "locations_list"
+        startDestination = "main",
+        modifier = modifier
     ) {
-        composable("locations_list") {
-            LocationsScreen(navController = navController, locationViewModel = locationViewModel)
+        composable("main") {
+            if (locations.isNotEmpty() && pagerState != null) {
+                HorizontalPager(
+                    count = 2,
+                    state = pagerState,
+                    modifier = Modifier.padding(16.dp)
+                ) { page ->
+                    when (page) {
+                        0 -> GPSTrackerScreen(locationViewModel)
+                        1 -> LocationsScreen(navController = navController, locationViewModel = locationViewModel)
+                    }
+                }
+            } else {
+                // Display a loading indicator or empty state
+                Text("Loading locations...")
+            }
         }
-        composable("location_details_pager/{startIndex}") { backStackEntry ->
-            val startIndex = backStackEntry.arguments?.getString("startIndex")?.toIntOrNull() ?: 0
-            LocationDetailsPager(navController = navController, locationViewModel = locationViewModel, startIndex = startIndex)
+        composable("location_details/{locationId}") { backStackEntry ->
+            val locationId = backStackEntry.arguments?.getString("locationId")?.toIntOrNull() ?: 0
+            LocationDetailsScreen(navController = navController, locationViewModel = locationViewModel, startIndex = locationId)
+        }
+        composable("navigator/{locationId}/{locationName}") { backStackEntry ->
+            val locationId = backStackEntry.arguments?.getString("locationId")?.toIntOrNull() ?: 0
+            val locationName = backStackEntry.arguments?.getString("locationName") ?: ""
+            val location = locationId.let { locationViewModel.getLocationById(it).collectAsState(initial = null).value }
+            location?.let {
+                NavigatorScreen(
+                    navController = navController,
+                    locationViewModel = locationViewModel,
+                    savedLocation = it.toAndroidLocation(),
+                    locationName = locationName
+                )
+            }
         }
     }
 }

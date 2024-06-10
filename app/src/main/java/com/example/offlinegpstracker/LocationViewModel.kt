@@ -2,19 +2,23 @@ package com.example.offlinegpstracker
 
 import android.annotation.SuppressLint
 import android.app.Application
+import android.content.pm.PackageManager
+import android.location.Location as AndroidLocation
 import android.os.Looper
-import androidx.lifecycle.AndroidViewModel
-import androidx.lifecycle.LiveData
-import androidx.lifecycle.MutableLiveData
-import androidx.lifecycle.viewModelScope
+import androidx.core.app.ActivityCompat
+import androidx.lifecycle.*
 import com.google.android.gms.location.*
-import kotlinx.coroutines.flow.SharingStarted
-import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 
 class LocationViewModel(application: Application, private val repository: LocationRepository) : AndroidViewModel(application) {
 
-    val locations = repository.getAllLocations().stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
+    // Change locations to StateFlow
+    val locations: StateFlow<List<Location>> = repository.getAllLocations().stateIn(
+        scope = viewModelScope,
+        started = SharingStarted.WhileSubscribed(5000),
+        initialValue = emptyList()
+    )
 
     private val _latitude = MutableLiveData<String>()
     val latitude: LiveData<String> = _latitude
@@ -24,6 +28,14 @@ class LocationViewModel(application: Application, private val repository: Locati
 
     private val _altitude = MutableLiveData<String>()
     val altitude: LiveData<String> = _altitude
+
+    private val _locationFlow = MutableStateFlow<AndroidLocation?>(null)
+    val locationFlow: StateFlow<AndroidLocation?> = _locationFlow
+
+    private val _selectedLocationId = MutableLiveData<Int?>()
+    val selectedLocation: LiveData<Location?> = _selectedLocationId.switchMap { id ->
+        id?.let { repository.getLocationById(it).asLiveData() } ?: MutableLiveData(null)
+    }
 
     private var fusedLocationClient: FusedLocationProviderClient = LocationServices.getFusedLocationProviderClient(application)
     private var locationCallback: LocationCallback? = null
@@ -38,9 +50,7 @@ class LocationViewModel(application: Application, private val repository: Locati
         }
     }
 
-    fun getLocationById(locationId: Int): kotlinx.coroutines.flow.Flow<Location?> {
-        return repository.getLocationById(locationId)
-    }
+    fun getLocationById(locationId: Int) = repository.getLocationById(locationId)
 
     fun updateLocation(location: Location) {
         viewModelScope.launch {
@@ -54,8 +64,18 @@ class LocationViewModel(application: Application, private val repository: Locati
         }
     }
 
+    fun selectLocation(locationId: Int) {
+        _selectedLocationId.value = locationId
+    }
+
     @SuppressLint("MissingPermission")
     fun startLocationUpdates() {
+        if (ActivityCompat.checkSelfPermission(getApplication(), android.Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED &&
+            ActivityCompat.checkSelfPermission(getApplication(), android.Manifest.permission.ACCESS_COARSE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
+            // Request permissions if not granted
+            return
+        }
+
         val locationRequest = LocationRequest.Builder(Priority.PRIORITY_HIGH_ACCURACY, 10000L).apply {
             setMinUpdateIntervalMillis(5000L)
         }.build()
@@ -66,6 +86,7 @@ class LocationViewModel(application: Application, private val repository: Locati
                     _latitude.value = location.latitude.toString()
                     _longitude.value = location.longitude.toString()
                     _altitude.value = location.altitude.toString()
+                    _locationFlow.value = location
                 }
             }
         }
@@ -85,10 +106,23 @@ class LocationViewModel(application: Application, private val repository: Locati
         super.onCleared()
         stopLocationUpdates()
     }
+}
 
-    fun updateCurrentLocation(latitude: String, longitude: String, altitude: String) {
-        _latitude.value = latitude
-        _longitude.value = longitude
-        _altitude.value = altitude
-    }
+// Extension function to convert custom Location to AndroidLocation
+fun Location.toAndroidLocation(): AndroidLocation {
+    val androidLocation = AndroidLocation("")
+    androidLocation.latitude = this.latitude
+    androidLocation.longitude = this.longitude
+    androidLocation.altitude = this.altitude
+    return androidLocation
+}
+
+// Extension function to convert AndroidLocation to custom Location
+fun AndroidLocation.toCustomLocation(): Location {
+    return Location(
+        name = "Location at ${System.currentTimeMillis()}", // Provide appropriate name if needed
+        latitude = this.latitude,
+        longitude = this.longitude,
+        altitude = this.altitude
+    )
 }

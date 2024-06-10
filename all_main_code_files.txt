@@ -2,6 +2,11 @@ MainActivity.kt:
 
 package com.example.offlinegpstracker
 
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import android.Manifest
 import android.content.pm.PackageManager
 import android.os.Bundle
@@ -19,13 +24,15 @@ import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.core.app.ActivityCompat
 import androidx.navigation.compose.rememberNavController
 import com.example.offlinegpstracker.ui.theme.OfflineGPSTrackerTheme
 import com.google.accompanist.pager.ExperimentalPagerApi
-import com.google.accompanist.pager.HorizontalPager
 import com.google.accompanist.pager.rememberPagerState
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -42,58 +49,105 @@ class MainActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         setContent {
             OfflineGPSTrackerTheme {
-                val navController = rememberNavController()
-                val pagerState = rememberPagerState()
-                val scope = rememberCoroutineScope()
+                val lifecycleOwner = LocalLifecycleOwner.current
+                CompositionLocalProvider(
+                    LocalLifecycleOwner provides lifecycleOwner
+                ) {
+                    val navController = rememberNavController()
+                    val scope = rememberCoroutineScope()
 
-                BackHandler(pagerState.currentPage == 0) {
-                    finish() // Exit app when back pressed on GPS Tracker screen
-                }
+                    // Collecting locations in a Lifecycle-aware manner using helper function
+                    val locations by locationViewModel.locations.collectAsStateWithLifecycle(lifecycleOwner)
 
-                Scaffold(
-                    bottomBar = {
-                        NavigationBar {
-                            NavigationBarItem(
-                                selected = pagerState.currentPage == 0,
-                                onClick = {
-                                    scope.launch {
+                    // Initialize pagerState only if locations are not empty
+                    val pagerState = if (locations.isNotEmpty()) rememberPagerState() else null
+
+                    BackHandler {
+                        if (pagerState != null && locations.isNotEmpty()) {
+                            when (navController.currentDestination?.route) {
+                                "main" -> when (pagerState.currentPage) {
+                                    0 -> finish() // Exit app when back pressed on GPS Tracker screen
+                                    1 -> scope.launch {
                                         withContext(Dispatchers.Main.immediate) {
                                             pagerState.animateScrollToPage(0)
                                         }
                                     }
-                                },
-                                label = { Text("GPS Tracker") },
-                                icon = { Icon(Icons.Default.LocationOn, contentDescription = null) }
-                            )
-                            NavigationBarItem(
-                                selected = pagerState.currentPage == 1,
-                                onClick = {
-                                    scope.launch {
-                                        withContext(Dispatchers.Main.immediate) {
-                                            pagerState.animateScrollToPage(1)
-                                        }
-                                    }
-                                },
-                                label = { Text("Locations") },
-                                icon = { Icon(Icons.AutoMirrored.Filled.List, contentDescription = null) }
-                            )
+                                }
+                                "location_details/{locationId}" -> navController.navigate("main") {
+                                    popUpTo("main") { inclusive = true }
+                                }
+                                "navigator/{locationId}" -> navController.navigate("main") {
+                                    popUpTo("main") { inclusive = true }
+                                }
+                            }
                         }
                     }
-                ) { innerPadding ->
-                    HorizontalPager(
-                        count = 2,
-                        state = pagerState,
-                        modifier = Modifier.padding(innerPadding)
-                    ) { page ->
-                        when (page) {
-                            0 -> GPSTrackerScreen(locationViewModel)
-                            1 -> LocationNavGraph(navController = navController, locationViewModel = locationViewModel)
+
+                    Scaffold(
+                        bottomBar = {
+                            if (pagerState != null && locations.isNotEmpty()) {
+                                NavigationBar {
+                                    NavigationBarItem(
+                                        selected = pagerState.currentPage == 0,
+                                        onClick = {
+                                            if (navController.currentDestination?.route == "main") {
+                                                scope.launch {
+                                                    withContext(Dispatchers.Main.immediate) {
+                                                        pagerState.animateScrollToPage(0)
+                                                    }
+                                                }
+                                            } else {
+                                                navController.navigate("main") {
+                                                    popUpTo("main") { inclusive = true }
+                                                }
+                                                scope.launch {
+                                                    withContext(Dispatchers.Main.immediate) {
+                                                        pagerState.animateScrollToPage(0)
+                                                    }
+                                                }
+                                            }
+                                        },
+                                        label = { Text("GPS Tracker") },
+                                        icon = { Icon(Icons.Default.LocationOn, contentDescription = null) }
+                                    )
+                                    NavigationBarItem(
+                                        selected = pagerState.currentPage == 1,
+                                        onClick = {
+                                            if (navController.currentDestination?.route == "main") {
+                                                scope.launch {
+                                                    withContext(Dispatchers.Main.immediate) {
+                                                        pagerState.animateScrollToPage(1)
+                                                    }
+                                                }
+                                            } else {
+                                                navController.navigate("main") {
+                                                    popUpTo("main") { inclusive = true }
+                                                }
+                                                scope.launch {
+                                                    withContext(Dispatchers.Main.immediate) {
+                                                        pagerState.animateScrollToPage(1)
+                                                    }
+                                                }
+                                            }
+                                        },
+                                        label = { Text("Locations") },
+                                        icon = { Icon(Icons.AutoMirrored.Filled.List, contentDescription = null) }
+                                    )
+                                }
+                            }
                         }
+                    ) { innerPadding ->
+                        NavGraph(
+                            navController = navController,
+                            locationViewModel = locationViewModel,
+                            modifier = Modifier.padding(innerPadding),
+                            pagerState = pagerState,
+                            locations = locations
+                        )
                     }
                 }
             }
         }
-
         requestLocationPermission()
     }
 
@@ -146,6 +200,9 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.compose.runtime.livedata.observeAsState
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 @Composable
 fun GPSTrackerScreen(locationViewModel: LocationViewModel = viewModel()) {
@@ -216,6 +273,12 @@ fun GPSTrackerScreen(locationViewModel: LocationViewModel = viewModel()) {
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
             Button(onClick = {
+                shareLocation(context, latitude, longitude)
+            }) {
+                Text("Share")
+            }
+
+            Button(onClick = {
                 if (name.text.isEmpty()) {
                     name = TextFieldValue(generateLocationName())
                 }
@@ -223,18 +286,15 @@ fun GPSTrackerScreen(locationViewModel: LocationViewModel = viewModel()) {
             }) {
                 Text("Save")
             }
-
-            Button(onClick = {
-                shareLocation(context, latitude, longitude)
-            }) {
-                Text("Share")
-            }
         }
     }
 }
 
 private fun generateLocationName(): String {
-    return "Location_${System.currentTimeMillis()}"
+    val timestamp = System.currentTimeMillis()
+    val sdf = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault())
+    val formattedTimestamp = sdf.format(Date(timestamp))
+    return "Location at $formattedTimestamp"
 }
 
 private fun saveLocation(
@@ -280,70 +340,54 @@ NavGraph.kt:
 
 package com.example.offlinegpstracker
 
+import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.compose.runtime.collectAsState
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
+import com.google.accompanist.pager.ExperimentalPagerApi
+import com.google.accompanist.pager.HorizontalPager
 
+@OptIn(ExperimentalPagerApi::class)
 @Composable
-fun SetupNavGraph(navController: NavHostController, locationViewModel: LocationViewModel) {
+fun NavGraph(navController: NavHostController, locationViewModel: LocationViewModel, modifier: Modifier = Modifier, pagerState: com.google.accompanist.pager.PagerState?, locations: List<Location>) {
+
     NavHost(
         navController = navController,
-        startDestination = "gps_tracker"
+        startDestination = "main",
+        modifier = modifier
     ) {
-        composable("gps_tracker") {
-            GPSTrackerScreen(locationViewModel = locationViewModel)
-        }
-        composable("locations") {
-            LocationsScreen(navController = navController, locationViewModel = locationViewModel)
-        }
-        composable("location_details/{locationId}") { backStackEntry ->
-            val locationId = backStackEntry.arguments?.getString("locationId")?.toIntOrNull()
-            locationId?.let {
-                LocationDetailsScreen(navController = navController, locationId = it, locationViewModel = locationViewModel)
+        composable("main") {
+            if (locations.isNotEmpty() && pagerState != null) {
+                HorizontalPager(
+                    count = 2,
+                    state = pagerState,
+                    modifier = Modifier.padding(16.dp)
+                ) { page ->
+                    when (page) {
+                        0 -> GPSTrackerScreen(locationViewModel)
+                        1 -> LocationsScreen(navController = navController, locationViewModel = locationViewModel)
+                    }
+                }
+            } else {
+                // Display a loading indicator or empty state
+                Text("Loading locations...")
             }
         }
-    }
-}
-
-
-PagerState.kt:
-
-package com.example.offlinegpstracker
-
-import androidx.compose.runtime.*
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
-
-class PagerState(
-    initialPage: Int = 0
-) {
-    var currentPage by mutableStateOf(initialPage)
-        private set
-
-    private val mutex = Mutex()
-
-    suspend fun animateScrollToPage(
-        page: Int,
-        animationSpec: androidx.compose.animation.core.AnimationSpec<Float> = androidx.compose.animation.core.TweenSpec()
-    ) {
-        mutex.withLock {
-            // Dummy animation logic, to be implemented as needed
-            currentPage = page
+        composable("location_details/{locationId}") { backStackEntry ->
+            val locationId = backStackEntry.arguments?.getString("locationId")?.toIntOrNull() ?: 0
+            LocationDetailsScreen(navController = navController, locationViewModel = locationViewModel, startIndex = locationId)
         }
-    }
-
-    fun animateScrollToPage(
-        scope: CoroutineScope,
-        page: Int,
-        animationSpec: androidx.compose.animation.core.AnimationSpec<Float> = androidx.compose.animation.core.TweenSpec()
-    ) {
-        scope.launch {
-            animateScrollToPage(page, animationSpec)
+        composable("navigator/{locationId}") { backStackEntry ->
+            val locationId = backStackEntry.arguments?.getString("locationId")?.toIntOrNull() ?: 0
+            val location = locationId.let { locationViewModel.getLocationById(it).collectAsState(initial = null).value }
+            location?.let {
+                NavigatorScreen(navController = navController, locationViewModel = locationViewModel, savedLocation = it.toAndroidLocation())
+            }
         }
     }
 }
@@ -355,19 +399,18 @@ package com.example.offlinegpstracker
 
 import android.annotation.SuppressLint
 import android.app.Application
+import android.content.pm.PackageManager
+import android.location.Location as AndroidLocation
 import android.os.Looper
-import androidx.lifecycle.AndroidViewModel
-import androidx.lifecycle.LiveData
-import androidx.lifecycle.MutableLiveData
-import androidx.lifecycle.viewModelScope
+import androidx.core.app.ActivityCompat
+import androidx.lifecycle.*
 import com.google.android.gms.location.*
-import kotlinx.coroutines.flow.SharingStarted
-import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 
 class LocationViewModel(application: Application, private val repository: LocationRepository) : AndroidViewModel(application) {
 
-    val locations = repository.getAllLocations().stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
+    val locations: LiveData<List<Location>> = repository.getAllLocations().asLiveData()
 
     private val _latitude = MutableLiveData<String>()
     val latitude: LiveData<String> = _latitude
@@ -377,6 +420,14 @@ class LocationViewModel(application: Application, private val repository: Locati
 
     private val _altitude = MutableLiveData<String>()
     val altitude: LiveData<String> = _altitude
+
+    private val _locationFlow = MutableStateFlow<AndroidLocation?>(null)
+    val locationFlow: StateFlow<AndroidLocation?> = _locationFlow
+
+    private val _selectedLocationId = MutableLiveData<Int?>()
+    val selectedLocation: LiveData<Location?> = _selectedLocationId.switchMap { id ->
+        id?.let { repository.getLocationById(it).asLiveData() } ?: MutableLiveData(null)
+    }
 
     private var fusedLocationClient: FusedLocationProviderClient = LocationServices.getFusedLocationProviderClient(application)
     private var locationCallback: LocationCallback? = null
@@ -391,9 +442,7 @@ class LocationViewModel(application: Application, private val repository: Locati
         }
     }
 
-    fun getLocationById(locationId: Int): kotlinx.coroutines.flow.Flow<Location?> {
-        return repository.getLocationById(locationId)
-    }
+    fun getLocationById(locationId: Int) = repository.getLocationById(locationId)
 
     fun updateLocation(location: Location) {
         viewModelScope.launch {
@@ -407,8 +456,18 @@ class LocationViewModel(application: Application, private val repository: Locati
         }
     }
 
+    fun selectLocation(locationId: Int) {
+        _selectedLocationId.value = locationId
+    }
+
     @SuppressLint("MissingPermission")
     fun startLocationUpdates() {
+        if (ActivityCompat.checkSelfPermission(getApplication(), android.Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED &&
+            ActivityCompat.checkSelfPermission(getApplication(), android.Manifest.permission.ACCESS_COARSE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
+            // Request permissions if not granted
+            return
+        }
+
         val locationRequest = LocationRequest.Builder(Priority.PRIORITY_HIGH_ACCURACY, 10000L).apply {
             setMinUpdateIntervalMillis(5000L)
         }.build()
@@ -419,6 +478,7 @@ class LocationViewModel(application: Application, private val repository: Locati
                     _latitude.value = location.latitude.toString()
                     _longitude.value = location.longitude.toString()
                     _altitude.value = location.altitude.toString()
+                    _locationFlow.value = location
                 }
             }
         }
@@ -438,12 +498,25 @@ class LocationViewModel(application: Application, private val repository: Locati
         super.onCleared()
         stopLocationUpdates()
     }
+}
 
-    fun updateCurrentLocation(latitude: String, longitude: String, altitude: String) {
-        _latitude.value = latitude
-        _longitude.value = longitude
-        _altitude.value = altitude
-    }
+// Extension function to convert custom Location to AndroidLocation
+fun Location.toAndroidLocation(): AndroidLocation {
+    val androidLocation = AndroidLocation("")
+    androidLocation.latitude = this.latitude
+    androidLocation.longitude = this.longitude
+    androidLocation.altitude = this.altitude
+    return androidLocation
+}
+
+// Extension function to convert AndroidLocation to custom Location
+fun AndroidLocation.toCustomLocation(): Location {
+    return Location(
+        name = "Location at ${System.currentTimeMillis()}", // Provide appropriate name if needed
+        latitude = this.latitude,
+        longitude = this.longitude,
+        altitude = this.altitude
+    )
 }
 
 
@@ -453,19 +526,21 @@ package com.example.offlinegpstracker
 
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.livedata.observeAsState
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavHostController
-import androidx.navigation.compose.NavHost
-import androidx.navigation.compose.composable
+import androidx.lifecycle.viewmodel.compose.viewModel
 
 @Composable
-fun LocationsScreen(navController: NavHostController, locationViewModel: LocationViewModel) {
-    val locations by locationViewModel.locations.collectAsState(initial = emptyList())
-    val activeLocations = locations.filter { !it.deleted } // Filter out deleted locations
+fun LocationsScreen(navController: NavHostController, locationViewModel: LocationViewModel = viewModel()) {
+    val locations by locationViewModel.locations.observeAsState(emptyList())
+    val activeLocations = locations.filter { it.latitude != 0.0 && it.longitude != 0.0 && it.name.isNotEmpty() } // Ensure only valid locations
+    val selectedLocation by locationViewModel.selectedLocation.observeAsState()
 
     Column(
         modifier = Modifier
@@ -475,63 +550,37 @@ fun LocationsScreen(navController: NavHostController, locationViewModel: Locatio
         Text(
             "Amazon Jungle Locations (${activeLocations.size})",
             style = MaterialTheme.typography.titleLarge
-        ) // Display count of locations
+        )
         Spacer(modifier = Modifier.height(16.dp))
 
-        activeLocations.forEachIndexed { index, location -> // Use activeLocations and index
+        activeLocations.forEachIndexed { index, location ->
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(8.dp)
                     .clickable {
+                        locationViewModel.selectLocation(location.id)
                         navController.navigate("location_details/${location.id}")
-                    }
+                    },
+                horizontalArrangement = Arrangement.SpaceBetween
             ) {
                 Text(
                     "${index + 1}. ${location.name}",
                     style = MaterialTheme.typography.bodyLarge
-                ) // Display location number before name
+                )
+                IconButton(onClick = {
+                    locationViewModel.deleteLocation(location.id)
+                }) {
+                    Icon(Icons.Default.Delete, contentDescription = "Delete")
+                }
             }
         }
     }
-}
 
-@Composable
-fun LocationDetailsScreen(locationId: Int?, locationViewModel: LocationViewModel) {
-    // Fetch the location details using the ID and display them
-    val location by locationViewModel.getLocationById(locationId ?: 0).collectAsState(initial = null)
-
-    location?.let {
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(16.dp)
-        ) {
-            Text(
-                "Location Details",
-                style = MaterialTheme.typography.titleLarge
-            )
-            Spacer(modifier = Modifier.height(16.dp))
-            Text("Name: ${it.name}", style = MaterialTheme.typography.bodyLarge)
-            Text("Latitude: ${it.latitude}", style = MaterialTheme.typography.bodyLarge)
-            Text("Longitude: ${it.longitude}", style = MaterialTheme.typography.bodyLarge)
-            Text("Altitude: ${it.altitude}", style = MaterialTheme.typography.bodyLarge)
-        }
-    } ?: run {
-        Text("Location not found", style = MaterialTheme.typography.bodyLarge)
-    }
-}
-
-@Composable
-fun LocationNavGraph(navController: NavHostController, locationViewModel: LocationViewModel) {
-    NavHost(navController, startDestination = "locations_list") {
-        composable("locations_list") {
-            LocationsScreen(navController = navController, locationViewModel = locationViewModel)
-        }
-        composable("location_details/{locationId}") { backStackEntry ->
-            val locationId = backStackEntry.arguments?.getString("locationId")?.toIntOrNull()
-            LocationDetailsScreen(locationId = locationId, locationViewModel = locationViewModel)
-        }
+    selectedLocation?.let { location ->
+        // Display the selected location details
+        Text(text = "Selected Location: ${location.name}")
+        // ... other UI elements to display the location details
     }
 }
 
@@ -562,10 +611,12 @@ SplashActivity.kt:
 
 package com.example.offlinegpstracker
 
+import android.annotation.SuppressLint
 import android.content.Intent
 import android.os.Bundle
 import androidx.appcompat.app.AppCompatActivity
 
+@SuppressLint("CustomSplashScreen")
 class SplashActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -618,7 +669,6 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.widget.Toast
-import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.Button
@@ -626,136 +676,161 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
-import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavHostController
+import com.google.accompanist.pager.ExperimentalPagerApi
+import com.google.accompanist.pager.HorizontalPager
+import com.google.accompanist.pager.rememberPagerState
 
+@OptIn(ExperimentalPagerApi::class)
 @Composable
 fun LocationDetailsScreen(
     navController: NavHostController,
-    locationId: Int,
-    locationViewModel: LocationViewModel = viewModel()
+    locationViewModel: LocationViewModel,
+    startIndex: Int = 0
 ) {
-    val location by locationViewModel.getLocationById(locationId).collectAsState(initial = null)
-    var name by remember { mutableStateOf(TextFieldValue("")) }
-    var latitude by remember { mutableStateOf(TextFieldValue("")) }
-    var longitude by remember { mutableStateOf(TextFieldValue("")) }
-    var altitude by remember { mutableStateOf(TextFieldValue("")) }
-
+    val lifecycleOwner = LocalLifecycleOwner.current
+    val locations by locationViewModel.locations.collectAsStateWithLifecycle(lifecycle = lifecycleOwner.lifecycle)
+    val pagerState = rememberPagerState(initialPage = startIndex)
     val context = LocalContext.current
 
-    LaunchedEffect(location) {
-        location?.let {
-            name = TextFieldValue(it.name)
-            latitude = TextFieldValue(it.latitude.toString())
-            longitude = TextFieldValue(it.longitude.toString())
-            altitude = TextFieldValue(it.altitude.toString())
-        }
-    }
+    if (locations.isNotEmpty()) {
+        HorizontalPager(
+            count = locations.size,
+            state = pagerState
+        ) { page ->
+            val location = locations[page]
+            var name by remember { mutableStateOf(TextFieldValue(location.name)) }
+            var latitude by remember { mutableStateOf(TextFieldValue(location.latitude.toString())) }
+            var longitude by remember { mutableStateOf(TextFieldValue(location.longitude.toString())) }
+            var altitude by remember { mutableStateOf(TextFieldValue(location.altitude.toString())) }
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(16.dp),
-        verticalArrangement = Arrangement.Center
-    ) {
-        OutlinedTextField(
-            value = name,
-            onValueChange = { name = it },
-            label = { Text("Location Name") },
-            modifier = Modifier.fillMaxWidth()
-        )
-
-        OutlinedTextField(
-            value = latitude,
-            onValueChange = { latitude = it },
-            label = { Text("Latitude") },
-            modifier = Modifier.fillMaxWidth(),
-            keyboardOptions = KeyboardOptions.Default.copy(keyboardType = KeyboardType.Decimal)
-        )
-
-        OutlinedTextField(
-            value = longitude,
-            onValueChange = { longitude = it },
-            label = { Text("Longitude") },
-            modifier = Modifier.fillMaxWidth(),
-            keyboardOptions = KeyboardOptions.Default.copy(keyboardType = KeyboardType.Decimal)
-        )
-
-        OutlinedTextField(
-            value = altitude,
-            onValueChange = { altitude = it },
-            label = { Text("Altitude") },
-            modifier = Modifier.fillMaxWidth(),
-            keyboardOptions = KeyboardOptions.Default.copy(keyboardType = KeyboardType.Decimal)
-        )
-
-        Spacer(modifier = Modifier.height(16.dp))
-
-        Button(onClick = {
-            val updatedLocation = location?.copy(
-                name = name.text,
-                latitude = latitude.text.toDoubleOrNull() ?: 0.0,
-                longitude = longitude.text.toDoubleOrNull() ?: 0.0,
-                altitude = altitude.text.toDoubleOrNull() ?: 0.0
-            )
-            if (updatedLocation != null) {
-                locationViewModel.updateLocation(updatedLocation)
-                Toast.makeText(context, "Location updated", Toast.LENGTH_SHORT).show()
-                navController.popBackStack()
+            LaunchedEffect(location) {
+                name = TextFieldValue(location.name)
+                latitude = TextFieldValue(location.latitude.toString())
+                longitude = TextFieldValue(location.longitude.toString())
+                altitude = TextFieldValue(location.altitude.toString())
             }
-        }) {
-            Text("Save")
-        }
 
-        Spacer(modifier = Modifier.height(16.dp))
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(16.dp),
+                verticalArrangement = Arrangement.Center
+            ) {
+                OutlinedTextField(
+                    value = name,
+                    onValueChange = { name = it },
+                    label = { Text("Location Name") },
+                    modifier = Modifier.fillMaxWidth()
+                )
 
-        Button(onClick = {
-            location?.let {
-                val updatedLocation = it.copy(status = "deleted")
-                locationViewModel.updateLocation(updatedLocation)
-                Toast.makeText(context, "Location flagged as deleted", Toast.LENGTH_SHORT).show()
-                navController.popBackStack()
+                OutlinedTextField(
+                    value = latitude,
+                    onValueChange = { latitude = it },
+                    label = { Text("Latitude") },
+                    modifier = Modifier.fillMaxWidth(),
+                    keyboardOptions = KeyboardOptions.Default.copy(keyboardType = KeyboardType.Decimal)
+                )
+
+                OutlinedTextField(
+                    value = longitude,
+                    onValueChange = { longitude = it },
+                    label = { Text("Longitude") },
+                    modifier = Modifier.fillMaxWidth(),
+                    keyboardOptions = KeyboardOptions.Default.copy(keyboardType = KeyboardType.Decimal)
+                )
+
+                OutlinedTextField(
+                    value = altitude,
+                    onValueChange = { altitude = it },
+                    label = { Text("Altitude") },
+                    modifier = Modifier.fillMaxWidth(),
+                    keyboardOptions = KeyboardOptions.Default.copy(keyboardType = KeyboardType.Decimal)
+                )
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                Button(onClick = {
+                    val updatedLocation = location.copy(
+                        name = name.text,
+                        latitude = latitude.text.toDoubleOrNull() ?: 0.0,
+                        longitude = longitude.text.toDoubleOrNull() ?: 0.0,
+                        altitude = altitude.text.toDoubleOrNull() ?: 0.0
+                    )
+                    locationViewModel.updateLocation(updatedLocation)
+                    Toast.makeText(context, "Location updated", Toast.LENGTH_SHORT).show()
+                }) {
+                    Text("Save")
+                }
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                Button(onClick = {
+                    locationViewModel.updateLocation(location.copy(status = "deleted"))
+                    Toast.makeText(context, "Location flagged as deleted", Toast.LENGTH_SHORT).show()
+                    navController.popBackStack()
+                }) {
+                    Text("Delete")
+                }
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                Button(onClick = {
+                    shareLocationDetails(context, latitude.text, longitude.text)
+                }) {
+                    Text("Share")
+                }
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                Button(onClick = {
+                    navController.navigate("navigator/${location.id}")
+                }) {
+                    Text("Navigate to Location")
+                }
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                Button(onClick = {
+                    navController.popBackStack()
+                }) {
+                    Text("Back")
+                }
             }
-        }) {
-            Text("Delete")
-        }
-
-        Spacer(modifier = Modifier.height(16.dp))
-
-        Button(onClick = {
-            shareLocationDetails(context, latitude.text, longitude.text)
-        }) {
-            Text("Share")
-        }
-
-        Spacer(modifier = Modifier.height(16.dp))
-
-        Button(onClick = {
-            navController.popBackStack()
-        }) {
-            Text("Back")
         }
     }
 }
 
 private fun shareLocationDetails(context: Context, latitude: String, longitude: String) {
-    if (latitude.isNotEmpty() && longitude.isNotEmpty()) {
-        val uri = Uri.parse("geo:0,0?q=$latitude,$longitude(Location)")
-        val intent = Intent(Intent.ACTION_VIEW, uri).apply {
-            setPackage("com.google.android.apps.maps")
-        }
-        if (intent.resolveActivity(context.packageManager) != null) {
-            context.startActivity(intent)
+    try {
+        if (latitude.isNotEmpty() && longitude.isNotEmpty()) {
+            val latitudeDouble = latitude.toDoubleOrNull()
+            val longitudeDouble = longitude.toDoubleOrNull()
+
+            if (latitudeDouble != null && longitudeDouble != null) {
+                val uri = Uri.parse("geo:0,0?q=$latitudeDouble,$longitudeDouble(Location)")
+                val intent = Intent(Intent.ACTION_VIEW, uri).apply {
+                    setPackage("com.google.android.apps.maps")
+                }
+                if (intent.resolveActivity(context.packageManager) != null) {
+                    context.startActivity(intent)
+                } else {
+                    Toast.makeText(context, "Google Maps app is not installed", Toast.LENGTH_SHORT).show()
+                }
+            } else {
+                Toast.makeText(context, "Invalid latitude or longitude", Toast.LENGTH_SHORT).show()
+            }
         } else {
-            Toast.makeText(context, "Google Maps app is not installed", Toast.LENGTH_SHORT).show()
+            Toast.makeText(context, "Location data is missing", Toast.LENGTH_SHORT).show()
         }
-    } else {
-        Toast.makeText(context, "Location data is missing", Toast.LENGTH_SHORT).show()
+    } catch (e: Exception) {
+        Toast.makeText(context, "An error occurred while sharing the location", Toast.LENGTH_SHORT).show()
     }
 }
 
@@ -1076,7 +1151,7 @@ import androidx.room.PrimaryKey
 
 @Entity(tableName = "location")
 data class Location(
-    @PrimaryKey(autoGenerate = true) val id: Int = 0,  // Changed to Int
+    @PrimaryKey(autoGenerate = true) val id: Int = 0,
     val name: String,
     val latitude: Double,
     val longitude: Double,
@@ -1104,7 +1179,7 @@ interface LocationDao {
     fun getAllLocations(): Flow<List<Location>>
 
     @Insert
-    suspend fun insertLocation(location: Location)
+    suspend fun insertLocation(location: Location) // Changed from String to Location
 
     @Query("SELECT * FROM location WHERE id = :locationId")
     fun getLocationById(locationId: Int): Flow<Location?>
@@ -1222,7 +1297,6 @@ themes.xml:
 </resources>
 
 
-
 build.gradle(project):
 
 buildscript {
@@ -1243,7 +1317,6 @@ allprojects {
         maven { url = uri("https://jitpack.io") }
     }
 }
-
 
 
 build.gradle(app):
@@ -1297,27 +1370,30 @@ android {
 }
 
 dependencies {
-    implementation("org.jetbrains.kotlin:kotlin-stdlib:1.9.10")
-    implementation("androidx.core:core-ktx:1.13.1")
-    implementation("androidx.appcompat:appcompat:1.7.0")
+    implementation("androidx.lifecycle:lifecycle-livedata-ktx:2.6.1")
+    implementation("androidx.lifecycle:lifecycle-viewmodel-ktx:2.6.1")
+    implementation("androidx.core:core-ktx:1.10.1")
+    implementation("com.google.android.gms:play-services-location:21.0.1")
+    implementation("androidx.compose.ui:ui:1.6.7")
+    implementation("androidx.compose.material3:material3:1.2.1")
+    implementation("androidx.compose.ui:ui-tooling-preview:1.6.7")
+    implementation("androidx.compose.runtime:runtime-livedata:1.6.7")
+    implementation("androidx.lifecycle:lifecycle-runtime-compose:2.6.1")
+    implementation ("androidx.lifecycle:lifecycle-runtime-compose:2.8.0-alpha03")
+    implementation ("androidx.lifecycle:lifecycle-viewmodel-compose:2.8.0-alpha03")
+    implementation ("androidx.compose.runtime:runtime-livedata:1.4.0")
+    implementation("androidx.activity:activity-compose:1.8.0")
+    implementation("androidx.navigation:navigation-compose:2.7.3")
+    implementation("com.google.accompanist:accompanist-pager:0.30.1")
+    implementation("com.google.accompanist:accompanist-pager-indicators:0.30.1")
+    implementation("androidx.appcompat:appcompat:1.6.1")
     implementation("com.google.android.material:material:1.10.0")
-    implementation("androidx.constraintlayout:constraintlayout:2.1.4")
-    implementation ("androidx.compose.runtime:runtime-livedata:1.3.1")
+    implementation("androidx.constraintlayout:constraintlayout-compose:1.0.1")
 
     // Room
     implementation("androidx.room:room-runtime:2.6.1")
     implementation("androidx.room:room-ktx:2.6.1")
     kapt("androidx.room:room-compiler:2.6.1")
-
-    // Compose
-    implementation("androidx.compose.ui:ui:1.6.7")
-    implementation("androidx.compose.material3:material3:1.2.1")
-    implementation("androidx.compose.ui:ui-tooling-preview:1.6.7")
-    implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.1")
-    implementation("androidx.activity:activity-compose:1.9.0")
-
-    // Google services
-    implementation("com.google.android.gms:play-services-location:21.0.1")
 
     testImplementation("junit:junit:4.13.2")
     androidTestImplementation("androidx.test.ext:junit:1.1.5")
@@ -1326,13 +1402,6 @@ dependencies {
     // Jetpack Compose Testing
     androidTestImplementation("androidx.compose.ui:ui-test-junit4:1.6.7")
     debugImplementation("androidx.compose.ui:ui-tooling:1.6.7")
-
-    // Navigation
-    implementation("androidx.navigation:navigation-compose:2.7.2")
-
-    // Accompanist dependencies
-    implementation("com.google.accompanist:accompanist-pager:0.21.2-beta")
-    implementation("com.google.accompanist:accompanist-pager-indicators:0.21.2-beta")
 }
 
 kapt {
@@ -1372,7 +1441,6 @@ android.nonTransitiveRClass=true
 org.gradle.java.home=C:\\\\Program Files\\\\Eclipse Adoptium\\\\jdk-17.0.11.9-hotspot
 
 
-
 gradle-wrapper.properties:
 
 #Wed Jun 05 19:38:58 ICT 2024
@@ -1381,7 +1449,6 @@ distributionPath=wrapper/dists
 distributionUrl=https\://services.gradle.org/distributions/gradle-8.6-bin.zip
 zipStoreBase=GRADLE_USER_HOME
 zipStorePath=wrapper/dists
-
 
 
 settings.gradle.kts:
@@ -1406,6 +1473,8 @@ include(":app")
 
 
 AndroidManifest.xml:
+
+<!-- AndroidManifest.xml -->
 
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
