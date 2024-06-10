@@ -13,15 +13,15 @@
 
 ## Screenshots
 
-Screenshot 1: https://drive.google.com/uc?export=view&id=134xhG2Wrh6rfwvxOLn3zMtO8pDVVw8pV
+![Screenshot 1](https://drive.google.com/uc?export=view&id=134xhG2Wrh6rfwvxOLn3zMtO8pDVVw8pV)
 
-Screenshot 2: https://drive.google.com/uc?export=view&id=13C7GY5kih0e36RML6pcQw0O6FvJVwFtG
+![Screenshot 2](https://drive.google.com/uc?export=view&id=13C7GY5kih0e36RML6pcQw0O6FvJVwFtG)
 
-Screenshot 3: https://drive.google.com/uc?export=view&id=13CZGPbGsXRv2m6WllykXlJPwdUwJuSUU
+![Screenshot 3](https://drive.google.com/uc?export=view&id=13CZGPbGsXRv2m6WllykXlJPwdUwJuSUU)
 
-Screenshot 4: https://drive.google.com/uc?export=view&id=13Jr6ZhVD69LnJE5kifX_xcNNIn5pdg_U
+![Screenshot 4](https://drive.google.com/uc?export=view&id=13Jr6ZhVD69LnJE5kifX_xcNNIn5pdg_U)
 
-Screenshot 5: https://drive.google.com/uc?export=view&id=13QGqx6EnYt30K0Kgm81h4sCWPUxI8ePS
+![Screenshot 5](https://drive.google.com/uc?export=view&id=13QGqx6EnYt30K0Kgm81h4sCWPUxI8ePS)
 
 ## Installation
 
@@ -52,7 +52,3 @@ This project is licensed under the MIT License. See the [LICENSE](LICENSE) file 
 ## Contact
 
 For any questions or feedback, please contact us at support@amazonjungleapp.com.
-
----
-
-Feel free to further edit and format this README to best fit your repository.
