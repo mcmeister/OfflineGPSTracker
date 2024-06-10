@@ -52,3 +52,7 @@ This project is licensed under the MIT License. See the [LICENSE](LICENSE) file 
 ## Contact
 
 For any questions or feedback, please contact us at support@amazonjungleapp.com.
+
+## Acknowledgments
+
+We would like to thank all contributors and users who have helped in the development and improvement of the Amazon Jungle app. Your feedback and support are invaluable to us. Special thanks to the open-source community for providing the tools and libraries that make projects like this possible.
