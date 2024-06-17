@@ -8,14 +8,11 @@ import android.hardware.SensorManager
 import android.location.Location as AndroidLocation
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.*
-import androidx.compose.material3.Button
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Text
+import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -119,7 +116,7 @@ fun NavigatorScreen(
             fontWeight = FontWeight.Bold
         )
         Spacer(modifier = Modifier.height(16.dp))
-        Button(onClick = { navController.navigateUp() }) {
+        Button(onClick = { navController.popBackStack() }) {
             Text("Back")
         }
     }
@@ -127,6 +124,8 @@ fun NavigatorScreen(
 
 @Composable
 fun CompassArrow(direction: Double, azimuth: Float) {
+    val arrowColor = MaterialTheme.colorScheme.onBackground
+
     Box(
         modifier = Modifier
             .size(200.dp)
@@ -148,7 +147,7 @@ fun CompassArrow(direction: Double, azimuth: Float) {
                         lineTo(trianglePath[2].x, trianglePath[2].y)
                         close()
                     },
-                    color = Color.Black
+                    color = arrowColor
                 )
             }
         }

@@ -22,11 +22,7 @@ import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
-import androidx.compose.runtime.CompositionLocalProvider
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.core.app.ActivityCompat
 import androidx.navigation.compose.rememberNavController
 import com.example.offlinegpstracker.ui.theme.OfflineGPSTrackerTheme
@@ -57,8 +53,8 @@ class MainActivity : AppCompatActivity() {
                     // Collecting locations in a Lifecycle-aware manner using helper function
                     val locations by locationViewModel.locations.collectAsStateWithLifecycle(lifecycleOwner.lifecycle)
 
-                    // Initialize pagerState only if locations are not empty
-                    val pagerState = if (locations.isNotEmpty()) rememberPagerState() else null
+                    // Initialize pagerState
+                    val pagerState = rememberPagerState()
 
                     BackHandler {
                         if (pagerState != null && locations.isNotEmpty()) {
@@ -83,55 +79,53 @@ class MainActivity : AppCompatActivity() {
 
                     Scaffold(
                         bottomBar = {
-                            if (pagerState != null && locations.isNotEmpty()) {
-                                NavigationBar {
-                                    NavigationBarItem(
-                                        selected = pagerState.currentPage == 0,
-                                        onClick = {
-                                            if (navController.currentDestination?.route == "main") {
-                                                scope.launch {
-                                                    withContext(Dispatchers.Main.immediate) {
-                                                        pagerState.animateScrollToPage(0)
-                                                    }
-                                                }
-                                            } else {
-                                                navController.navigate("main") {
-                                                    popUpTo("main") { inclusive = true }
-                                                }
-                                                scope.launch {
-                                                    withContext(Dispatchers.Main.immediate) {
-                                                        pagerState.animateScrollToPage(0)
-                                                    }
+                            NavigationBar {
+                                NavigationBarItem(
+                                    selected = pagerState.currentPage == 0,
+                                    onClick = {
+                                        if (navController.currentDestination?.route == "main") {
+                                            scope.launch {
+                                                withContext(Dispatchers.Main.immediate) {
+                                                    pagerState.animateScrollToPage(0)
                                                 }
                                             }
-                                        },
-                                        label = { Text("GPS Tracker") },
-                                        icon = { Icon(Icons.Default.LocationOn, contentDescription = null) }
-                                    )
-                                    NavigationBarItem(
-                                        selected = pagerState.currentPage == 1,
-                                        onClick = {
-                                            if (navController.currentDestination?.route == "main") {
-                                                scope.launch {
-                                                    withContext(Dispatchers.Main.immediate) {
-                                                        pagerState.animateScrollToPage(1)
-                                                    }
-                                                }
-                                            } else {
-                                                navController.navigate("main") {
-                                                    popUpTo("main") { inclusive = true }
-                                                }
-                                                scope.launch {
-                                                    withContext(Dispatchers.Main.immediate) {
-                                                        pagerState.animateScrollToPage(1)
-                                                    }
+                                        } else {
+                                            navController.navigate("main") {
+                                                popUpTo("main") { inclusive = true }
+                                            }
+                                            scope.launch {
+                                                withContext(Dispatchers.Main.immediate) {
+                                                    pagerState.animateScrollToPage(0)
                                                 }
                                             }
-                                        },
-                                        label = { Text("Locations") },
-                                        icon = { Icon(Icons.AutoMirrored.Filled.List, contentDescription = null) }
-                                    )
-                                }
+                                        }
+                                    },
+                                    label = { Text("GPS Tracker") },
+                                    icon = { Icon(Icons.Default.LocationOn, contentDescription = null) }
+                                )
+                                NavigationBarItem(
+                                    selected = pagerState.currentPage == 1,
+                                    onClick = {
+                                        if (navController.currentDestination?.route == "main") {
+                                            scope.launch {
+                                                withContext(Dispatchers.Main.immediate) {
+                                                    pagerState.animateScrollToPage(1)
+                                                }
+                                            }
+                                        } else {
+                                            navController.navigate("main") {
+                                                popUpTo("main") { inclusive = true }
+                                            }
+                                            scope.launch {
+                                                withContext(Dispatchers.Main.immediate) {
+                                                    pagerState.animateScrollToPage(1)
+                                                }
+                                            }
+                                        }
+                                    },
+                                    label = { Text("Locations") },
+                                    icon = { Icon(Icons.AutoMirrored.Filled.List, contentDescription = null) }
+                                )
                             }
                         }
                     ) { innerPadding ->

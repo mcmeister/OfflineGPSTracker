@@ -11,10 +11,11 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import com.google.accompanist.pager.ExperimentalPagerApi
 import com.google.accompanist.pager.HorizontalPager
+import com.google.accompanist.pager.rememberPagerState
 
 @OptIn(ExperimentalPagerApi::class)
 @Composable
-fun NavGraph(navController: NavHostController, locationViewModel: LocationViewModel, modifier: Modifier = Modifier, pagerState: com.google.accompanist.pager.PagerState?, locations: List<Location>) {
+fun NavGraph(navController: NavHostController, locationViewModel: LocationViewModel, modifier: Modifier = Modifier, pagerState: com.google.accompanist.pager.PagerState, locations: List<Location>) {
 
     NavHost(
         navController = navController,
@@ -22,20 +23,15 @@ fun NavGraph(navController: NavHostController, locationViewModel: LocationViewMo
         modifier = modifier
     ) {
         composable("main") {
-            if (locations.isNotEmpty() && pagerState != null) {
-                HorizontalPager(
-                    count = 2,
-                    state = pagerState,
-                    modifier = Modifier.padding(16.dp)
-                ) { page ->
-                    when (page) {
-                        0 -> GPSTrackerScreen(locationViewModel)
-                        1 -> LocationsScreen(navController = navController, locationViewModel = locationViewModel)
-                    }
+            HorizontalPager(
+                count = 2,
+                state = pagerState,
+                modifier = Modifier.padding(16.dp)
+            ) { page ->
+                when (page) {
+                    0 -> GPSTrackerScreen(locationViewModel)
+                    1 -> LocationsScreen(navController = navController, locationViewModel = locationViewModel)
                 }
-            } else {
-                // Display a loading indicator or empty state
-                Text("Loading locations...")
             }
         }
         composable("location_details/{locationId}") { backStackEntry ->
