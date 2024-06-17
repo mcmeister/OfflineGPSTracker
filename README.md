@@ -13,15 +13,7 @@
 
 ## Screenshots
 
-![Screenshot 1](https://drive.google.com/uc?export=view&id=134xhG2Wrh6rfwvxOLn3zMtO8pDVVw8pV)
-
-![Screenshot 2](https://drive.google.com/uc?export=view&id=13S7att3lmpvM-vx98YO96vp0940kODYE)
-
-![Screenshot 3](https://drive.google.com/uc?export=view&id=13CZGPbGsXRv2m6WllykXlJPwdUwJuSUU)
-
-![Screenshot 4](https://drive.google.com/uc?export=view&id=13Jr6ZhVD69LnJE5kifX_xcNNIn5pdg_U)
-
-![Screenshot 5](https://drive.google.com/uc?export=view&id=13QGqx6EnYt30K0Kgm81h4sCWPUxI8ePS)
+<img src="https://drive.google.com/uc?export=view&id=13S7att3lmpvM-vx98YO96vp0940kODYE" alt="Screenshot 2" width="200"/> <img src="https://drive.google.com/uc?export=view&id=13CZGPbGsXRv2m6WllykXlJPwdUwJuSUU" alt="Screenshot 3" width="200"/> <img src="https://drive.google.com/uc?export=view&id=13Jr6ZhVD69LnJE5kifX_xcNNIn5pdg_U" alt="Screenshot 4" width="200"/> <img src="https://drive.google.com/uc?export=view&id=13QGqx6EnYt30K0Kgm81h4sCWPUxI8ePS" alt="Screenshot 5" width="200"/>
 
 ## Installation
 
