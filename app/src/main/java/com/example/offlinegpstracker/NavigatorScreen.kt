@@ -133,18 +133,34 @@ fun CompassArrow(direction: Double, azimuth: Float) {
     ) {
         Canvas(modifier = Modifier.fillMaxSize()) {
             val center = Offset(size.width / 2, size.height / 2)
-            val trianglePath = listOf(
-                Offset(center.x, 0f),
-                Offset(center.x - 50f, center.y),
-                Offset(center.x + 50f, center.y)
-            )
 
+            // Define the 3D arrow vertices
+            val arrowTip = Offset(center.x, 20f)
+            val leftBase = Offset(center.x - 50f, center.y + 50f)
+            val rightBase = Offset(center.x + 50f, center.y + 50f)
+            val leftShadowBase = Offset(center.x - 40f, center.y + 60f)
+            val rightShadowBase = Offset(center.x + 40f, center.y + 60f)
+
+            // Draw the shadow layer first
             rotate(degrees = azimuth - direction.toFloat(), pivot = center) {
                 drawPath(
                     path = androidx.compose.ui.graphics.Path().apply {
-                        moveTo(trianglePath[0].x, trianglePath[0].y)
-                        lineTo(trianglePath[1].x, trianglePath[1].y)
-                        lineTo(trianglePath[2].x, trianglePath[2].y)
+                        moveTo(arrowTip.x, arrowTip.y)
+                        lineTo(leftShadowBase.x, leftShadowBase.y)
+                        lineTo(rightShadowBase.x, rightShadowBase.y)
+                        close()
+                    },
+                    color = arrowColor.copy(alpha = 0.3f) // lighter shadow
+                )
+            }
+
+            // Draw the main arrow layer
+            rotate(degrees = azimuth - direction.toFloat(), pivot = center) {
+                drawPath(
+                    path = androidx.compose.ui.graphics.Path().apply {
+                        moveTo(arrowTip.x, arrowTip.y)
+                        lineTo(leftBase.x, leftBase.y)
+                        lineTo(rightBase.x, rightBase.y)
                         close()
                     },
                     color = arrowColor
