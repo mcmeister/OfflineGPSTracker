@@ -16,7 +16,7 @@ import androidx.compose.ui.platform.LocalContext
 @Composable
 fun Compass() {
     val context = LocalContext.current
-    var azimuth by remember { mutableStateOf(0f) }
+    var azimuth by remember { mutableFloatStateOf(0f) }
 
     val sensorManager = remember { context.getSystemService(Context.SENSOR_SERVICE) as SensorManager }
     val accelerometer = remember { sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER) }

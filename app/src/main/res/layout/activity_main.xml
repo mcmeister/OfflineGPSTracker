@@ -9,35 +9,44 @@
         android:id="@+id/nameField"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
+        android:layout_margin="16dp"
         android:hint="Location Name"
-        android:layout_margin="16dp"/>
+        android:importantForAutofill="no"
+        android:inputType="text"
+        android:minHeight="48dp" />
 
     <EditText
         android:id="@+id/latitudeField"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:hint="Latitude"
-        android:inputType="numberDecimal"
         android:layout_below="@id/nameField"
-        android:layout_margin="16dp"/>
+        android:layout_margin="16dp"
+        android:hint="Latitude"
+        android:importantForAutofill="no"
+        android:inputType="numberDecimal"
+        android:minHeight="48dp" />
 
     <EditText
         android:id="@+id/longitudeField"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:hint="Longitude"
-        android:inputType="numberDecimal"
         android:layout_below="@id/latitudeField"
-        android:layout_margin="16dp"/>
+        android:layout_margin="16dp"
+        android:hint="Longitude"
+        android:importantForAutofill="no"
+        android:inputType="numberDecimal"
+        android:minHeight="48dp" />
 
     <EditText
         android:id="@+id/altitudeField"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:hint="Altitude"
-        android:inputType="numberDecimal"
         android:layout_below="@id/longitudeField"
-        android:layout_margin="16dp"/>
+        android:layout_margin="16dp"
+        android:hint="Altitude"
+        android:importantForAutofill="no"
+        android:inputType="numberDecimal"
+        android:minHeight="48dp" />
 
     <Button
         android:id="@+id/saveButton"

@@ -1,10 +1,5 @@
 package com.example.offlinegpstracker
 
-import androidx.compose.runtime.CompositionLocalProvider
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.ui.platform.LocalLifecycleOwner
-import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import android.Manifest
 import android.content.pm.PackageManager
 import android.os.Bundle
@@ -14,6 +9,7 @@ import androidx.activity.compose.setContent
 import androidx.activity.viewModels
 import androidx.appcompat.app.AppCompatActivity
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material.icons.filled.LocationOn
@@ -22,17 +18,18 @@ import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
 import androidx.core.app.ActivityCompat
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.compose.rememberNavController
 import com.example.offlinegpstracker.ui.theme.OfflineGPSTrackerTheme
-import com.google.accompanist.pager.ExperimentalPagerApi
-import com.google.accompanist.pager.rememberPagerState
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
-@OptIn(ExperimentalPagerApi::class)
 class MainActivity : AppCompatActivity() {
 
     private val locationViewModel: LocationViewModel by viewModels {
@@ -43,21 +40,21 @@ class MainActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         setContent {
             OfflineGPSTrackerTheme {
-                val lifecycleOwner = LocalLifecycleOwner.current
+                val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
                 CompositionLocalProvider(
-                    LocalLifecycleOwner provides lifecycleOwner
+                    androidx.lifecycle.compose.LocalLifecycleOwner provides lifecycleOwner
                 ) {
                     val navController = rememberNavController()
                     val scope = rememberCoroutineScope()
 
-                    // Collecting locations in a Lifecycle-aware manner using helper function
+                    // Collecting locations in a Lifecycle-aware manner
                     val locations by locationViewModel.locations.collectAsStateWithLifecycle(lifecycleOwner.lifecycle)
 
-                    // Initialize pagerState
-                    val pagerState = rememberPagerState()
+                    // Ensure pagerState has a valid page count
+                    val pagerState = rememberPagerState { 2 }
 
                     BackHandler {
-                        if (pagerState != null && locations.isNotEmpty()) {
+                        if (locations.isNotEmpty()) {
                             when (navController.currentDestination?.route) {
                                 "main" -> when (pagerState.currentPage) {
                                     0 -> finish() // Exit app when back pressed on GPS Tracker screen
