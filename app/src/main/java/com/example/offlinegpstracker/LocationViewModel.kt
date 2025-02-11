@@ -3,13 +3,27 @@ package com.example.offlinegpstracker
 import android.annotation.SuppressLint
 import android.app.Application
 import android.content.pm.PackageManager
-import android.location.Location as AndroidLocation
 import android.os.Looper
 import androidx.core.app.ActivityCompat
-import androidx.lifecycle.*
-import com.google.android.gms.location.*
-import kotlinx.coroutines.flow.*
+import androidx.lifecycle.AndroidViewModel
+import androidx.lifecycle.LiveData
+import androidx.lifecycle.MutableLiveData
+import androidx.lifecycle.asLiveData
+import androidx.lifecycle.switchMap
+import androidx.lifecycle.viewModelScope
+import com.google.android.gms.location.FusedLocationProviderClient
+import com.google.android.gms.location.LocationCallback
+import com.google.android.gms.location.LocationRequest
+import com.google.android.gms.location.LocationResult
+import com.google.android.gms.location.LocationServices
+import com.google.android.gms.location.Priority
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.firstOrNull
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import android.location.Location as AndroidLocation
 
 class LocationViewModel(application: Application, private val repository: LocationRepository) : AndroidViewModel(application) {
 
@@ -66,6 +80,16 @@ class LocationViewModel(application: Application, private val repository: Locati
 
     fun selectLocation(locationId: Int) {
         _selectedLocationId.value = locationId
+    }
+
+    fun updateLocationPhoto(locationId: Int, photoPaths: List<String>) {
+        viewModelScope.launch {
+            val location = repository.getLocationById(locationId).firstOrNull()
+            if (location != null) {
+                val updatedLocation = location.copy(photoPaths = photoPaths)
+                repository.updateLocation(updatedLocation)
+            }
+        }
     }
 
     @SuppressLint("MissingPermission")

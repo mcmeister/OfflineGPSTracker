@@ -10,7 +10,8 @@ data class Location(
     val latitude: Double,
     val longitude: Double,
     val altitude: Double,
-    val status: String = "active"
+    val status: String = "active",
+    val photoPaths: List<String> = emptyList()
 ) {
     val deleted: Boolean
         get() = status == "deleted"

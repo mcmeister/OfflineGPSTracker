@@ -3,18 +3,28 @@ package com.example.offlinegpstracker
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import android.os.Environment
 import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.Button
+import androidx.compose.material3.Icon
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -22,14 +32,23 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
+import androidx.core.content.FileProvider
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavHostController
+import coil.compose.rememberAsyncImagePainter
+import java.io.File
+import java.io.FileOutputStream
 
 @Composable
 fun LocationDetailsScreen(
@@ -59,12 +78,25 @@ fun LocationDetailsScreen(
             var latitude by remember { mutableStateOf(TextFieldValue(location.latitude.toString())) }
             var longitude by remember { mutableStateOf(TextFieldValue(location.longitude.toString())) }
             var altitude by remember { mutableStateOf(TextFieldValue(location.altitude.toString())) }
+            var photoPaths by remember { mutableStateOf(location.photoPaths) }
+            rememberCoroutineScope()
 
-            LaunchedEffect(location) {
+            val imagePickerLauncher = rememberLauncherForActivityResult(
+                contract = ActivityResultContracts.GetMultipleContents()
+            ) { uris: List<Uri>? ->
+                uris?.let {
+                    val newPaths = it.mapNotNull { uri -> saveImageToInternalStorage(context, uri) }
+                    photoPaths = (photoPaths + newPaths).distinct().take(4) // Store up to 4 photos
+                    locationViewModel.updateLocationPhoto(location.id, photoPaths) // ✅ No Gson() needed!
+                }
+            }
+
+            LaunchedEffect(location.id) { // Trigger update when location ID changes
                 name = TextFieldValue(location.name)
                 latitude = TextFieldValue(location.latitude.toString())
                 longitude = TextFieldValue(location.longitude.toString())
                 altitude = TextFieldValue(location.altitude.toString())
+                photoPaths = location.photoPaths.toList() // Ensure it's a fresh list copy
             }
 
             Column(
@@ -106,12 +138,87 @@ fun LocationDetailsScreen(
 
                 Spacer(modifier = Modifier.height(16.dp))
 
+                if (photoPaths.isNotEmpty()) {
+                    Image(
+                        painter = rememberAsyncImagePainter(photoPaths[0]),
+                        contentDescription = "Location Photo",
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(200.dp)
+                            .padding(8.dp)
+                    )
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        val placeholders = 4 - photoPaths.size
+                        photoPaths.forEach { path ->
+                            Image(
+                                painter = rememberAsyncImagePainter(path),
+                                contentDescription = "Location Photo",
+                                modifier = Modifier
+                                    .size(80.dp)
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .clickable { /* Optionally open full-size view */ }
+                            )
+                        }
+                        repeat(placeholders) {
+                            Box(
+                                modifier = Modifier
+                                    .size(80.dp)
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .clickable { imagePickerLauncher.launch("image/*") },
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    painter = painterResource(id = android.R.drawable.ic_input_add),
+                                    contentDescription = "Add Photo",
+                                    tint = Color.Gray
+                                )
+                            }
+                        }
+                    }
+                } else {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceEvenly
+                    ) {
+                        Button(onClick = { imagePickerLauncher.launch("image/*") }) {
+                            Text("Add Photo")
+                        }
+
+                        Button(onClick = {
+                            if (photoPaths.isNotEmpty()) {
+                                downloadImage(context, photoPaths[0]) // Download the first image
+                            } else {
+                                Toast.makeText(context, "No images to download", Toast.LENGTH_SHORT).show()
+                            }
+                        }) {
+                            Text("Download Photo")
+                        }
+
+                        Button(onClick = {
+                            if (photoPaths.isNotEmpty()) {
+                                photoPaths = emptyList()
+                                locationViewModel.updateLocationPhoto(location.id, emptyList())
+                                Toast.makeText(context, "All photos removed", Toast.LENGTH_SHORT).show()
+                            }
+                        }) {
+                            Text("Remove All Photos")
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(16.dp))
+
                 Button(onClick = {
                     val updatedLocation = location.copy(
                         name = name.text,
                         latitude = latitude.text.toDoubleOrNull() ?: 0.0,
                         longitude = longitude.text.toDoubleOrNull() ?: 0.0,
-                        altitude = altitude.text.toDoubleOrNull() ?: 0.0
+                        altitude = altitude.text.toDoubleOrNull() ?: 0.0,
+                        photoPaths = photoPaths // Updated to list of photos
                     )
                     locationViewModel.updateLocation(updatedLocation)
                     Toast.makeText(context, "Location updated", Toast.LENGTH_SHORT).show()
@@ -154,6 +261,43 @@ fun LocationDetailsScreen(
                 }
             }
         }
+    }
+}
+
+fun saveImageToInternalStorage(context: Context, uri: Uri): String? {
+    try {
+        val inputStream = context.contentResolver.openInputStream(uri)
+        val file = File(context.filesDir, "location_${System.currentTimeMillis()}.jpg")
+        val outputStream = FileOutputStream(file)
+        inputStream?.copyTo(outputStream)
+        inputStream?.close()
+        outputStream.close()
+        return file.absolutePath
+    } catch (e: Exception) {
+        e.printStackTrace()
+    }
+    return null
+}
+
+fun downloadImage(context: Context, filePath: String) {
+    try {
+        val file = File(filePath)
+        val downloadDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
+        val newFile = File(downloadDir, file.name)
+
+        file.copyTo(newFile, overwrite = true)
+
+        val uri = FileProvider.getUriForFile(context, "${context.packageName}.provider", newFile)
+        val intent = Intent(Intent.ACTION_VIEW).apply {
+            setDataAndType(uri, "image/*")
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
+        context.startActivity(intent)
+
+        Toast.makeText(context, "Photo downloaded to Downloads folder", Toast.LENGTH_SHORT).show()
+    } catch (e: Exception) {
+        Toast.makeText(context, "Failed to download photo", Toast.LENGTH_SHORT).show()
+        e.printStackTrace()
     }
 }
 

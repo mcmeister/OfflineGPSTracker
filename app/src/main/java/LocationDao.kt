@@ -22,4 +22,7 @@ interface LocationDao {
 
     @Query("UPDATE location SET status = 'deleted' WHERE id = :locationId")
     suspend fun deleteLocation(locationId: Int)
+
+    @Query("UPDATE location SET photoPaths = :photoPath WHERE id = :locationId")
+    suspend fun updateLocationPhoto(locationId: Int, photoPath: String?)
 }
