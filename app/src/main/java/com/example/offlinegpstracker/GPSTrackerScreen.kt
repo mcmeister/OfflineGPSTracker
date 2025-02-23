@@ -1,5 +1,6 @@
 package com.example.offlinegpstracker
 
+import android.annotation.SuppressLint
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
@@ -20,10 +21,12 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -38,7 +41,6 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
-import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -46,6 +48,33 @@ import coil.compose.rememberAsyncImagePainter
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+
+@SuppressLint("DefaultLocale")
+@Composable
+fun LocationInfoCard(label: String, value: String, isAltitude: Boolean = false) {
+    val displayValue = when {
+        value.isEmpty() -> "Initializing..."
+        isAltitude -> "${String.format("%.2f", value.toFloatOrNull() ?: 0.0)} m"
+        else -> value
+    }
+
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 4.dp),
+        shape = RoundedCornerShape(8.dp),
+        colors = CardDefaults.cardColors(containerColor = Color.White),
+        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp)
+        ) {
+            Text(text = label, style = MaterialTheme.typography.labelMedium, color = Color.Gray)
+            Spacer(modifier = Modifier.height(4.dp))
+            Text(text = displayValue, style = MaterialTheme.typography.bodyLarge)
+        }
+    }
+}
 
 @Composable
 fun GPSTrackerScreen(locationViewModel: LocationViewModel = viewModel()) {
@@ -93,32 +122,11 @@ fun GPSTrackerScreen(locationViewModel: LocationViewModel = viewModel()) {
             modifier = Modifier.fillMaxWidth()
         )
 
-        OutlinedTextField(
-            value = TextFieldValue(latitude),
-            onValueChange = {},
-            label = { Text("Latitude") },
-            modifier = Modifier.fillMaxWidth(),
-            keyboardOptions = KeyboardOptions.Default.copy(keyboardType = KeyboardType.Decimal),
-            readOnly = true
-        )
+        Spacer(modifier = Modifier.height(4.dp))
 
-        OutlinedTextField(
-            value = TextFieldValue(longitude),
-            onValueChange = {},
-            label = { Text("Longitude") },
-            modifier = Modifier.fillMaxWidth(),
-            keyboardOptions = KeyboardOptions.Default.copy(keyboardType = KeyboardType.Decimal),
-            readOnly = true
-        )
-
-        OutlinedTextField(
-            value = TextFieldValue(altitude),
-            onValueChange = {},
-            label = { Text("Altitude") },
-            modifier = Modifier.fillMaxWidth(),
-            keyboardOptions = KeyboardOptions.Default.copy(keyboardType = KeyboardType.Decimal),
-            readOnly = true
-        )
+        LocationInfoCard(label = "Latitude", value = latitude)
+        LocationInfoCard(label = "Longitude", value = longitude)
+        LocationInfoCard(label = "Altitude", value = altitude, isAltitude = true)
 
         Spacer(modifier = Modifier.height(16.dp))
 

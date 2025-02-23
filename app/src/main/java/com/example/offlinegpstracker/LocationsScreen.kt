@@ -27,7 +27,7 @@ import androidx.navigation.NavHostController
 fun LocationsScreen(
     navController: NavHostController,
     locationViewModel: LocationViewModel = viewModel(),
-    locations: List<Location>  // ✅ Accept locations as a parameter
+    locations: List<Location>  // Accept locations as a parameter
 ) {
     val activeLocations = locations.filter { it.latitude != 0.0 && it.longitude != 0.0 && it.name.isNotEmpty() }
 

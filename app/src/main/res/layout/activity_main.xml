@@ -23,7 +23,7 @@
         android:layout_margin="16dp"
         android:hint="Latitude"
         android:importantForAutofill="no"
-        android:inputType="numberDecimal"
+        android:inputType="none"
         android:minHeight="48dp" />
 
     <EditText
@@ -34,7 +34,7 @@
         android:layout_margin="16dp"
         android:hint="Longitude"
         android:importantForAutofill="no"
-        android:inputType="numberDecimal"
+        android:inputType="none"
         android:minHeight="48dp" />
 
     <EditText
@@ -45,7 +45,7 @@
         android:layout_margin="16dp"
         android:hint="Altitude"
         android:importantForAutofill="no"
-        android:inputType="numberDecimal"
+        android:inputType="none"
         android:minHeight="48dp" />
 
     <Button

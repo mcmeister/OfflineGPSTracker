@@ -5,26 +5,36 @@ import android.hardware.Sensor
 import android.hardware.SensorEvent
 import android.hardware.SensorEventListener
 import android.hardware.SensorManager
-import androidx.compose.foundation.Canvas
-import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
-import androidx.compose.ui.graphics.drawscope.rotate
-import androidx.compose.ui.graphics.nativeCanvas
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.unit.dp
+import kotlin.math.roundToInt
 
 @Composable
 fun CompassView(modifier: Modifier = Modifier) {
     val context = LocalContext.current
     var azimuth by remember { mutableFloatStateOf(0f) }
-    val isDarkTheme = isSystemInDarkTheme()
 
     val sensorManager = context.getSystemService(Context.SENSOR_SERVICE) as SensorManager
     val rotationVectorSensor = sensorManager.getDefaultSensor(Sensor.TYPE_ROTATION_VECTOR)
@@ -37,7 +47,7 @@ fun CompassView(modifier: Modifier = Modifier) {
                     SensorManager.getRotationMatrixFromVector(rotationMatrix, event.values)
                     val orientation = FloatArray(3)
                     SensorManager.getOrientation(rotationMatrix, orientation)
-                    azimuth = Math.toDegrees(orientation[0].toDouble()).toFloat()
+                    azimuth = -Math.toDegrees(orientation[0].toDouble()).toFloat() // Negative to rotate correctly
                 }
             }
 
@@ -52,25 +62,44 @@ fun CompassView(modifier: Modifier = Modifier) {
         }
     }
 
-    Canvas(modifier = modifier) {
-        rotate(-azimuth) {
-            drawLine(Color.Red, start = center, end = center.copy(y = 0f), strokeWidth = 8f)
-        }
+    Box(
+        modifier = modifier
+            .size(250.dp) // Adjust size if needed
+            .padding(16.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        // Static direction letters (N, S, E, W)
+        DirectionLetters()
 
-        drawIntoCanvas { canvas ->
-            val paint = android.graphics.Paint().apply {
-                color = if (isDarkTheme) android.graphics.Color.WHITE else android.graphics.Color.BLACK
-                textSize = 48f
-                textAlign = android.graphics.Paint.Align.CENTER
+        // Rotating compass image
+        Image(
+            painter = painterResource(id = R.drawable.compass_ship), // Use your compass image
+            contentDescription = "Compass",
+            modifier = Modifier
+                .fillMaxSize()
+                .graphicsLayer(rotationZ = azimuth.roundToInt().toFloat()) // Rotate image
+        )
+    }
+}
+
+@Composable
+fun DirectionLetters() {
+    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+        Column(
+            modifier = Modifier.fillMaxSize(),
+            verticalArrangement = Arrangement.SpaceBetween,
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Text("N") // North (Always at top)
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Text("W") // West
+                Spacer(modifier = Modifier.width(20.dp))
+                Text("E") // East
             }
-
-            val centerX = size.width / 2
-            val centerY = size.height / 2
-
-            canvas.nativeCanvas.drawText("N", centerX, centerY - centerY + 50, paint)
-            canvas.nativeCanvas.drawText("S", centerX, centerY + centerY - 20, paint)
-            canvas.nativeCanvas.drawText("E", centerX + centerX - 40, centerY + 20, paint)
-            canvas.nativeCanvas.drawText("W", centerX - centerX + 40, centerY + 20, paint)
+            Text("S") // South (Always at bottom)
         }
     }
 }
