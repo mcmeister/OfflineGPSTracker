@@ -35,7 +35,7 @@ import kotlin.math.roundToInt
 fun CompassView(modifier: Modifier = Modifier) {
     val context = LocalContext.current
     var azimuth by remember { mutableFloatStateOf(0f) }
-
+    var pitch by remember { mutableFloatStateOf(0f) }
     val sensorManager = context.getSystemService(Context.SENSOR_SERVICE) as SensorManager
     val rotationVectorSensor = sensorManager.getDefaultSensor(Sensor.TYPE_ROTATION_VECTOR)
 
@@ -47,7 +47,10 @@ fun CompassView(modifier: Modifier = Modifier) {
                     SensorManager.getRotationMatrixFromVector(rotationMatrix, event.values)
                     val orientation = FloatArray(3)
                     SensorManager.getOrientation(rotationMatrix, orientation)
-                    azimuth = -Math.toDegrees(orientation[0].toDouble()).toFloat() // Negative to rotate correctly
+                    // Update azimuth (rotation around the Z-axis)
+                    azimuth = -Math.toDegrees(orientation[0].toDouble()).toFloat()
+                    // Update pitch (rotation around the X-axis) to use for tilting
+                    pitch = Math.toDegrees(orientation[1].toDouble()).toFloat()
                 }
             }
 
@@ -64,20 +67,23 @@ fun CompassView(modifier: Modifier = Modifier) {
 
     Box(
         modifier = modifier
-            .size(250.dp) // Adjust size if needed
+            .size(250.dp)
             .padding(16.dp),
         contentAlignment = Alignment.Center
     ) {
-        // Static direction letters (N, S, E, W)
+        // Static direction letters remain unchanged
         DirectionLetters()
 
-        // Rotating compass image
+        // Apply rotationZ for the compass rotation and rotationX for tilting
         Image(
-            painter = painterResource(id = R.drawable.compass_ship), // Use your compass image
+            painter = painterResource(id = R.drawable.compass_ship),
             contentDescription = "Compass",
             modifier = Modifier
                 .fillMaxSize()
-                .graphicsLayer(rotationZ = azimuth.roundToInt().toFloat()) // Rotate image
+                .graphicsLayer(
+                    rotationZ = azimuth.roundToInt().toFloat(),
+                    rotationX = pitch  // Use pitch to tilt the image
+                )
         )
     }
 }
