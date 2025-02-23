@@ -109,7 +109,8 @@ class LocationViewModel(application: Application, private val repository: Locati
                 for (location in locationResult.locations) {
                     _latitude.value = location.latitude.toString()
                     _longitude.value = location.longitude.toString()
-                    _altitude.value = location.altitude.toString()
+                    // Format altitude to two decimal places
+                    _altitude.value = "%.2f".format(location.altitude)
                     _locationFlow.value = location
                 }
             }

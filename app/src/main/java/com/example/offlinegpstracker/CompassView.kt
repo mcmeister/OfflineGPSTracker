@@ -82,7 +82,7 @@ fun CompassView(modifier: Modifier = Modifier) {
                 .fillMaxSize()
                 .graphicsLayer(
                     rotationZ = azimuth.roundToInt().toFloat(),
-                    rotationX = pitch  // Use pitch to tilt the image
+                    rotationX = -pitch  // Use pitch to tilt the image
                 )
         )
     }

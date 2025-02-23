@@ -5,6 +5,7 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.widget.Toast
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -22,7 +23,9 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.Terrain
 import androidx.compose.material3.Button
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
+import androidx.compose.material3.OutlinedCard
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -49,13 +52,79 @@ import java.util.Locale
 @SuppressLint("DefaultLocale")
 @Composable
 fun LocationInfoChipRow(latitude: String, longitude: String, altitude: String) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(8.dp)
+    // If latitude/longitude are empty, show "Initializing...", otherwise format them
+    val displayedLatitude = if (latitude.isEmpty()) "Initializing..." else formatCoordinate(latitude)
+    val displayedLongitude = if (longitude.isEmpty()) "Initializing..." else formatCoordinate(longitude)
+    val displayedAltitude = if (altitude.isEmpty()) {
+        "Initializing..."
+    } else {
+        try {
+            "%.2f".format(altitude.toDouble())
+        } catch (e: Exception) {
+            altitude
+        }
+    }
+
+    OutlinedCard(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 8.dp) // Space around the card
+            .border(1.dp, Color.Gray, RoundedCornerShape(4.dp)), // Border to mimic input field
+        shape = RoundedCornerShape(4.dp),
+        colors = CardDefaults.outlinedCardColors(containerColor = Color.Transparent) // Transparent background
     ) {
-        LocationInfoChip(Icons.Filled.LocationOn, formatCoordinate(latitude), Color.Blue, Modifier.weight(1f))
-        LocationInfoChip(Icons.Filled.LocationOn, formatCoordinate(longitude), Color.Blue, Modifier.weight(1f))
-        LocationInfoChip(Icons.Filled.Terrain, "$altitude m", Color(139, 69, 19), Modifier.weight(1f))
+        Column(
+            modifier = Modifier.padding(12.dp), // Inner padding inside the frame
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            // Labels Above Chips
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceEvenly
+            ) {
+                Text("Latitude", fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                Text("Longitude", fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                Text("Altitude", fontSize = 14.sp, fontWeight = FontWeight.Bold)
+            }
+            Spacer(modifier = Modifier.height(4.dp))
+
+            // Chip Row
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Column(
+                    modifier = Modifier.weight(1f),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    LocationInfoChip(
+                        icon = Icons.Filled.LocationOn,
+                        value = displayedLatitude,
+                        iconColor = Color.Blue
+                    )
+                }
+                Column(
+                    modifier = Modifier.weight(1f),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    LocationInfoChip(
+                        icon = Icons.Filled.LocationOn,
+                        value = displayedLongitude,
+                        iconColor = Color.Blue
+                    )
+                }
+                Column(
+                    modifier = Modifier.weight(1f),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    LocationInfoChip(
+                        icon = Icons.Filled.Terrain,
+                        value = if (altitude.isEmpty()) displayedAltitude else "$displayedAltitude m",
+                        iconColor = Color(139, 69, 19)
+                    )
+                }
+            }
+        }
     }
 }
 
@@ -95,7 +164,7 @@ fun LocationInfoChip(
 // Function to format latitude/longitude to 5 decimal places
 fun formatCoordinate(value: String): String {
     return try {
-        "%.5f".format(value.toDoubleOrNull() ?: 0.0)
+        "%.4f".format(value.toDoubleOrNull() ?: 0.0)
     } catch (e: NumberFormatException) {
         value
     }
@@ -123,12 +192,20 @@ fun GPSTrackerScreen(locationViewModel: LocationViewModel = viewModel()) {
             modifier = Modifier.align(Alignment.CenterHorizontally)
         )
 
+        Spacer(modifier = Modifier.height(24.dp))
+
         CompassView(
             modifier = Modifier
                 .fillMaxWidth()
                 .height(300.dp)
                 .align(Alignment.CenterHorizontally)
         )
+
+        Spacer(modifier = Modifier.height(24.dp))
+
+        LocationInfoChipRow(latitude = latitude, longitude = longitude, altitude = altitude)
+
+        Spacer(modifier = Modifier.height(24.dp))
 
         OutlinedTextField(
             value = name,
@@ -137,11 +214,7 @@ fun GPSTrackerScreen(locationViewModel: LocationViewModel = viewModel()) {
             modifier = Modifier.fillMaxWidth()
         )
 
-        Spacer(modifier = Modifier.height(4.dp))
-
-        LocationInfoChipRow(latitude = latitude, longitude = longitude, altitude = altitude)
-
-        Spacer(modifier = Modifier.height(16.dp))
+        Spacer(modifier = Modifier.height(24.dp))
 
         Row(
             modifier = Modifier.fillMaxWidth(),
