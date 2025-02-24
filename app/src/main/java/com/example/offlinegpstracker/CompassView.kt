@@ -52,8 +52,8 @@ fun CompassView(modifier: Modifier = Modifier) {
                     val orientation = FloatArray(3)
                     SensorManager.getOrientation(rotationMatrix, orientation)
 
-                    // Reverse azimuth direction to correct W and E flip
-                    azimuth = -Math.toDegrees(orientation[0].toDouble()).toFloat()
+                    // Corrected azimuth calculation (removing extra inversion)
+                    azimuth = Math.toDegrees(orientation[0].toDouble()).toFloat()
                     pitch = Math.toDegrees(orientation[1].toDouble()).toFloat()
                 }
             }
