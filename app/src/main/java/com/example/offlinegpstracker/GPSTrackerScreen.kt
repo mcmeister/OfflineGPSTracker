@@ -7,6 +7,7 @@ import android.net.Uri
 import android.widget.Toast
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -193,6 +194,7 @@ fun GPSTrackerScreen(locationViewModel: LocationViewModel = viewModel()) {
 
         Spacer(modifier = Modifier.height(24.dp))
 
+        // Main Compass (Big Circular)
         CompassView(
             modifier = Modifier
                 .fillMaxWidth()
@@ -202,10 +204,24 @@ fun GPSTrackerScreen(locationViewModel: LocationViewModel = viewModel()) {
 
         Spacer(modifier = Modifier.height(24.dp))
 
+        // Fixed Box for Horizontal Compass to Prevent Infinite Height Constraints
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(80.dp), // 👈 Fixed height to avoid infinite constraints
+            contentAlignment = Alignment.Center
+        ) {
+            HorizontalCompassView()
+        }
+
+        Spacer(modifier = Modifier.height(24.dp))
+
+        // Location Info (Lat, Long, Alt)
         LocationInfoChipRow(latitude = latitude, longitude = longitude, altitude = altitude)
 
         Spacer(modifier = Modifier.height(24.dp))
 
+        // Text Input Field
         OutlinedTextField(
             value = name,
             onValueChange = { name = it },
@@ -215,6 +231,7 @@ fun GPSTrackerScreen(locationViewModel: LocationViewModel = viewModel()) {
 
         Spacer(modifier = Modifier.height(24.dp))
 
+        // Buttons Row (Share & Save)
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween
