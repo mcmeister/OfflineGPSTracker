@@ -22,6 +22,7 @@ import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
@@ -73,21 +74,28 @@ fun HorizontalCompassView() {
 
     LaunchedEffect(azimuth) {
         coroutineScope.launch {
-            delay(50) // Slight delay to ensure smooth scrolling
-            lazyListState.animateScrollToItem(currentIndex)
+            delay(50) // Ensure smooth movement
+            val itemWidth = 80 // Estimated width of each item (text + padding)
+            val viewportWidth = lazyListState.layoutInfo.viewportEndOffset - lazyListState.layoutInfo.viewportStartOffset
+            lazyListState.animateScrollToItem(
+                index = currentIndex,
+                scrollOffset = (viewportWidth / 2) - (itemWidth / 2) // Centers the item
+            )
         }
     }
 
     LazyRow(
         state = lazyListState,
-        modifier = Modifier
+        modifier = Modifier,
+        horizontalArrangement = androidx.compose.foundation.layout.Arrangement.Center,
+        verticalAlignment = Alignment.CenterVertically
     ) {
         itemsIndexed(extendedDirections) { index, direction ->
             Row {
                 Text(
                     text = direction,
                     fontSize = 32.sp,
-                    modifier = Modifier.padding(horizontal = 8.dp),
+                    modifier = Modifier.padding(horizontal = 16.dp), // More padding for better spacing
                     color = if (index == currentIndex) Color.Red else Color.Black
                 )
                 if (index < extendedDirections.size - 1) {
