@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -25,10 +26,13 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import kotlin.math.roundToInt
 
 @Composable
@@ -47,9 +51,9 @@ fun CompassView(modifier: Modifier = Modifier) {
                     SensorManager.getRotationMatrixFromVector(rotationMatrix, event.values)
                     val orientation = FloatArray(3)
                     SensorManager.getOrientation(rotationMatrix, orientation)
-                    // Update azimuth (rotation around the Z-axis)
-                    azimuth = -Math.toDegrees(orientation[0].toDouble()).toFloat()
-                    // Update pitch (rotation around the X-axis) to use for tilting
+
+                    // Reverse azimuth direction to correct W and E flip
+                    azimuth = Math.toDegrees(orientation[0].toDouble()).toFloat() * -1
                     pitch = Math.toDegrees(orientation[1].toDouble()).toFloat()
                 }
             }
@@ -71,10 +75,10 @@ fun CompassView(modifier: Modifier = Modifier) {
             .padding(16.dp),
         contentAlignment = Alignment.Center
     ) {
-        // Static direction letters remain unchanged
-        DirectionLetters()
+        // Direction Letters with Highlighting
+        DirectionLetters(azimuth)
 
-        // Apply rotationZ for the compass rotation and rotationX for tilting
+        // Rotating compass image
         Image(
             painter = painterResource(id = R.drawable.compass_ship),
             contentDescription = "Compass",
@@ -89,23 +93,77 @@ fun CompassView(modifier: Modifier = Modifier) {
 }
 
 @Composable
-fun DirectionLetters() {
+fun DirectionLetters(azimuth: Float) {
+    val activeDirection = getActiveDirection(azimuth)
+
     Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+        // N and S stay in the middle
         Column(
             modifier = Modifier.fillMaxSize(),
             verticalArrangement = Arrangement.SpaceBetween,
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            Text("N") // North (Always at top)
+            TextDirection("N", "N" == activeDirection)
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
-                Text("W") // West
-                Spacer(modifier = Modifier.width(20.dp))
-                Text("E") // East
+                // W and E stay aligned in a row
+                TextDirection("W", "W" == activeDirection)
+                Spacer(modifier = Modifier.width(40.dp))
+                TextDirection("E", "E" == activeDirection)
             }
-            Text("S") // South (Always at bottom)
+            TextDirection("S", "S" == activeDirection)
         }
+
+        // Diagonal letters (NE, NW, SE, SW)
+        Box(
+            modifier = Modifier.fillMaxSize(),
+            contentAlignment = Alignment.Center
+        ) {
+            TextDirectionRotated("NW", "NW" == activeDirection, -45f, Modifier.offset(x = (-80).dp, y = (-80).dp))
+            TextDirectionRotated("NE", "NE" == activeDirection, 45f, Modifier.offset(x = 80.dp, y = (-80).dp))
+            TextDirectionRotated("SW", "SW" == activeDirection, 45f, Modifier.offset(x = (-80).dp, y = 80.dp))
+            TextDirectionRotated("SE", "SE" == activeDirection, -45f, Modifier.offset(x = 80.dp, y = 80.dp))
+        }
+    }
+}
+
+// Standard (non-rotated) direction letters
+@Composable
+fun TextDirection(letter: String, isActive: Boolean) {
+    Text(
+        text = letter,
+        fontSize = 18.sp,
+        fontWeight = FontWeight.Bold,
+        color = if (isActive) Color.Red else Color.Black
+    )
+}
+
+// Rotated direction letters (for NW, NE, SW, SE)
+@Composable
+fun TextDirectionRotated(letter: String, isActive: Boolean, rotation: Float, modifier: Modifier) {
+    Text(
+        text = letter,
+        fontSize = 18.sp,
+        fontWeight = FontWeight.Bold,
+        color = if (isActive) Color.Red else Color.Black,
+        modifier = modifier.graphicsLayer(rotationZ = rotation)
+    )
+}
+
+fun getActiveDirection(azimuth: Float): String {
+    val adjustedAzimuth = ((azimuth + 360) % 360).roundToInt()
+
+    return when (adjustedAzimuth) {
+        in 337..360, in 0..22 -> "N"
+        in 23..67 -> "NE"
+        in 68..112 -> "E"
+        in 113..157 -> "SE"
+        in 158..202 -> "S"
+        in 203..247 -> "SW"
+        in 248..292 -> "W"
+        in 293..336 -> "NW"
+        else -> "N" // Default case
     }
 }

@@ -139,7 +139,6 @@ fun LocationInfoChip(
         modifier = modifier,
         shape = RoundedCornerShape(50),
         color = Color.Transparent,
-        // border = BorderStroke(1.dp, Color.Black) // Added black border
     ) {
         Row(
             modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
@@ -148,13 +147,13 @@ fun LocationInfoChip(
             Icon(
                 icon,
                 contentDescription = null,
-                tint = iconColor, // Colorful icons
+                tint = iconColor,
                 modifier = Modifier.size(18.dp)
             )
             Spacer(modifier = Modifier.width(4.dp))
             Text(
                 text = value,
-                fontSize = 12.sp, // Adjusted text size
+                fontSize = if (value == "Initializing...") 10.sp else 12.sp,
                 fontWeight = FontWeight.Medium
             )
         }
