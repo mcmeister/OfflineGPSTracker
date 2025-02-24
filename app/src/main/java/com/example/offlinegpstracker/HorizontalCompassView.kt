@@ -29,7 +29,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
 
@@ -72,15 +71,15 @@ fun HorizontalCompassView() {
     val indexOffset = 8 // This controls how far to the right we start (middle of extended list)
     val currentIndex = (azimuth / 45).roundToInt().mod(8) + indexOffset
 
-    LaunchedEffect(azimuth) {
+    LaunchedEffect(currentIndex) {
         coroutineScope.launch {
-            delay(50) // Ensure smooth movement
-            val itemWidth = 80 // Estimated width of each item (text + padding)
+            val itemWidth = 100 // Adjust based on text size + padding
             val viewportWidth = lazyListState.layoutInfo.viewportEndOffset - lazyListState.layoutInfo.viewportStartOffset
-            lazyListState.animateScrollToItem(
-                index = currentIndex,
-                scrollOffset = (viewportWidth / 2) - (itemWidth / 2) // Centers the item
-            )
+
+            // Calculate the offset to center the highlighted letter
+            val centerOffset = (viewportWidth / 2) - (itemWidth / 2)
+
+            lazyListState.animateScrollToItem(index = currentIndex, scrollOffset = centerOffset)
         }
     }
 
@@ -95,7 +94,7 @@ fun HorizontalCompassView() {
                 Text(
                     text = direction,
                     fontSize = 32.sp,
-                    modifier = Modifier.padding(horizontal = 16.dp), // More padding for better spacing
+                    modifier = Modifier.padding(horizontal = 20.dp), // Adjust padding for proper spacing
                     color = if (index == currentIndex) Color.Red else Color.Black
                 )
                 if (index < extendedDirections.size - 1) {
