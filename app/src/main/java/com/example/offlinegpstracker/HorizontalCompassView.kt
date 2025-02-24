@@ -7,6 +7,7 @@ import android.hardware.SensorEventListener
 import android.hardware.SensorManager
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
@@ -87,9 +88,8 @@ fun HorizontalCompassView() {
 
     LazyRow(
         state = lazyListState,
-        userScrollEnabled = false,
-        modifier = Modifier,
-        horizontalArrangement = androidx.compose.foundation.layout.Arrangement.Center,
+        userScrollEnabled = false, // Disable manual scrolling
+        modifier = Modifier.fillMaxWidth(), // Ensure the row spans the full width for proper centering
         verticalAlignment = Alignment.CenterVertically
     ) {
         itemsIndexed(extendedDirections) { index, direction ->
