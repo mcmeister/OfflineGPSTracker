@@ -17,8 +17,10 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
@@ -26,6 +28,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -66,25 +69,25 @@ fun HorizontalCompassView() {
     val extendedDirections = List(3) { directions }.flatten() // Duplicate the list for smooth looping
     val lazyListState = rememberLazyListState()
     val coroutineScope = rememberCoroutineScope()
+    var itemWidthPx by remember { mutableIntStateOf(0) }
 
     // Calculate the index for the centered position based on azimuth
     val indexOffset = 8 // This controls how far to the right we start (middle of extended list)
     val currentIndex = (azimuth / 45).roundToInt().mod(8) + indexOffset
 
-    LaunchedEffect(currentIndex) {
-        coroutineScope.launch {
-            val itemWidth = 100 // Adjust based on text size + padding
+    LaunchedEffect(currentIndex, itemWidthPx, remember { derivedStateOf { lazyListState.layoutInfo } }) {
+        if (itemWidthPx > 0 && lazyListState.layoutInfo.viewportEndOffset > 0) {
             val viewportWidth = lazyListState.layoutInfo.viewportEndOffset - lazyListState.layoutInfo.viewportStartOffset
-
-            // Calculate the offset to center the highlighted letter
-            val centerOffset = (viewportWidth / 2) - (itemWidth / 2)
-
-            lazyListState.animateScrollToItem(index = currentIndex, scrollOffset = centerOffset)
+            val centerOffset = (viewportWidth / 2) - (itemWidthPx / 2)
+            coroutineScope.launch {
+                lazyListState.animateScrollToItem(index = currentIndex, scrollOffset = centerOffset)
+            }
         }
     }
 
     LazyRow(
         state = lazyListState,
+        userScrollEnabled = false,
         modifier = Modifier,
         horizontalArrangement = androidx.compose.foundation.layout.Arrangement.Center,
         verticalAlignment = Alignment.CenterVertically
@@ -94,11 +97,20 @@ fun HorizontalCompassView() {
                 Text(
                     text = direction,
                     fontSize = 32.sp,
-                    modifier = Modifier.padding(horizontal = 20.dp), // Adjust padding for proper spacing
+                    modifier = Modifier
+                        .padding(horizontal = 20.dp)
+                        .then(
+                            if (index == currentIndex) Modifier.onGloballyPositioned { coordinates ->
+                                val newWidth = coordinates.size.width
+                                if (itemWidthPx != newWidth) {
+                                    itemWidthPx = newWidth
+                                }
+                            } else Modifier
+                        ),
                     color = if (index == currentIndex) Color.Red else Color.Black
                 )
                 if (index < extendedDirections.size - 1) {
-                    SeparatorLines() // Add separator between items
+                    SeparatorLines() // Separator remains intact
                 }
             }
         }
