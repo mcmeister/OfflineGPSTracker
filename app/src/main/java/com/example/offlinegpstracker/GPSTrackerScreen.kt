@@ -160,7 +160,7 @@ fun LocationInfoChip(
             Spacer(modifier = Modifier.width(4.dp))
             Text(
                 text = value,
-                fontSize = if (value == "Initializing...") 10.sp else 12.sp,
+                fontSize = if (value == "Initializing...") 9.sp else 12.sp,
                 fontWeight = FontWeight.Medium
             )
         }
