@@ -91,7 +91,7 @@ fun LocationInfoChipRow(latitude: String, longitude: String, altitude: String) {
             ) {
                 Text("Latitude", fontSize = 14.sp, fontWeight = FontWeight.Bold)
                 Text("Longitude", fontSize = 14.sp, fontWeight = FontWeight.Bold)
-                Text("Altitude", fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                Text("Elevation", fontSize = 14.sp, fontWeight = FontWeight.Bold)
             }
             Spacer(modifier = Modifier.height(4.dp))
 

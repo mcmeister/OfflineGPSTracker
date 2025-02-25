@@ -1,5 +1,6 @@
 package com.example.offlinegpstracker
 
+import android.util.Log
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -46,30 +47,37 @@ fun HorizontalCompassView(azimuth: Float) {
     val directions = listOf("N", "NE", "E", "SE", "S", "SW", "W", "NW")
     val currentDirection = getHorizontalActiveDirection(azimuth)
     val baseIndex = directions.indexOf(currentDirection)
-    val indexOffset = 8
-    val currentIndex = baseIndex + indexOffset
+    val currentIndex = baseIndex + 8  // e.g. offset by 8
+    Log.d("Compass", "RECOMPOSE: baseIndex=$baseIndex, currentIndex=$currentIndex, dir=$currentDirection")
 
     val extendedDirections = List(3) { directions }.flatten()
     val lazyListState = rememberLazyListState()
     var itemWidthPx by remember { mutableIntStateOf(0) }
 
-    // 1) Initial scroll to ensure the item is on screen for measurement
+    // 1) Force the target item on screen so it’s measured
     LaunchedEffect(currentIndex) {
+        Log.d("Compass", ">>> Forcing initial scroll to index=$currentIndex")
         lazyListState.scrollToItem(currentIndex, 0)
     }
 
-    // 2) Center the current direction after measurement
-    LaunchedEffect(currentIndex, itemWidthPx) {
+    // 2) When item is measured, center it. Keying on `currentIndex` ensures
+    //    if `currentIndex` changes, we restart with the correct new index.
+    LaunchedEffect(currentIndex) {
         snapshotFlow { lazyListState.layoutInfo }
             .collect { layoutInfo ->
                 val viewportWidth = layoutInfo.viewportEndOffset - layoutInfo.viewportStartOffset
+                val visibleIndices = layoutInfo.visibleItemsInfo.map { it.index }
+                Log.d(
+                    "Compass",
+                    "snapshotFlow: currentIndex=$currentIndex, " +
+                            "itemWidthPx=$itemWidthPx, viewportWidth=$viewportWidth, " +
+                            "visibleItems=$visibleIndices"
+                )
+
                 if (itemWidthPx > 0 && viewportWidth > 0) {
-                    // Calculate the exact offset to center the item
-                    val scrollOffset = (viewportWidth / 2) - (itemWidthPx / 2)
-                    lazyListState.animateScrollToItem(
-                        index = currentIndex,
-                        scrollOffset = scrollOffset
-                    )
+                    val centerOffset = (viewportWidth - itemWidthPx) / 2
+                    Log.d("Compass", "Will animateScrollToItem(index=$currentIndex, offset=${-centerOffset})")
+                    lazyListState.animateScrollToItem(currentIndex, -centerOffset)
                 }
             }
     }
@@ -81,17 +89,19 @@ fun HorizontalCompassView(azimuth: Float) {
         verticalAlignment = Alignment.CenterVertically
     ) {
         itemsIndexed(extendedDirections) { index, direction ->
+            // Log each built item
+            Log.d("Compass", "BUILD ITEM index=$index direction=$direction")
+
             Row(
                 modifier = if (index == currentIndex) {
                     Modifier.onGloballyPositioned { coordinates ->
                         val newWidth = coordinates.size.width
+                        Log.d("Compass", "onGloballyPositioned index=$index, newWidth=$newWidth")
                         if (itemWidthPx != newWidth) {
                             itemWidthPx = newWidth
                         }
                     }
-                } else {
-                    Modifier
-                }
+                } else Modifier
             ) {
                 Text(
                     text = direction,
