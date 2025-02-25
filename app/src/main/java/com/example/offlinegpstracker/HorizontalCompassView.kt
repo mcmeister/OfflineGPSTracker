@@ -42,11 +42,18 @@ fun getHorizontalActiveDirection(azimuth: Float): String {
     }
 }
 
-data class CompassMark(val degrees: Int, val label: String? = null)
+data class CompassMark(val degrees: Int, val label: String)
 
-val compassMarks = (0..359).map { degrees ->
-    CompassMark(degrees, getHorizontalActiveDirection(degrees.toFloat()).takeIf { it != "N" && degrees % 10 == 0 })
-}
+val compassMarks = listOf(
+    CompassMark(0, "N"),
+    CompassMark(45, "NE"),
+    CompassMark(90, "E"),
+    CompassMark(135, "SE"),
+    CompassMark(180, "S"),
+    CompassMark(225, "SW"),
+    CompassMark(270, "W"),
+    CompassMark(315, "NW")
+)
 
 @Composable
 fun HorizontalCompassView(azimuth: Float) {
@@ -57,7 +64,7 @@ fun HorizontalCompassView(azimuth: Float) {
     var itemWidthPx by remember { mutableIntStateOf(0) }
 
     // Find the index of the current direction or the closest match
-    val currentIndex = compassMarks.indexOfFirst { it.degrees == adjustedAzimuth }
+    val currentIndex = compassMarks.indexOfFirst { it.label == currentDirection }
 
     // Auto-scroll to center the current direction
     LaunchedEffect(adjustedAzimuth) {
@@ -86,7 +93,7 @@ fun HorizontalCompassView(azimuth: Float) {
         ) {
             itemsIndexed(compassMarks) { _, mark ->
                 Text(
-                    text = "${mark.degrees}° ${mark.label ?: ""}".trim(),
+                    text = "${mark.degrees}° ${mark.label}".trim(),
                     fontSize = 14.sp,
                     color = if (mark.label == currentDirection) Color.Red else Color.White,
                     modifier = Modifier
