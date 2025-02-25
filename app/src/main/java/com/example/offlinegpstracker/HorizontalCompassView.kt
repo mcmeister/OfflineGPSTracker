@@ -1,6 +1,5 @@
 package com.example.offlinegpstracker
 
-import android.util.Log
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -50,27 +49,27 @@ fun HorizontalCompassView(azimuth: Float) {
     val indexOffset = 8
     val currentIndex = baseIndex + indexOffset
 
-    // Repeat the list 3 times so that our indexOffset (8) is always valid
     val extendedDirections = List(3) { directions }.flatten()
     val lazyListState = rememberLazyListState()
     var itemWidthPx by remember { mutableIntStateOf(0) }
 
-    // 1) Force the target item onto the screen so it can be measured
-    //    This ensures onGloballyPositioned will run for that item.
+    // 1) Initial scroll to ensure the item is on screen for measurement
     LaunchedEffect(currentIndex) {
         lazyListState.scrollToItem(currentIndex, 0)
     }
 
-    // 2) After it's measured, automatically center it in the viewport
-    LaunchedEffect(Unit) {
-        snapshotFlow { Pair(currentIndex, lazyListState.layoutInfo) }
-            .collect { (index, layoutInfo) ->
+    // 2) Center the current direction after measurement
+    LaunchedEffect(currentIndex, itemWidthPx) {
+        snapshotFlow { lazyListState.layoutInfo }
+            .collect { layoutInfo ->
                 val viewportWidth = layoutInfo.viewportEndOffset - layoutInfo.viewportStartOffset
-                Log.d("Compass", "Collecting: itemWidthPx=$itemWidthPx, viewportWidth=$viewportWidth, currentIndex=$index")
                 if (itemWidthPx > 0 && viewportWidth > 0) {
-                    val centerOffset = (viewportWidth - itemWidthPx) / 2
-                    Log.d("Compass", "Scrolling to index=$index, offset=${-centerOffset}")
-                    lazyListState.animateScrollToItem(index = index, scrollOffset = -centerOffset)
+                    // Calculate the exact offset to center the item
+                    val scrollOffset = (viewportWidth / 2) - (itemWidthPx / 2)
+                    lazyListState.animateScrollToItem(
+                        index = currentIndex,
+                        scrollOffset = scrollOffset
+                    )
                 }
             }
     }
@@ -83,8 +82,7 @@ fun HorizontalCompassView(azimuth: Float) {
     ) {
         itemsIndexed(extendedDirections) { index, direction ->
             Row(
-                modifier =
-                if (index == currentIndex) {
+                modifier = if (index == currentIndex) {
                     Modifier.onGloballyPositioned { coordinates ->
                         val newWidth = coordinates.size.width
                         if (itemWidthPx != newWidth) {
