@@ -3,6 +3,10 @@ package com.example.offlinegpstracker
 import android.annotation.SuppressLint
 import android.content.Context
 import android.content.Intent
+import android.hardware.Sensor
+import android.hardware.SensorEvent
+import android.hardware.SensorEventListener
+import android.hardware.SensorManager
 import android.net.Uri
 import android.widget.Toast
 import androidx.compose.foundation.border
@@ -31,8 +35,10 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.livedata.observeAsState
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -170,6 +176,7 @@ fun formatCoordinate(value: String): String {
     }
 }
 
+@SuppressLint("DefaultLocale")
 @Composable
 fun GPSTrackerScreen(locationViewModel: LocationViewModel = viewModel()) {
     var name by remember { mutableStateOf(TextFieldValue("")) }
@@ -179,11 +186,43 @@ fun GPSTrackerScreen(locationViewModel: LocationViewModel = viewModel()) {
 
     val context = LocalContext.current
 
+    // Sensor setup
+    val sensorManager = remember { context.getSystemService(Context.SENSOR_SERVICE) as SensorManager }
+    val rotationVectorSensor = remember { sensorManager.getDefaultSensor(Sensor.TYPE_ROTATION_VECTOR) }
+    var azimuth by remember { mutableFloatStateOf(0f) }
+
+    val sensorEventListener = remember {
+        object : SensorEventListener {
+            override fun onSensorChanged(event: SensorEvent) {
+                if (event.sensor.type == Sensor.TYPE_ROTATION_VECTOR) {
+                    val rotationMatrix = FloatArray(9)
+                    SensorManager.getRotationMatrixFromVector(rotationMatrix, event.values)
+                    val orientation = FloatArray(3)
+                    SensorManager.getOrientation(rotationMatrix, orientation)
+                    azimuth = Math.toDegrees(orientation[0].toDouble()).toFloat()
+                }
+            }
+            override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {}
+        }
+    }
+
+    DisposableEffect(Unit) {
+        sensorManager.registerListener(
+            sensorEventListener,
+            rotationVectorSensor,
+            SensorManager.SENSOR_DELAY_UI
+        )
+        onDispose { sensorManager.unregisterListener(sensorEventListener) }
+    }
+
+    // Calculate current direction
+    val currentDirection = getHorizontalActiveDirection(azimuth)
+
     Column(
         modifier = Modifier
             .fillMaxSize()
             .padding(16.dp)
-            .verticalScroll(rememberScrollState()), // Makes screen scrollable
+            .verticalScroll(rememberScrollState()),
         verticalArrangement = Arrangement.Top,
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
@@ -204,14 +243,22 @@ fun GPSTrackerScreen(locationViewModel: LocationViewModel = viewModel()) {
 
         Spacer(modifier = Modifier.height(24.dp))
 
-        // Fixed Box for Horizontal Compass to Prevent Infinite Height Constraints
+        // Display Azimuth and Direction
+        Text(
+            text = "Azimuth: ${String.format("%.2f", azimuth)}°, Direction: $currentDirection",
+            modifier = Modifier.align(Alignment.CenterHorizontally)
+        )
+
+        Spacer(modifier = Modifier.height(8.dp))
+
+        // Fixed Box for Horizontal Compass
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(80.dp), // 👈 Fixed height to avoid infinite constraints
+                .height(80.dp),
             contentAlignment = Alignment.Center
         ) {
-            HorizontalCompassView()
+            HorizontalCompassView(azimuth = azimuth)
         }
 
         Spacer(modifier = Modifier.height(24.dp))
