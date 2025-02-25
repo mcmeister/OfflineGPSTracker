@@ -60,8 +60,8 @@ fun HorizontalCompassView(azimuth: Float) {
         lazyListState.scrollToItem(currentIndex, 0)
     }
 
-    // 2) When item is measured, center it. Keying on `currentIndex` ensures
-    //    if `currentIndex` changes, we restart with the correct new index.
+    // 2) When item is measured, center it. Keying on currentIndex ensures
+    //    if currentIndex changes, we restart with the correct new index.
     LaunchedEffect(currentIndex) {
         snapshotFlow { lazyListState.layoutInfo }
             .collect { layoutInfo ->
