@@ -17,7 +17,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
@@ -46,13 +45,37 @@ data class CompassMark(val degrees: Int, val label: String)
 
 val compassMarks = listOf(
     CompassMark(0, "N"),
+    CompassMark(10, "|"),
+    CompassMark(20, "|"),
+    CompassMark(30, "|"),
     CompassMark(45, "NE"),
+    CompassMark(60, "|"),
+    CompassMark(70, "|"),
+    CompassMark(80, "|"),
     CompassMark(90, "E"),
+    CompassMark(100, "|"),
+    CompassMark(110, "|"),
+    CompassMark(120, "|"),
     CompassMark(135, "SE"),
+    CompassMark(150, "|"),
+    CompassMark(160, "|"),
+    CompassMark(170, "|"),
     CompassMark(180, "S"),
+    CompassMark(190, "|"),
+    CompassMark(200, "|"),
+    CompassMark(210, "|"),
     CompassMark(225, "SW"),
+    CompassMark(240, "|"),
+    CompassMark(250, "|"),
+    CompassMark(260, "|"),
     CompassMark(270, "W"),
-    CompassMark(315, "NW")
+    CompassMark(280, "|"),
+    CompassMark(290, "|"),
+    CompassMark(300, "|"),
+    CompassMark(315, "NW"),
+    CompassMark(330, "|"),
+    CompassMark(340, "|"),
+    CompassMark(350, "|")
 )
 
 @Composable
@@ -64,63 +87,57 @@ fun HorizontalCompassView(azimuth: Float) {
     var itemWidthPx by remember { mutableIntStateOf(0) }
 
     // Find the index of the current direction or the closest match
-    val currentIndex = compassMarks.indexOfFirst { it.label == currentDirection }
+    val currentIndex = compassMarks.indexOfFirst { it.label == currentDirection }.coerceAtLeast(0)
 
     // Auto-scroll to center the current direction
-    LaunchedEffect(adjustedAzimuth) {
-        snapshotFlow { lazyListState.layoutInfo }
-            .collect { layoutInfo ->
-                val viewportWidth = layoutInfo.viewportEndOffset - layoutInfo.viewportStartOffset
-                if (itemWidthPx > 0 && viewportWidth > 0) {
-                    val centerOffset = (viewportWidth - itemWidthPx) / 2
-                    lazyListState.animateScrollToItem(currentIndex, -centerOffset)
-                }
-            }
+    LaunchedEffect(adjustedAzimuth, itemWidthPx) {
+        if (itemWidthPx > 0) {
+            val centerOffset = (lazyListState.layoutInfo.viewportEndOffset - itemWidthPx) / 2
+            lazyListState.scrollToItem(currentIndex, -centerOffset)
+        }
     }
 
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .height(60.dp)
+            .height(70.dp)
             .background(Color.Black)
     ) {
         LazyRow(
             state = lazyListState,
             modifier = Modifier
                 .fillMaxWidth()
-                .height(60.dp),
+                .height(70.dp),
             userScrollEnabled = false
         ) {
             itemsIndexed(compassMarks) { _, mark ->
                 Text(
-                    text = "${mark.degrees}° ${mark.label}".trim(),
-                    fontSize = 14.sp,
+                    text = "${mark.degrees}° ${mark.label}",
+                    fontSize = if (mark.label == currentDirection) 18.sp else 14.sp, // Highlight current direction
                     color = if (mark.label == currentDirection) Color.Red else Color.White,
                     modifier = Modifier
-                        .padding(horizontal = 4.dp)
+                        .padding(horizontal = 8.dp)
                         .onGloballyPositioned { coordinates ->
-                            val newWidth = coordinates.size.width
-                            if (itemWidthPx != newWidth) {
-                                itemWidthPx = newWidth
+                            if (itemWidthPx == 0) { // Capture only once
+                                itemWidthPx = coordinates.size.width
                             }
                         }
                 )
             }
         }
 
-        // Move Canvas outside LazyRow but inside Box, ensuring it’s in a @Composable scope
+        // Draw indicator line at the center
         Canvas(
             modifier = Modifier
                 .align(Alignment.Center)
-                .width(10.dp)
-                .height(20.dp)
+                .width(2.dp)
+                .height(30.dp)
         ) {
-            val centerX = size.width / 2
             drawLine(
                 color = Color.White,
-                start = Offset(centerX, 0f),
-                end = Offset(centerX, size.height),
-                strokeWidth = 2f
+                start = Offset(0f, 0f),
+                end = Offset(0f, size.height),
+                strokeWidth = 3f
             )
         }
     }
