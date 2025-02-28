@@ -32,6 +32,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.delay
 import kotlin.math.roundToInt
+import kotlin.time.Duration.Companion.milliseconds
 
 fun getHorizontalActiveDirection(azimuth: Float): String {
     val adjustedAzimuth = ((azimuth + 360) % 360).roundToInt()
@@ -138,7 +139,7 @@ fun HorizontalCompassView(
     val viewportWidth by remember { derivedStateOf { lazyListState.layoutInfo.viewportSize.width } } // Fixed viewportSize reference
     val halfViewportWidth = viewportWidth / 2
     val targetPosition = halfViewportWidth - (currentDirectionWidth / 2) // Center the current direction letter
-    val currentIndex = (baseIndex + middleCycleOffset + (totalItemsPerCycle / 2)) % extendedMarks.size // Adjust to center in viewport
+    val currentIndex = ((baseIndex + middleCycleOffset + (totalItemsPerCycle / 2)) % extendedMarks.size + extendedMarks.size) % extendedMarks.size // Ensure positive modulo for centering
     Log.d("CompassView", "Base Index: $baseIndex, Total Items Per Cycle: $totalItemsPerCycle, Middle Cycle Offset: $middleCycleOffset, Final Index: $currentIndex, Current Direction: $currentDirection, Viewport Width: $viewportWidth, Target Position: $targetPosition")
 
     // Update debug info for display
@@ -155,7 +156,7 @@ fun HorizontalCompassView(
     LaunchedEffect(adjustedAzimuth) {
         // Wait until directionWidths and itemWidthPx are updated
         while (currentDirectionWidth == 0 || itemWidthPx == 0) {
-            delay(16) // Small delay (approx. 16ms for 60 FPS) to allow state updates
+            delay(16.milliseconds) // Use milliseconds extension for better clarity
         }
         val viewportWidthPx = lazyListState.layoutInfo.viewportSize.width
         val centerOffset = (viewportWidthPx - currentDirectionWidth) / 2 // Center the current direction letter
