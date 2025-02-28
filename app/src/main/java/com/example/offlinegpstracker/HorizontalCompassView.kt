@@ -1,5 +1,6 @@
 package com.example.offlinegpstracker
 
+import android.annotation.SuppressLint
 import android.util.Log
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
@@ -15,8 +16,10 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -74,6 +77,7 @@ fun getHorizontalActiveDirection(azimuth: Float): String {
 
 data class CompassMark(val degrees: Int, val label: String)
 
+@SuppressLint("MutableCollectionMutableState")
 @Composable
 fun HorizontalCompassView(azimuth: Float) {
     val adjustedAzimuth = ((azimuth + 360) % 360).roundToInt()
@@ -82,6 +86,7 @@ fun HorizontalCompassView(azimuth: Float) {
 
     val lazyListState = rememberLazyListState()
     var itemWidthPx by remember { mutableIntStateOf(0) }
+    val directionWidths by remember { mutableStateOf(mutableMapOf<String, Int>()) } // Changed to mutableStateOf with MutableMap
 
     // Create a list of compass marks with major directions and 3 separators between them
     val extendedMarks = mutableListOf<CompassMark>()
@@ -111,19 +116,25 @@ fun HorizontalCompassView(azimuth: Float) {
         }
     }
 
-    // Find the index of the current direction for endless scrolling
+    // Find the index of the current direction for precise centering
     val baseIndex = majorDegrees.indexOfFirst { degree ->
         val direction = getHorizontalActiveDirection(adjustedAzimuth.toFloat())
         getHorizontalActiveDirection(degree.toFloat()) == direction
     }.coerceAtLeast(0)
     val totalItemsPerCycle = majorDegrees.size + 3 * (majorDegrees.size - 1) // Directions + separators per cycle
-    val currentIndex = (baseIndex + (cycles / 2) * totalItemsPerCycle) % extendedMarks.size // Center the view in the middle cycle for seamless looping
-    Log.d("CompassView", "Base Index: $baseIndex, Total Items Per Cycle: $totalItemsPerCycle, Final Index: $currentIndex, Current Direction: $currentDirection")
+    val middleCycleOffset = (cycles / 2) * totalItemsPerCycle // Offset to center in the middle cycle
+    val currentDirectionWidth = directionWidths[currentDirection] ?: itemWidthPx // Use get or fallback
+    val viewportWidth by remember { derivedStateOf { lazyListState.layoutInfo.viewportSize.width } } // Fixed viewportSize reference
+    val halfViewportWidth = viewportWidth / 2
+    val targetPosition = halfViewportWidth - (currentDirectionWidth / 2) // Center the current direction letter
+    val currentIndex = (baseIndex + middleCycleOffset) % extendedMarks.size // Use middle cycle for endless looping
+    Log.d("CompassView", "Base Index: $baseIndex, Total Items Per Cycle: $totalItemsPerCycle, Middle Cycle Offset: $middleCycleOffset, Final Index: $currentIndex, Current Direction: $currentDirection, Viewport Width: $viewportWidth, Target Position: $targetPosition")
 
-    // Auto-scroll to center the current direction
+    // Auto-scroll to center the current direction precisely above the arrow
     LaunchedEffect(adjustedAzimuth, itemWidthPx) {
         if (itemWidthPx > 0) {
-            val centerOffset = (lazyListState.layoutInfo.viewportEndOffset - itemWidthPx) / 2
+            val viewportWidthPx = lazyListState.layoutInfo.viewportSize.width
+            val centerOffset = (viewportWidthPx - currentDirectionWidth) / 2 // Center the current direction letter
             Log.d("CompassScroll", "Animating scroll to index $currentIndex with offset $centerOffset")
             lazyListState.animateScrollToItem(currentIndex, -centerOffset)
         }
@@ -152,9 +163,10 @@ fun HorizontalCompassView(azimuth: Float) {
                         modifier = Modifier
                             .padding(horizontal = 8.dp)
                             .onGloballyPositioned { coordinates ->
-                                if (itemWidthPx == 0) {
+                                directionWidths[mark.label] = coordinates.size.width // Use put for safety
+                                if (itemWidthPx == 0 && mark.label == currentDirection) {
                                     itemWidthPx = coordinates.size.width
-                                    Log.d("CompassLayout", "Item width set to $itemWidthPx")
+                                    Log.d("CompassLayout", "Item width for ${mark.label} set to $itemWidthPx")
                                 }
                             }
                     )
