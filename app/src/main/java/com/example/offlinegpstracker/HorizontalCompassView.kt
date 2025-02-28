@@ -30,6 +30,7 @@ import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import kotlinx.coroutines.delay
 import kotlin.math.roundToInt
 
 fun getHorizontalActiveDirection(azimuth: Float): String {
@@ -77,9 +78,19 @@ fun getHorizontalActiveDirection(azimuth: Float): String {
 
 data class CompassMark(val degrees: Int, val label: String)
 
+data class CompassDebugInfo(
+    val currentIndex: Int = 0,
+    val centerOffset: Int = 0,
+    val viewportWidth: Int = 0,
+    val currentDirectionWidth: Int = 0
+)
+
 @SuppressLint("MutableCollectionMutableState")
 @Composable
-fun HorizontalCompassView(azimuth: Float) {
+fun HorizontalCompassView(
+    azimuth: Float,
+    onDebugInfoUpdated: (CompassDebugInfo) -> Unit = {} // Callback for debug info
+) {
     val adjustedAzimuth = ((azimuth + 360) % 360).roundToInt()
     val currentDirection = getHorizontalActiveDirection(azimuth)
     Log.d("CompassView", "Current Azimuth: $azimuth, Adjusted: $adjustedAzimuth, Direction: $currentDirection")
@@ -116,7 +127,7 @@ fun HorizontalCompassView(azimuth: Float) {
         }
     }
 
-    // Find the index of the current direction for precise centering
+    // Find the index of the current direction for precise centering across cycles
     val baseIndex = majorDegrees.indexOfFirst { degree ->
         val direction = getHorizontalActiveDirection(adjustedAzimuth.toFloat())
         getHorizontalActiveDirection(degree.toFloat()) == direction
@@ -127,17 +138,29 @@ fun HorizontalCompassView(azimuth: Float) {
     val viewportWidth by remember { derivedStateOf { lazyListState.layoutInfo.viewportSize.width } } // Fixed viewportSize reference
     val halfViewportWidth = viewportWidth / 2
     val targetPosition = halfViewportWidth - (currentDirectionWidth / 2) // Center the current direction letter
-    val currentIndex = (baseIndex + middleCycleOffset) % extendedMarks.size // Use middle cycle for endless looping
+    val currentIndex = (baseIndex + middleCycleOffset + (totalItemsPerCycle / 2)) % extendedMarks.size // Adjust to center in viewport
     Log.d("CompassView", "Base Index: $baseIndex, Total Items Per Cycle: $totalItemsPerCycle, Middle Cycle Offset: $middleCycleOffset, Final Index: $currentIndex, Current Direction: $currentDirection, Viewport Width: $viewportWidth, Target Position: $targetPosition")
 
-    // Auto-scroll to center the current direction precisely above the arrow
-    LaunchedEffect(adjustedAzimuth, itemWidthPx) {
-        if (itemWidthPx > 0) {
-            val viewportWidthPx = lazyListState.layoutInfo.viewportSize.width
-            val centerOffset = (viewportWidthPx - currentDirectionWidth) / 2 // Center the current direction letter
-            Log.d("CompassScroll", "Animating scroll to index $currentIndex with offset $centerOffset")
-            lazyListState.animateScrollToItem(currentIndex, -centerOffset)
+    // Update debug info for display
+    LaunchedEffect(currentIndex, currentDirectionWidth, viewportWidth) {
+        onDebugInfoUpdated(CompassDebugInfo(
+            currentIndex = currentIndex,
+            centerOffset = (viewportWidth - currentDirectionWidth) / 2,
+            viewportWidth = viewportWidth,
+            currentDirectionWidth = currentDirectionWidth
+        ))
+    }
+
+    // Auto-scroll to center the current direction precisely above the arrow, with a delay to ensure widths are updated
+    LaunchedEffect(adjustedAzimuth) {
+        // Wait until directionWidths and itemWidthPx are updated
+        while (currentDirectionWidth == 0 || itemWidthPx == 0) {
+            delay(16) // Small delay (approx. 16ms for 60 FPS) to allow state updates
         }
+        val viewportWidthPx = lazyListState.layoutInfo.viewportSize.width
+        val centerOffset = (viewportWidthPx - currentDirectionWidth) / 2 // Center the current direction letter
+        Log.d("CompassScroll", "Animating scroll to index $currentIndex with offset $centerOffset")
+        lazyListState.animateScrollToItem(currentIndex, -centerOffset)
     }
 
     Box(
