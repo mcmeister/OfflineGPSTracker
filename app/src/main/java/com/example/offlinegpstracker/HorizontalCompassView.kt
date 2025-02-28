@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -25,6 +26,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.res.painterResource
@@ -167,8 +169,13 @@ fun HorizontalCompassView(
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .height(80.dp) // Increased height for visibility
-            .background(Color.Black)
+            .height(80.dp)
+            .background(
+                brush = Brush.horizontalGradient(
+                    colors = listOf(Color.Black, Color.DarkGray, Color.Black) // Darker at edges, lighter in middle
+                ),
+                shape = RoundedCornerShape(8.dp) // Rounded ends
+            )
     ) {
         LazyRow(
             state = lazyListState,
