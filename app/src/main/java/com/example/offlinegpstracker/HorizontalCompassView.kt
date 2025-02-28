@@ -2,6 +2,7 @@ package com.example.offlinegpstracker
 
 import android.util.Log
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -23,9 +24,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import kotlin.math.roundToInt // Add this import if missing
+import kotlin.math.roundToInt
 
 fun getHorizontalActiveDirection(azimuth: Float): String {
     val adjustedAzimuth = ((azimuth + 360) % 360).roundToInt()
@@ -84,36 +86,46 @@ fun HorizontalCompassView(azimuth: Float) {
     // Create a list of compass marks with major directions and 3 separators between them
     val extendedMarks = mutableListOf<CompassMark>()
     val majorDegrees = listOf(0, 45, 90, 135, 180, 225, 270, 315) // All major directions
+    val cycles = 3 // Number of cycles for endless scrolling
 
-    // Add major directions and 3 separators between each
-    majorDegrees.forEachIndexed { index, degree ->
-        // Add the direction
-        val label = getHorizontalActiveDirection(degree.toFloat())
-        extendedMarks.add(CompassMark(degree, label))
-        Log.d("CompassMarks", "Adding major direction at $degree°: $label (from getHorizontalActiveDirection: $label)")
+    // Create a repeating list of directions and separators for endless scrolling
+    repeat(cycles) { cycle ->
+        majorDegrees.forEachIndexed { index, degree ->
+            // Add the direction with an offset for each cycle
+            val cycleOffset = cycle * 360
+            val label = getHorizontalActiveDirection(degree.toFloat())
+            extendedMarks.add(CompassMark(degree, label))
+            Log.d("CompassMarks",
+                "Adding major direction at $degree° (cycle $cycle): $label (from getHorizontalActiveDirection: $label)")
 
-        // Add 3 separators after each direction, except after the last one
-        if (index < majorDegrees.size - 1) {
-            val nextMajorDegree = majorDegrees[index + 1]
-            val step = (nextMajorDegree - degree) / 4.0 // Use 4.0 for Double division
-            for (j in 1..3) {
-                val separatorDegree = degree + (j * step)
-                extendedMarks.add(CompassMark(separatorDegree.toInt(), "")) // Convert Double to Int directly
-                Log.d("CompassMarks", "Adding separator at $separatorDegree° (rounded to ${separatorDegree.toInt()})")
+            // Add 3 separators after each direction, except after the last one in each cycle
+            if (index < majorDegrees.size - 1) {
+                val nextMajorDegree = majorDegrees[index + 1]
+                val step = (nextMajorDegree - degree) / 4.0 // Use 4.0 for Double division
+                for (j in 1..3) {
+                    val separatorDegree = degree + (j * step)
+                    extendedMarks.add(CompassMark(separatorDegree.toInt() + cycleOffset, ""))
+                    Log.d("CompassMarks", "Adding separator at ${separatorDegree.toInt() + cycleOffset}° (cycle $cycle, rounded to ${separatorDegree.toInt()})")
+                }
             }
         }
     }
 
-    // Find the index of the current direction or closest match
-    val currentIndex = extendedMarks.indexOfFirst { it.label == currentDirection }.coerceAtLeast(0)
-    Log.d("CompassView", "Current Index: $currentIndex, Current Direction: $currentDirection")
+    // Find the index of the current direction for endless scrolling
+    val baseIndex = majorDegrees.indexOfFirst { degree ->
+        val direction = getHorizontalActiveDirection(adjustedAzimuth.toFloat())
+        getHorizontalActiveDirection(degree.toFloat()) == direction
+    }.coerceAtLeast(0)
+    val totalItemsPerCycle = majorDegrees.size + 3 * (majorDegrees.size - 1) // Directions + separators per cycle
+    val currentIndex = (baseIndex + (cycles / 2) * totalItemsPerCycle) % extendedMarks.size // Center the view in the middle cycle for seamless looping
+    Log.d("CompassView", "Base Index: $baseIndex, Total Items Per Cycle: $totalItemsPerCycle, Final Index: $currentIndex, Current Direction: $currentDirection")
 
     // Auto-scroll to center the current direction
     LaunchedEffect(adjustedAzimuth, itemWidthPx) {
         if (itemWidthPx > 0) {
             val centerOffset = (lazyListState.layoutInfo.viewportEndOffset - itemWidthPx) / 2
-            Log.d("CompassScroll", "Scrolling to index $currentIndex with offset $centerOffset")
-            lazyListState.scrollToItem(currentIndex, -centerOffset)
+            Log.d("CompassScroll", "Animating scroll to index $currentIndex with offset $centerOffset")
+            lazyListState.animateScrollToItem(currentIndex, -centerOffset)
         }
     }
 
@@ -165,19 +177,14 @@ fun HorizontalCompassView(azimuth: Float) {
             }
         }
 
-        // Indicator Line
-        Canvas(
+        // Indicator Arrow (replace the Canvas with Image)
+        Image(
+            painter = painterResource(id = R.drawable.red_arrow), // Use your drawable resource
+            contentDescription = "Compass Arrow",
             modifier = Modifier
                 .align(Alignment.Center)
-                .width(2.dp)
-                .height(40.dp) // Larger for better visibility
-        ) {
-            drawLine(
-                color = Color.White,
-                start = Offset(0f, 0f),
-                end = Offset(0f, size.height),
-                strokeWidth = 3f
-            )
-        }
+                .width(20.dp) // Adjust width to match the arrow size (tune as needed)
+                .height(40.dp) // Adjust height to match the arrow size (tune as needed)
+        )
     }
 }
