@@ -102,7 +102,7 @@ fun HorizontalCompassView(
     var maxLabelWidth by remember { mutableIntStateOf(0) }
     var nwMeasuredWidth by remember { mutableIntStateOf(0) }
     val lazyListState = rememberLazyListState()
-    val itemWidthPx by remember { mutableIntStateOf(0) }
+    var itemWidthPx by remember { mutableIntStateOf(0) }
     val directionWidths by remember { mutableStateOf(mutableMapOf<String, Int>()) } // Changed to mutableStateOf with MutableMap
 
     // Create a list of compass marks with major directions and 3 separators between them
@@ -140,7 +140,7 @@ fun HorizontalCompassView(
     }.coerceAtLeast(0)
     val totalItemsPerCycle = majorDegrees.size + 3 * (majorDegrees.size - 1) // Directions + separators per cycle
     val middleCycleOffset = (cycles / 2) * totalItemsPerCycle // Offset to center in the middle cycle
-    val currentDirectionWidth = directionWidths[currentDirection] ?: itemWidthPx // Use get or fallback
+    val currentDirectionWidth = (directionWidths[currentDirection] ?: 200).coerceAtLeast(200)
     val viewportWidth by remember { derivedStateOf { lazyListState.layoutInfo.viewportSize.width } } // Fixed viewportSize reference
     val halfViewportWidth = viewportWidth / 2
     val targetPosition = halfViewportWidth - (currentDirectionWidth / 2) // Center the current direction letter
@@ -159,13 +159,15 @@ fun HorizontalCompassView(
 
     // Auto-scroll to center the current direction precisely above the arrow, with a delay to ensure widths are updated
     LaunchedEffect(adjustedAzimuth) {
-        // Wait until directionWidths and itemWidthPx are updated
-        while (currentDirectionWidth == 0 || itemWidthPx == 0) {
+        // Wait until directionWidths has a valid width for the current direction or a reasonable default
+        while (directionWidths[currentDirection] == 0 && itemWidthPx == 0) {
             delay(16.milliseconds) // Use milliseconds extension for better clarity
+            Log.d("CompassScrollDebug", "Waiting for widths: directionWidths[$currentDirection]=${directionWidths[currentDirection]}, itemWidthPx=$itemWidthPx")
         }
         val viewportWidthPx = lazyListState.layoutInfo.viewportSize.width
-        val centerOffset = (viewportWidthPx - currentDirectionWidth) / 2 // Center the current direction letter
-        Log.d("CompassScroll", "Animating scroll to index $currentIndex with offset $centerOffset")
+        val directionWidth = directionWidths[currentDirection] ?: maxOf(itemWidthPx, 200) // Use current direction’s width, fallback to itemWidthPx or 200px
+        val centerOffset = maxOf((viewportWidthPx - directionWidth) / 2, 0) // Center the current direction, ensure non-negative
+        Log.d("CompassScroll", "Animating scroll to index $currentIndex with offset $centerOffset, directionWidth=$directionWidth, viewportWidth=$viewportWidthPx")
         lazyListState.animateScrollToItem(currentIndex, -centerOffset)
     }
 
@@ -197,11 +199,16 @@ fun HorizontalCompassView(
                         .onGloballyPositioned { coordinates ->
                             val measuredWidth = coordinates.size.width
                             if (isDirectionLabel) {
-                                // Capture only the width of "NW" for standardizing all elements
-                                if (mark.label == "NW") {
-                                    nwMeasuredWidth = measuredWidth
+                                directionWidths[mark.label] = maxOf(measuredWidth, directionWidths[mark.label] ?: 0) // Update width for this direction
+                                if (mark.label == currentDirection) {
+                                    itemWidthPx = maxOf(itemWidthPx, measuredWidth) // Update itemWidthPx for current direction
+                                    Log.d("CompassLayout", "Item width for ${mark.label} set to $itemWidthPx")
                                 }
+                                // Update maxLabelWidth and nwMeasuredWidth for "NW"
                                 maxLabelWidth = maxOf(maxLabelWidth, measuredWidth)
+                                if (mark.label == "NW") {
+                                    nwMeasuredWidth = maxOf(measuredWidth, nwMeasuredWidth)
+                                }
                             }
                         }
                 ) {
