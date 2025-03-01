@@ -144,7 +144,7 @@ fun HorizontalCompassView(
     val viewportWidth by remember { derivedStateOf { lazyListState.layoutInfo.viewportSize.width } } // Fixed viewportSize reference
     val halfViewportWidth = viewportWidth / 2
     val targetPosition = halfViewportWidth - (currentDirectionWidth / 2) // Center the current direction letter
-    val currentIndex = ((baseIndex + middleCycleOffset + (totalItemsPerCycle / 2)) % extendedMarks.size + extendedMarks.size) % extendedMarks.size // Ensure positive modulo for centering
+    val currentIndex = middleCycleOffset + baseIndex * 4
     Log.d("CompassView", "Base Index: $baseIndex, Total Items Per Cycle: $totalItemsPerCycle, Middle Cycle Offset: $middleCycleOffset, Final Index: $currentIndex, Current Direction: $currentDirection, Viewport Width: $viewportWidth, Target Position: $targetPosition")
 
     // Update debug info for display
@@ -157,17 +157,23 @@ fun HorizontalCompassView(
         ))
     }
 
-    // Auto-scroll to center the current direction precisely above the arrow, with a delay to ensure widths are updated
+    // Auto-scroll to center the current direction precisely above the arrow
     LaunchedEffect(adjustedAzimuth) {
+        // First scroll to bring the item into view
         lazyListState.animateScrollToItem(currentIndex, 0)
+
+        // Wait until the direction width is measured
         while (directionWidths[currentDirection] == null) {
             delay(16.milliseconds)
         }
+
         val measuredDirectionWidth = directionWidths[currentDirection]!!
         val viewportWidthPx = lazyListState.layoutInfo.viewportSize.width
         val centerOffset = (viewportWidthPx - measuredDirectionWidth) / 2
         Log.d("CompassScroll", "Animating scroll to index $currentIndex with offset $centerOffset")
-        lazyListState.animateScrollToItem(currentIndex, -centerOffset)
+
+        // Scroll to center the item
+        lazyListState.animateScrollToItem(currentIndex, centerOffset)
     }
 
     Box(
