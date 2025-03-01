@@ -30,6 +30,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.delay
@@ -38,42 +39,42 @@ import kotlin.time.Duration.Companion.milliseconds
 
 fun getHorizontalActiveDirection(azimuth: Float): String {
     val adjustedAzimuth = ((azimuth + 360) % 360).roundToInt()
-    Log.d("CompassDirection", "Azimuth: $azimuth, Adjusted Azimuth: $adjustedAzimuth")
+    // Log.d("CompassDirection", "Azimuth: $azimuth, Adjusted Azimuth: $adjustedAzimuth")
     return when (adjustedAzimuth) {
         in 337..360, in 0..22 -> {
-            Log.d("CompassDirection", "Returning N for $adjustedAzimuth")
+            // Log.d("CompassDirection", "Returning N for $adjustedAzimuth")
             "N"
         }
         in 23..67 -> {
-            Log.d("CompassDirection", "Returning NE for $adjustedAzimuth")
+            // Log.d("CompassDirection", "Returning NE for $adjustedAzimuth")
             "NE"
         }
         in 68..112 -> {
-            Log.d("CompassDirection", "Returning E for $adjustedAzimuth")
+            // Log.d("CompassDirection", "Returning E for $adjustedAzimuth")
             "E"
         }
         in 113..157 -> {
-            Log.d("CompassDirection", "Returning SE for $adjustedAzimuth")
+            // Log.d("CompassDirection", "Returning SE for $adjustedAzimuth")
             "SE"
         }
         in 158..202 -> {
-            Log.d("CompassDirection", "Returning S for $adjustedAzimuth")
+            // Log.d("CompassDirection", "Returning S for $adjustedAzimuth")
             "S"
         }
         in 203..247 -> {
-            Log.d("CompassDirection", "Returning SW for $adjustedAzimuth")
+            // Log.d("CompassDirection", "Returning SW for $adjustedAzimuth")
             "SW"
         }
         in 248..292 -> {
-            Log.d("CompassDirection", "Returning W for $adjustedAzimuth")
+            // Log.d("CompassDirection", "Returning W for $adjustedAzimuth")
             "W"
         }
         in 293..336 -> {
-            Log.d("CompassDirection", "Returning NW for $adjustedAzimuth")
+            // Log.d("CompassDirection", "Returning NW for $adjustedAzimuth")
             "NW"
         }
         else -> {
-            Log.d("CompassDirection", "Defaulting to N for $adjustedAzimuth")
+            // Log.d("CompassDirection", "Defaulting to N for $adjustedAzimuth")
             "N" // Default case
         }
     }
@@ -98,8 +99,10 @@ fun HorizontalCompassView(
     val currentDirection = getHorizontalActiveDirection(azimuth)
     Log.d("CompassView", "Current Azimuth: $azimuth, Adjusted: $adjustedAzimuth, Direction: $currentDirection")
 
+    var maxLabelWidth by remember { mutableIntStateOf(0) }
+    var nwMeasuredWidth by remember { mutableIntStateOf(0) }
     val lazyListState = rememberLazyListState()
-    var itemWidthPx by remember { mutableIntStateOf(0) }
+    val itemWidthPx by remember { mutableIntStateOf(0) }
     val directionWidths by remember { mutableStateOf(mutableMapOf<String, Int>()) } // Changed to mutableStateOf with MutableMap
 
     // Create a list of compass marks with major directions and 3 separators between them
@@ -185,36 +188,44 @@ fun HorizontalCompassView(
             userScrollEnabled = false
         ) {
             itemsIndexed(extendedMarks) { index, mark ->
-                if (mark.label.isNotEmpty()) {
-                    // Main Direction Labels (N, NE, E, SE, S, SW, W, NW)
-                    Text(
-                        text = "${mark.degrees}° ${mark.label}".trim(),
-                        fontSize = if (mark.label == currentDirection) 18.sp else 14.sp,
-                        color = if (mark.label == currentDirection) Color.Red else Color.White,
-                        modifier = Modifier
-                            .padding(horizontal = 8.dp)
-                            .onGloballyPositioned { coordinates ->
-                                directionWidths[mark.label] = coordinates.size.width // Use put for safety
-                                if (itemWidthPx == 0 && mark.label == currentDirection) {
-                                    itemWidthPx = coordinates.size.width
-                                    Log.d("CompassLayout", "Item width for ${mark.label} set to $itemWidthPx")
+                val isDirectionLabel = mark.label.isNotEmpty()
+
+                Box(
+                    modifier = Modifier
+                        .width(if (nwMeasuredWidth > 0) nwMeasuredWidth.dp else Dp.Unspecified)
+                        .padding(horizontal = 8.dp)
+                        .onGloballyPositioned { coordinates ->
+                            val measuredWidth = coordinates.size.width
+                            if (isDirectionLabel) {
+                                // Capture only the width of "NW" for standardizing all elements
+                                if (mark.label == "NW") {
+                                    nwMeasuredWidth = measuredWidth
                                 }
+                                maxLabelWidth = maxOf(maxLabelWidth, measuredWidth)
                             }
-                    )
-                } else {
-                    // Separator Lines with different heights for middle vs. side separators
-                    val isMiddleSeparator = (index % 4 == 2) // Middle separator (2nd of 3) is longer
-                    Canvas(
-                        modifier = Modifier
-                            .width(4.dp) // Thin spacing for all separators
-                            .height(if (isMiddleSeparator) 40.dp else 20.dp) // Longer for middle, shorter for sides
-                    ) {
-                        drawLine(
-                            color = if (index % 4 == 0) Color.Gray else Color.DarkGray, // Major every 45°, minor otherwise
-                            start = Offset(0f, 0f),
-                            end = Offset(0f, size.height),
-                            strokeWidth = if (isMiddleSeparator) 4f else 2f // Thicker for middle, thinner for sides
+                        }
+                ) {
+                    if (isDirectionLabel) {
+                        Text(
+                            text = "${mark.degrees}° ${mark.label}".trim(),
+                            fontSize = if (mark.label == currentDirection) 18.sp else 14.sp,
+                            color = if (mark.label == currentDirection) Color.Red else Color.White
                         )
+                    } else {
+                        // Separator Lines
+                        val isMiddleSeparator = (index % 4 == 2)
+                        Canvas(
+                            modifier = Modifier
+                                .width(if (nwMeasuredWidth > 0) nwMeasuredWidth.dp else Dp.Unspecified)
+                                .height(if (isMiddleSeparator) 40.dp else 20.dp)
+                        ) {
+                            drawLine(
+                                color = if (index % 4 == 0) Color.Gray else Color.DarkGray,
+                                start = Offset(0f, 0f),
+                                end = Offset(0f, size.height),
+                                strokeWidth = if (isMiddleSeparator) 4f else 2f
+                            )
+                        }
                     }
                 }
             }
