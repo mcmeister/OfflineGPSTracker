@@ -150,6 +150,7 @@ fun HorizontalCompassView(
             val viewportWidthPx = lazyListState.layoutInfo.viewportSize.width
             val centerOffset = (viewportWidthPx - fixedItemWidth) / 2
 
+            // 🔹 Call the debug info callback to update state externally
             onDebugInfoUpdated(
                 CompassDebugInfo(
                     currentIndex = currentIndex,
