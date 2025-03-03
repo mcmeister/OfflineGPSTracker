@@ -17,7 +17,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -99,81 +98,69 @@ fun HorizontalCompassView(
     val currentDirection = getHorizontalActiveDirection(azimuth)
     Log.d("CompassView", "Current Azimuth: $azimuth, Adjusted: $adjustedAzimuth, Direction: $currentDirection")
 
-    var maxLabelWidth by remember { mutableIntStateOf(0) }
-    var nwMeasuredWidth by remember { mutableIntStateOf(0) }
+    var fixedItemWidth by remember { mutableIntStateOf(0) } // Width for all elements (based on "NW")
     val lazyListState = rememberLazyListState()
-    val itemWidthPx by remember { mutableIntStateOf(0) }
     val directionWidths by remember { mutableStateOf(mutableMapOf<String, Int>()) }
 
-    // Create a list of compass marks with major directions and 3 separators between them
+    // Generate compass marks (major directions & separators)
     val extendedMarks = mutableListOf<CompassMark>()
-    val majorDegrees = listOf(0, 45, 90, 135, 180, 225, 270, 315) // All major directions
+    val majorDegrees = listOf(0, 45, 90, 135, 180, 225, 270, 315)
     val cycles = 3 // Number of cycles for endless scrolling
 
-    // Create a repeating list of directions and separators for endless scrolling
     repeat(cycles) { cycle ->
         majorDegrees.forEachIndexed { index, degree ->
-            // Add the direction with an offset for each cycle
             val cycleOffset = cycle * 360
             val label = getHorizontalActiveDirection(degree.toFloat())
             extendedMarks.add(CompassMark(degree, label))
-            Log.d("CompassMarks",
-                "Adding major direction at $degree° (cycle $cycle): $label (from getHorizontalActiveDirection: $label)")
 
-            // Add 3 separators after each direction, except after the last one in each cycle
             if (index < majorDegrees.size - 1) {
-                val nextMajorDegree = majorDegrees[index + 1]
-                val step = (nextMajorDegree - degree) / 4.0 // Use 4.0 for Double division
+                val step = 45 / 4.0 // Ensure floating-point precision
                 for (j in 1..3) {
-                    val separatorDegree = degree + (j * step)
-                    extendedMarks.add(CompassMark(separatorDegree.toInt() + cycleOffset, ""))
-                    Log.d("CompassMarks", "Adding separator at ${separatorDegree.toInt() + cycleOffset}° (cycle $cycle, rounded to ${separatorDegree.toInt()})")
+                    val separatorDegree = (degree + (j * step) + cycleOffset).roundToInt()
+                    extendedMarks.add(CompassMark(separatorDegree, ""))
                 }
             }
         }
     }
 
-    // Find the index of the current direction for precise centering across cycles
+    // Find the index of the current direction for precise centering
     val baseIndex = majorDegrees.indexOfFirst { degree ->
         val direction = getHorizontalActiveDirection(adjustedAzimuth.toFloat())
         getHorizontalActiveDirection(degree.toFloat()) == direction
     }.coerceAtLeast(0)
-    val totalItemsPerCycle = majorDegrees.size + 3 * (majorDegrees.size - 1) // Directions + separators per cycle
-    val middleCycleOffset = (cycles / 2) * totalItemsPerCycle // Offset to center in the middle cycle
-    val currentDirectionWidth = directionWidths[currentDirection] ?: itemWidthPx // Use get or fallback
-    val viewportWidth by remember { derivedStateOf { lazyListState.layoutInfo.viewportSize.width } } // Fixed viewportSize reference
-    val halfViewportWidth = viewportWidth / 2
-    val targetPosition = halfViewportWidth - (currentDirectionWidth / 2) // Center the current direction letter
+    val totalItemsPerCycle = majorDegrees.size + 3 * (majorDegrees.size - 1)
+    val middleCycleOffset = (cycles / 2) * totalItemsPerCycle
     val currentIndex = middleCycleOffset + baseIndex * 4
-    Log.d("CompassView", "Base Index: $baseIndex, Total Items Per Cycle: $totalItemsPerCycle, Middle Cycle Offset: $middleCycleOffset, Final Index: $currentIndex, Current Direction: $currentDirection, Viewport Width: $viewportWidth, Target Position: $targetPosition")
 
-    // Update debug info for display
-    LaunchedEffect(currentIndex, currentDirectionWidth, viewportWidth) {
-        onDebugInfoUpdated(CompassDebugInfo(
-            currentIndex = currentIndex,
-            centerOffset = (viewportWidth - currentDirectionWidth) / 2,
-            viewportWidth = viewportWidth,
-            currentDirectionWidth = currentDirectionWidth
-        ))
+    Log.d("CompassView", "Base Index: $baseIndex, Total Items Per Cycle: $totalItemsPerCycle, Middle Cycle Offset: $middleCycleOffset, Final Index: $currentIndex, Current Direction: $currentDirection")
+
+    // Ensure `fixedItemWidth` is properly assigned from NW
+    LaunchedEffect(Unit) {
+        while (fixedItemWidth == 0) {
+            if (directionWidths["NW"] != null) {
+                fixedItemWidth = directionWidths["NW"]!!
+            }
+            delay(16.milliseconds)
+        }
     }
 
     // Auto-scroll to center the current direction precisely above the arrow
-    LaunchedEffect(adjustedAzimuth) {
-        // First scroll to bring the item into view
-        lazyListState.animateScrollToItem(currentIndex, 0)
+    LaunchedEffect(currentIndex, fixedItemWidth) {
+        if (fixedItemWidth > 0) {
+            val viewportWidthPx = lazyListState.layoutInfo.viewportSize.width
+            val centerOffset = (viewportWidthPx - fixedItemWidth) / 2
 
-        // Wait until the direction width is measured
-        while (directionWidths[currentDirection] == null) {
-            delay(16.milliseconds)
+            onDebugInfoUpdated(
+                CompassDebugInfo(
+                    currentIndex = currentIndex,
+                    centerOffset = centerOffset,
+                    viewportWidth = viewportWidthPx,
+                    currentDirectionWidth = fixedItemWidth
+                )
+            )
+
+            lazyListState.animateScrollToItem(currentIndex, centerOffset)
         }
-
-        val measuredDirectionWidth = directionWidths[currentDirection]!!
-        val viewportWidthPx = lazyListState.layoutInfo.viewportSize.width
-        val centerOffset = (viewportWidthPx - measuredDirectionWidth) / 2
-        Log.d("CompassScroll", "Animating scroll to index $currentIndex with offset $centerOffset")
-
-        // Scroll to center the item
-        lazyListState.animateScrollToItem(currentIndex, centerOffset)
     }
 
     Box(
@@ -182,9 +169,9 @@ fun HorizontalCompassView(
             .height(80.dp)
             .background(
                 brush = Brush.horizontalGradient(
-                    colors = listOf(Color.Black, Color.DarkGray, Color.Black) // Darker at edges, lighter in middle
+                    colors = listOf(Color.Black, Color.DarkGray, Color.Black)
                 ),
-                shape = RoundedCornerShape(8.dp) // Rounded ends
+                shape = RoundedCornerShape(8.dp)
             )
     ) {
         LazyRow(
@@ -196,19 +183,17 @@ fun HorizontalCompassView(
         ) {
             itemsIndexed(extendedMarks) { index, mark ->
                 val isDirectionLabel = mark.label.isNotEmpty()
+                val isMiddleSeparator = (index % 4 == 2)
 
                 Box(
                     modifier = Modifier
-                        .width(if (nwMeasuredWidth > 0) nwMeasuredWidth.dp else Dp.Unspecified)
-                        .padding(horizontal = 8.dp)
+                        .width(if (fixedItemWidth > 0) fixedItemWidth.dp else Dp.Unspecified)
+                        .height(if (isDirectionLabel) 40.dp else if (isMiddleSeparator) 40.dp else 20.dp)
+                        .padding(horizontal = 4.dp)
                         .onGloballyPositioned { coordinates ->
                             val measuredWidth = coordinates.size.width
                             if (isDirectionLabel) {
-                                directionWidths[mark.label] = measuredWidth // Store width for this label
-                                if (mark.label == "NW") {
-                                    nwMeasuredWidth = measuredWidth
-                                }
-                                maxLabelWidth = maxOf(maxLabelWidth, measuredWidth)
+                                directionWidths[mark.label] = measuredWidth
                             }
                         }
                 ) {
@@ -217,15 +202,12 @@ fun HorizontalCompassView(
                             text = "${mark.degrees}° ${mark.label}".trim(),
                             fontSize = if (mark.label == currentDirection) 18.sp else 14.sp,
                             color = if (mark.label == currentDirection) Color.Red else Color.White,
-                            modifier = Modifier
-                                .width(if (nwMeasuredWidth > 0) nwMeasuredWidth.dp else 50.dp)
+                            modifier = Modifier.align(Alignment.Center)
                         )
                     } else {
-                        // Separator Lines
-                        val isMiddleSeparator = (index % 4 == 2)
                         Canvas(
                             modifier = Modifier
-                                .width(if (nwMeasuredWidth > 0) nwMeasuredWidth.dp else 50.dp)
+                                .fillMaxWidth()
                                 .height(if (isMiddleSeparator) 40.dp else 20.dp)
                         ) {
                             drawLine(
@@ -240,14 +222,14 @@ fun HorizontalCompassView(
             }
         }
 
-        // Indicator Arrow (replace the Canvas with Image)
+        // Indicator Arrow
         Image(
-            painter = painterResource(id = R.drawable.red_arrow), // Use your drawable resource
+            painter = painterResource(id = R.drawable.red_arrow),
             contentDescription = "Compass Arrow",
             modifier = Modifier
                 .align(Alignment.Center)
-                .width(20.dp) // Adjust width to match the arrow size (tune as needed)
-                .height(40.dp) // Adjust height to match the arrow size (tune as needed)
+                .width(20.dp)
+                .height(40.dp)
         )
     }
 }
