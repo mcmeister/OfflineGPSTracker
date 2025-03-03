@@ -18,7 +18,6 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -28,6 +27,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -96,11 +96,16 @@ fun HorizontalCompassView(
 ) {
     val adjustedAzimuth = ((azimuth + 360) % 360).roundToInt()
     val currentDirection = getHorizontalActiveDirection(azimuth)
-    Log.d("CompassView", "Current Azimuth: $azimuth, Adjusted: $adjustedAzimuth, Direction: $currentDirection")
+    Log.d("HorizontalCompassView", "Current Azimuth: $azimuth, Adjusted: $adjustedAzimuth, Direction: $currentDirection")
 
-    var fixedItemWidth by remember { mutableIntStateOf(0) } // Width for all elements (based on "NW")
+    // Hoist LocalDensity to use later inside lambdas
+    val density = LocalDensity.current
+
+    // Use a Dp variable to store the fixed width (instead of an Int in pixels)
+    var fixedItemWidth by remember { mutableStateOf(0.dp) }
     val lazyListState = rememberLazyListState()
-    val directionWidths by remember { mutableStateOf(mutableMapOf<String, Int>()) }
+    // Store measured widths as Dp values
+    val directionWidths = remember { mutableStateOf(mutableMapOf<String, Dp>()) }
 
     // Generate compass marks (major directions & separators)
     val extendedMarks = mutableListOf<CompassMark>()
@@ -132,34 +137,40 @@ fun HorizontalCompassView(
     val middleCycleOffset = (cycles / 2) * totalItemsPerCycle
     val currentIndex = middleCycleOffset + baseIndex * 4
 
-    Log.d("CompassView", "Base Index: $baseIndex, Total Items Per Cycle: $totalItemsPerCycle, Middle Cycle Offset: $middleCycleOffset, Final Index: $currentIndex, Current Direction: $currentDirection")
+    Log.d(
+        "HorizontalCompassView",
+        "Base Index: $baseIndex, Total Items Per Cycle: $totalItemsPerCycle, Middle Cycle Offset: $middleCycleOffset, Final Index: $currentIndex, Current Direction: $currentDirection"
+    )
 
-    // Ensure `fixedItemWidth` is properly assigned from NW
+    // Ensure `fixedItemWidth` is properly assigned from NW (converted to dp)
     LaunchedEffect(Unit) {
-        while (fixedItemWidth == 0) {
-            if (directionWidths["NW"] != null) {
-                fixedItemWidth = directionWidths["NW"]!!
+        while (fixedItemWidth == 0.dp) {
+            if (directionWidths.value["NW"] != null) {
+                fixedItemWidth = directionWidths.value["NW"]!!
             }
             delay(16.milliseconds)
         }
     }
 
-    // Auto-scroll to center the current direction precisely above the arrow
+    // Auto-scroll to center the current direction precisely above the arrow.
     LaunchedEffect(currentIndex, fixedItemWidth) {
-        if (fixedItemWidth > 0) {
+        if (fixedItemWidth > 0.dp && lazyListState.layoutInfo.viewportSize.width > 0) {
             val viewportWidthPx = lazyListState.layoutInfo.viewportSize.width
-            val centerOffset = (viewportWidthPx - fixedItemWidth) / 2
+            // Convert fixedItemWidth from dp to pixels using the hoisted density.
+            val fixedItemWidthPx = with(density) { fixedItemWidth.toPx() }
+            // Convert viewport width to Float to perform arithmetic with fixedItemWidthPx.
+            val centerOffset = ((viewportWidthPx.toFloat() - fixedItemWidthPx) / 2f)
 
             onDebugInfoUpdated(
                 CompassDebugInfo(
                     currentIndex = currentIndex,
-                    centerOffset = centerOffset,
+                    centerOffset = centerOffset.roundToInt(),
                     viewportWidth = viewportWidthPx,
-                    currentDirectionWidth = fixedItemWidth
+                    currentDirectionWidth = fixedItemWidthPx.roundToInt()
                 )
             )
 
-            lazyListState.animateScrollToItem(currentIndex, centerOffset)
+            lazyListState.animateScrollToItem(currentIndex, centerOffset.roundToInt())
         }
     }
 
@@ -187,13 +198,23 @@ fun HorizontalCompassView(
 
                 Box(
                     modifier = Modifier
-                        .width(if (fixedItemWidth > 0) fixedItemWidth.dp else Dp.Unspecified)
-                        .height(if (isDirectionLabel) 40.dp else if (isMiddleSeparator) 40.dp else 20.dp)
+                        .width(if (fixedItemWidth > 0.dp) fixedItemWidth else 40.dp) // Avoid zero width
+                        .height(
+                            when {
+                                isDirectionLabel -> 40.dp
+                                isMiddleSeparator -> 20.dp
+                                else -> 10.dp  // Ensure non-zero height
+                            }
+                        )
                         .padding(horizontal = 4.dp)
                         .onGloballyPositioned { coordinates ->
-                            val measuredWidth = coordinates.size.width
-                            if (isDirectionLabel) {
-                                directionWidths[mark.label] = measuredWidth
+                            // Convert measured width (in pixels) to dp using the hoisted density
+                            val measuredWidthDp = with(density) { coordinates.size.width.toDp() }
+                            if (isDirectionLabel && measuredWidthDp > 0.dp) {
+                                directionWidths.value[mark.label] = measuredWidthDp
+                                if (fixedItemWidth == 0.dp || measuredWidthDp > fixedItemWidth) {
+                                    fixedItemWidth = measuredWidthDp
+                                }
                             }
                         }
                 ) {
