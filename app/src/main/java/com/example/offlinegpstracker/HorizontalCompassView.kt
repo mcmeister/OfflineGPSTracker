@@ -22,21 +22,17 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.onGloballyPositioned
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.filter
-import kotlinx.coroutines.flow.first
 import kotlin.math.roundToInt
 import kotlin.time.Duration.Companion.milliseconds
 
@@ -96,15 +92,13 @@ data class CompassDebugInfo(
 @Composable
 fun HorizontalCompassView(
     azimuth: Float,
-    onDebugInfoUpdated: (CompassDebugInfo) -> Unit = {}
+    onDebugInfoUpdated: (CompassDebugInfo) -> Unit = {} // Callback for debug info
 ) {
-    val density = LocalDensity.current
     val adjustedAzimuth = ((azimuth + 360) % 360).roundToInt()
     val currentDirection = getHorizontalActiveDirection(azimuth)
     Log.d("CompassView", "Current Azimuth: $azimuth, Adjusted: $adjustedAzimuth, Direction: $currentDirection")
 
-    var fixedItemWidthPx by remember { mutableIntStateOf(0) } // Width in pixels
-    var fixedItemWidthDp by remember { mutableStateOf<Dp?>(null) } // Width in dp
+    var fixedItemWidth by remember { mutableIntStateOf(0) } // Width for all elements (based on "NW")
     val lazyListState = rememberLazyListState()
     val directionWidths by remember { mutableStateOf(mutableMapOf<String, Int>()) }
 
@@ -142,36 +136,30 @@ fun HorizontalCompassView(
 
     // Ensure `fixedItemWidth` is properly assigned from NW
     LaunchedEffect(Unit) {
-        while (fixedItemWidthPx == 0) {
+        while (fixedItemWidth == 0) {
             if (directionWidths["NW"] != null) {
-                fixedItemWidthPx = directionWidths["NW"]!!
-                fixedItemWidthDp = with(density) { fixedItemWidthPx.toDp() }
-                Log.d("CompassView", "Set fixedItemWidthPx=$fixedItemWidthPx, fixedItemWidthDp=$fixedItemWidthDp")
+                fixedItemWidth = directionWidths["NW"]!!
             }
             delay(16.milliseconds)
         }
     }
 
     // Auto-scroll to center the current direction precisely above the arrow
-    LaunchedEffect(currentIndex) {
-        if (fixedItemWidthPx > 0) {
-            snapshotFlow { lazyListState.layoutInfo }
-                .filter { it.viewportSize.width > 0 }
-                .first()
-                .let { layoutInfo ->
-                    val viewportWidthPx = layoutInfo.viewportSize.width
-                    val centerOffset = (viewportWidthPx - fixedItemWidthPx) / 2
-                    onDebugInfoUpdated(
-                        CompassDebugInfo(
-                            currentIndex = currentIndex,
-                            centerOffset = centerOffset,
-                            viewportWidth = viewportWidthPx,
-                            currentDirectionWidth = fixedItemWidthPx
-                        )
-                    )
-                    Log.d("CompassView", "Scrolling to index $currentIndex with offset $centerOffset, viewportWidthPx=$viewportWidthPx")
-                    lazyListState.animateScrollToItem(currentIndex, centerOffset)
-                }
+    LaunchedEffect(currentIndex, fixedItemWidth) {
+        if (fixedItemWidth > 0) {
+            val viewportWidthPx = lazyListState.layoutInfo.viewportSize.width
+            val centerOffset = (viewportWidthPx - fixedItemWidth) / 2
+
+            onDebugInfoUpdated(
+                CompassDebugInfo(
+                    currentIndex = currentIndex,
+                    centerOffset = centerOffset,
+                    viewportWidth = viewportWidthPx,
+                    currentDirectionWidth = fixedItemWidth
+                )
+            )
+
+            lazyListState.animateScrollToItem(currentIndex, centerOffset)
         }
     }
 
@@ -199,7 +187,7 @@ fun HorizontalCompassView(
 
                 Box(
                     modifier = Modifier
-                        .width(fixedItemWidthDp ?: Dp.Unspecified)
+                        .width(if (fixedItemWidth > 0) fixedItemWidth.dp else Dp.Unspecified)
                         .height(if (isDirectionLabel) 40.dp else if (isMiddleSeparator) 40.dp else 20.dp)
                         .padding(horizontal = 4.dp)
                         .onGloballyPositioned { coordinates ->
