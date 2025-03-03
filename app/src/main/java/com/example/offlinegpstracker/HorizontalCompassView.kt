@@ -8,6 +8,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.itemsIndexed
@@ -91,7 +92,7 @@ data class CompassDebugInfo(
 @Composable
 fun HorizontalCompassView(
     azimuth: Float,
-    onDebugInfoUpdated: (CompassDebugInfo) -> Unit = {}
+    onDebugInfoUpdated: (CompassDebugInfo) -> Unit = {} // Callback for debug info
 ) {
     val adjustedAzimuth = ((azimuth + 360) % 360).roundToInt()
     val currentDirection = getHorizontalActiveDirection(azimuth)
@@ -101,7 +102,7 @@ fun HorizontalCompassView(
     val lazyListState = rememberLazyListState()
     val directionWidths by remember { mutableStateOf(mutableMapOf<String, Int>()) }
 
-    // Create a list of compass marks with major directions and separators
+    // Generate compass marks (major directions & separators)
     val extendedMarks = mutableListOf<CompassMark>()
     val majorDegrees = listOf(0, 45, 90, 135, 180, 225, 270, 315)
     val cycles = 3 // Number of cycles for endless scrolling
@@ -162,7 +163,6 @@ fun HorizontalCompassView(
         }
     }
 
-    // LazyRow with uniform widths for all elements
     Box(
         modifier = Modifier
             .fillMaxWidth()
@@ -183,17 +183,17 @@ fun HorizontalCompassView(
         ) {
             itemsIndexed(extendedMarks) { index, mark ->
                 val isDirectionLabel = mark.label.isNotEmpty()
+                val isMiddleSeparator = (index % 4 == 2)
 
                 Box(
                     modifier = Modifier
                         .width(if (fixedItemWidth > 0) fixedItemWidth.dp else Dp.Unspecified)
+                        .height(if (isDirectionLabel) 40.dp else if (isMiddleSeparator) 40.dp else 20.dp)
+                        .padding(horizontal = 4.dp)
                         .onGloballyPositioned { coordinates ->
+                            val measuredWidth = coordinates.size.width
                             if (isDirectionLabel) {
-                                val measuredWidth = coordinates.size.width
                                 directionWidths[mark.label] = measuredWidth
-                                if (mark.label == "NW") {
-                                    fixedItemWidth = measuredWidth // Use "NW" width for all items
-                                }
                             }
                         }
                 ) {
@@ -205,8 +205,6 @@ fun HorizontalCompassView(
                             modifier = Modifier.align(Alignment.Center)
                         )
                     } else {
-                        // Separator Lines
-                        val isMiddleSeparator = (index % 4 == 2)
                         Canvas(
                             modifier = Modifier
                                 .fillMaxWidth()
