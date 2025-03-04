@@ -106,8 +106,9 @@ fun HorizontalCompassView(
     repeat(cycles) { cycle ->
         majorDegrees.forEachIndexed { index, degree ->
             val cycleOffset = cycle * 360
-            val label = getHorizontalActiveDirection(degree.toFloat())
-            extendedMarks.add(CompassMark(degree, label))
+            val fullDegrees = degree + cycleOffset
+            val label = getHorizontalActiveDirection(fullDegrees.toFloat())
+            extendedMarks.add(CompassMark(fullDegrees, label))
 
             if (index < majorDegrees.size - 1) {
                 val step = 45 / 4.0
