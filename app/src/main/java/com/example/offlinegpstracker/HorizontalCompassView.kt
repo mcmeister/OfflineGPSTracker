@@ -113,7 +113,7 @@ fun HorizontalCompassView(
             if (index < majorDegrees.size - 1) {
                 val step = 45 / 4.0
                 for (j in 1..3) {
-                    val separatorDegree = (degree + (j * step) + cycleOffset).roundToInt()
+                    val separatorDegree = (degree + j * step + cycleOffset).roundToInt()
                     extendedMarks.add(CompassMark(separatorDegree, ""))
                 }
             }
@@ -174,7 +174,12 @@ fun HorizontalCompassView(
                 ) {
                     if (isDirectionLabel) {
                         Text(
-                            text = "${mark.degrees}° ${mark.label}".trim(),
+                            // If this mark is the "current" direction, show the user's real azimuth
+                            text = if (mark.label == currentDirection) {
+                                "$adjustedAzimuth° ${mark.label}"
+                            } else {
+                                "${mark.degrees}° ${mark.label}".trim() // fallback for all other directions
+                            },
                             fontSize = if (mark.label == currentDirection) 18.sp else 14.sp,
                             color = if (mark.label == currentDirection) Color.Red else Color.White,
                             modifier = Modifier.align(Alignment.Center)
