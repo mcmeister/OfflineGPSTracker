@@ -174,11 +174,12 @@ fun HorizontalCompassView(
                 ) {
                     if (isDirectionLabel) {
                         Text(
-                            // If this mark is the "current" direction, show the user's real azimuth
                             text = if (mark.label == currentDirection) {
+                                // Display the *real* adjusted azimuth for the red label
                                 "$adjustedAzimuth° ${mark.label}"
                             } else {
-                                "${mark.degrees}° ${mark.label}".trim() // fallback for all other directions
+                                // Display the extended angle for all the other directions
+                                "${mark.degrees}° ${mark.label}".trim()
                             },
                             fontSize = if (mark.label == currentDirection) 18.sp else 14.sp,
                             color = if (mark.label == currentDirection) Color.Red else Color.White,
