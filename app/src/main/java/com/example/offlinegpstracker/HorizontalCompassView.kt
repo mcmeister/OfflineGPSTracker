@@ -2,7 +2,6 @@ package com.example.offlinegpstracker
 
 import android.annotation.SuppressLint
 import android.util.Log
-import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
@@ -19,7 +18,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalDensity
@@ -71,7 +69,11 @@ fun getHorizontalActiveDirection(azimuth: Float): String {
     }
 }
 
-data class CompassMark(val degrees: Int, val label: String)
+data class CompassMark(
+    val extendedAngle: Float,  // includes cycle offset, e.g. 405°, 765°, etc.
+    val displayAngle: Float,   // the base or separator angle (0°, 11.25°, 45°, etc.)
+    val label: String = ""     // e.g. "N", "NE", "S", or empty for separators
+)
 
 data class CompassDebugInfo(
     val currentIndex: Int = 0,
@@ -100,21 +102,37 @@ fun HorizontalCompassView(
 
     // Generate compass marks (major directions & separators)
     val extendedMarks = mutableListOf<CompassMark>()
-    val majorDegrees = listOf(0, 45, 90, 135, 180, 225, 270, 315)
-    val cycles = 3 // Number of cycles for endless scrolling
+    val majorDegrees = listOf(0f, 45f, 90f, 135f, 180f, 225f, 270f, 315f)
+    val cycles = 3
 
     repeat(cycles) { cycle ->
-        majorDegrees.forEachIndexed { index, degree ->
-            val cycleOffset = cycle * 360
-            val fullDegrees = degree + cycleOffset
-            val label = getHorizontalActiveDirection(fullDegrees.toFloat())
-            extendedMarks.add(CompassMark(fullDegrees, label))
+        val cycleOffset = cycle * 360f
 
+        majorDegrees.forEachIndexed { index, baseAngle ->
+            // This is the main major direction
+            val label = getHorizontalActiveDirection(baseAngle)
+            // extendedAngle for scrolling, displayAngle for on-screen text
+            extendedMarks.add(
+                CompassMark(
+                    extendedAngle = baseAngle + cycleOffset,
+                    displayAngle = baseAngle,
+                    label = label
+                )
+            )
+
+            // Now insert 3 separators in between the major directions
             if (index < majorDegrees.size - 1) {
-                val step = 45 / 4.0
+                // e.g. 45 / 4 = 11.25
+                val step = 45f / 4f
                 for (j in 1..3) {
-                    val separatorDegree = (degree + j * step + cycleOffset).roundToInt()
-                    extendedMarks.add(CompassMark(separatorDegree, ""))
+                    val sepBaseAngle = baseAngle + j * step
+                    extendedMarks.add(
+                        CompassMark(
+                            extendedAngle = sepBaseAngle + cycleOffset,
+                            displayAngle = sepBaseAngle,
+                            label = ""  // no text label for separators
+                        )
+                    )
                 }
             }
         }
@@ -123,7 +141,7 @@ fun HorizontalCompassView(
     // Find the index of the current direction for precise centering
     val baseIndex = majorDegrees.indexOfFirst { degree ->
         getHorizontalActiveDirection(adjustedAzimuth.toFloat()) ==
-                getHorizontalActiveDirection(degree.toFloat())
+                getHorizontalActiveDirection(degree)
     }.coerceAtLeast(0)
     val totalItemsPerCycle = majorDegrees.size + 3 * (majorDegrees.size - 1)
     val middleCycleOffset = (cycles / 2) * totalItemsPerCycle
@@ -156,48 +174,48 @@ fun HorizontalCompassView(
             userScrollEnabled = false
         ) {
             itemsIndexed(extendedMarks) { index, mark ->
-                val isDirectionLabel = mark.label.isNotEmpty()
-                val isMiddleSeparator = (index % 4 == 2)
+                val isMajorDirection = mark.label.isNotEmpty()
+                val isMiddleSeparator = (index % 4 == 2) // optional style
 
-                // Instead of measuring NW, we just fix every item's width to itemWidthDp:
+                // Use a fixed width for spacing
                 Box(
                     modifier = Modifier
-                        .width(itemWidthDp)
+                        .width(40.dp)
                         .height(
-                            when {
-                                isDirectionLabel -> 40.dp
-                                isMiddleSeparator -> 40.dp
-                                else -> 20.dp
-                            }
+                            if (isMajorDirection) 40.dp
+                            else if (isMiddleSeparator) 40.dp
+                            else 20.dp
                         )
                         .padding(horizontal = 4.dp)
                 ) {
-                    if (isDirectionLabel) {
+                    // If it's a major direction or a separator angle, show text
+                    val displayAngleInt = mark.displayAngle.roundToInt()
+
+                    if (isMajorDirection) {
+                        // For the "current" direction, show the real user azimuth
+                        val textToShow = if (mark.label == currentDirection) {
+                            "$adjustedAzimuth° ${mark.label}"
+                        } else {
+                            "$displayAngleInt° ${mark.label}"
+                        }
+
                         Text(
-                            text = if (mark.label == currentDirection) {
-                                // Display the *real* adjusted azimuth for the red label
-                                "$adjustedAzimuth° ${mark.label}"
-                            } else {
-                                // Display the extended angle for all the other directions
-                                "${mark.degrees}° ${mark.label}".trim()
-                            },
+                            text = textToShow,
                             fontSize = if (mark.label == currentDirection) 18.sp else 14.sp,
                             color = if (mark.label == currentDirection) Color.Red else Color.White,
                             modifier = Modifier.align(Alignment.Center)
                         )
+
                     } else {
-                        Canvas(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(if (isMiddleSeparator) 40.dp else 20.dp)
-                        ) {
-                            drawLine(
-                                color = if (index % 4 == 0) Color.Gray else Color.DarkGray,
-                                start = Offset(0f, 0f),
-                                end = Offset(0f, size.height),
-                                strokeWidth = if (isMiddleSeparator) 4f else 2f
-                            )
-                        }
+                        // It's a separator with no label, so just show "5°" etc. or maybe an empty Canvas
+                        val sepAngleText = "${displayAngleInt}°"
+                        // Example: show text or draw a line
+                        Text(
+                            text = sepAngleText,
+                            fontSize = 12.sp,
+                            color = Color.LightGray,
+                            modifier = Modifier.align(Alignment.Center)
+                        )
                     }
                 }
             }
