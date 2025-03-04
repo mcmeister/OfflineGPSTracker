@@ -92,7 +92,7 @@ fun HorizontalCompassView(
 
     // We no longer measure NW dynamically, so remove directionWidths
     // and rely on a fixed item width instead.
-    val itemWidthDp = 50.dp
+    val itemWidthDp = 25.dp
     // Convert our chosen DP to pixels for scrolling calculations:
     val itemWidthPx = with(LocalDensity.current) { itemWidthDp.roundToPx() }
 
