@@ -7,7 +7,6 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.itemsIndexed
@@ -164,7 +163,8 @@ fun HorizontalCompassView(
                     colors = listOf(Color.Black, Color.DarkGray, Color.Black)
                 ),
                 shape = RoundedCornerShape(8.dp)
-            )
+            ),
+        contentAlignment = Alignment.Center // Added for consistent centering
     ) {
         LazyRow(
             state = lazyListState,
@@ -177,7 +177,6 @@ fun HorizontalCompassView(
                 val isMajorDirection = mark.label.isNotEmpty()
                 val isMiddleSeparator = (index % 4 == 2) // optional style
 
-                // Use a fixed width for spacing
                 Box(
                     modifier = Modifier
                         .width(40.dp)
@@ -186,13 +185,11 @@ fun HorizontalCompassView(
                             else if (isMiddleSeparator) 40.dp
                             else 20.dp
                         )
-                        .padding(horizontal = 4.dp)
+                    // Removed .padding(horizontal = 4.dp) for perfect centering
                 ) {
-                    // If it's a major direction or a separator angle, show text
                     val displayAngleInt = mark.displayAngle.roundToInt()
 
                     if (isMajorDirection) {
-                        // For the "current" direction, show the real user azimuth
                         val textToShow = if (mark.label == currentDirection) {
                             "$adjustedAzimuth° ${mark.label}"
                         } else {
@@ -205,11 +202,8 @@ fun HorizontalCompassView(
                             color = if (mark.label == currentDirection) Color.Red else Color.White,
                             modifier = Modifier.align(Alignment.Center)
                         )
-
                     } else {
-                        // It's a separator with no label, so just show "5°" etc. or maybe an empty Canvas
                         val sepAngleText = "${displayAngleInt}°"
-                        // Example: show text or draw a line
                         Text(
                             text = sepAngleText,
                             fontSize = 12.sp,
@@ -227,7 +221,6 @@ fun HorizontalCompassView(
                 val viewportWidthPx = lazyListState.layoutInfo.viewportSize.width
                 val centerOffset = (viewportWidthPx - itemWidthPx) / 2
 
-                // Callback to update debug info (for your external UI)
                 onDebugInfoUpdated(
                     CompassDebugInfo(
                         currentIndex = currentIndex,
