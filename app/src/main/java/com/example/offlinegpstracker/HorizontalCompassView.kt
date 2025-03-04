@@ -138,18 +138,24 @@ fun HorizontalCompassView(
     }
 
     // Find the index of the current direction for precise centering
-    val baseIndex = majorDegrees.indexOfFirst { degree ->
-        getHorizontalActiveDirection(adjustedAzimuth.toFloat()) ==
-                getHorizontalActiveDirection(degree)
-    }.coerceAtLeast(0)
-    val totalItemsPerCycle = majorDegrees.size + 3 * (majorDegrees.size - 1)
-    val middleCycleOffset = (cycles / 2) * totalItemsPerCycle
-    val currentIndex = middleCycleOffset + baseIndex * 4
+    val az = adjustedAzimuth.toFloat()
+
+// 1) Scan the entire extendedMarks list to find the item whose angle is closest to az
+    val targetIndex = extendedMarks.indices.minByOrNull { i ->
+        // Normalize the item’s angle to [0..360) for distance comparison
+        val angle360 = ((extendedMarks[i].extendedAngle % 360) + 360) % 360
+        kotlin.math.abs(angle360 - az)
+    } ?: 0
+
+// 2) That becomes our currentIndex for the auto-scroll
+    val currentIndex = targetIndex
 
     Log.d(
         "CompassView",
-        "Base Index: $baseIndex, Total Items Per Cycle: $totalItemsPerCycle, " +
-                "Middle Cycle Offset: $middleCycleOffset, Final Index: $currentIndex, " +
+        "Selected Index: $currentIndex, " +
+                "Angle: ${extendedMarks[currentIndex].extendedAngle}, " +
+                "Label: ${extendedMarks[currentIndex].label}, " +
+                "Azimuth: $az, " +
                 "Current Direction: $currentDirection"
     )
 
