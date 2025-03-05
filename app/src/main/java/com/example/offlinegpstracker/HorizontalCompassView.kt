@@ -94,6 +94,14 @@ fun HorizontalCompassView(
     azimuth: Float,
     onDebugInfoUpdated: (CompassDebugInfo) -> Unit = {} // Callback for debug info
 ) {
+    // Smoothing factor (adjustable based on sensitivity)
+    var smoothedAzimuth by remember { mutableFloatStateOf(0f) }
+    val alpha = 0.2f
+
+    LaunchedEffect(azimuth) {
+        smoothedAzimuth = (alpha * azimuth) + (1 - alpha) * smoothedAzimuth
+    }
+
     // Define the LazyListState
     val lazyListState = rememberLazyListState()
 
@@ -117,7 +125,15 @@ fun HorizontalCompassView(
     // if (viewportWidthPx == 0f) return
 
     val totalAzimuthRange = 360f  // Full compass rotation
-    val adjustedAzimuth = ((azimuth + 360) % 360).roundToInt() - 90
+
+    val threshold = 1.5f  // Degrees (adjust as needed)
+
+    val filteredAzimuth by remember {
+        derivedStateOf {
+            if (kotlin.math.abs(azimuth - smoothedAzimuth) > threshold) azimuth else smoothedAzimuth
+        }
+    }
+    val adjustedAzimuth = ((filteredAzimuth + 360) % 360).roundToInt() - 90
 
     // Map azimuth to viewport width properly
     val scaledAzimuth = (adjustedAzimuth / totalAzimuthRange) * viewportWidthPx
@@ -126,6 +142,7 @@ fun HorizontalCompassView(
 
     // Prevent redundant scrolling by tracking last target index and time
     var lastTargetIndex by remember { mutableIntStateOf(-1) }
+    val debounceTime = 300L  // 300ms debounce
     var lastScrollTime by remember { mutableLongStateOf(0L) }
 
     // Get the currently visible index to avoid unnecessary scrolling
@@ -271,30 +288,23 @@ fun HorizontalCompassView(
             }
         }
 
-        // Now that itemWidthPx is a known constant, we can do the auto-scroll
+        val shouldScroll by remember {
+            derivedStateOf { lastTargetIndex != targetIndex }
+        }
+
         LaunchedEffect(targetIndex, itemWidthPx, viewportWidthPx) {
-            if (viewportWidthPx > 0 && itemWidthPx > 0 && targetIndex < extendedMarks.size && lazyListState.layoutInfo.totalItemsCount > 0) {
-                val selectedAngle = extendedMarks[targetIndex].displayAngle
-                val selectedAngle360 = ((selectedAngle % 360) + 360) % 360
-
-                // Convert selected angle to pixels
-                val selectedAnglePx = (selectedAngle360 / totalAzimuthRange) * viewportWidthPx
-
-                // Debug logs to track updates
-                Log.d(
-                    "CompassScroll",
-                    "Viewport: $viewportWidthPx, Target Index: $targetIndex, Selected Angle: $selectedAngle360, Scaled: $scaledAzimuth, Selected Angle Px: $selectedAnglePx"
-                )
+            if (viewportWidthPx > 0 && itemWidthPx > 0 &&
+                targetIndex < extendedMarks.size &&
+                lazyListState.layoutInfo.totalItemsCount > 0
+            ) {
+                val centerOffset = (viewportWidthPx - itemWidthPx) / 2 // ✅ Define centerOffset before use
 
                 val currentTime = System.currentTimeMillis()
                 val timeSinceLastScroll = currentTime - lastScrollTime
 
-                // Prevent redundant scrolling (debounce: 400ms)
-                if (lastTargetIndex != targetIndex && timeSinceLastScroll > 400) {
-                    lastTargetIndex = targetIndex  // Store last target index
-                    lastScrollTime = currentTime   // Store last scroll time
-
-                    val centerOffset = (viewportWidthPx - itemWidthPx) / 2
+                if (shouldScroll && timeSinceLastScroll > debounceTime) {
+                    lastScrollTime = currentTime // ✅ Update last scroll time
+                    lastTargetIndex = targetIndex // ✅ Store last target index
 
                     onDebugInfoUpdated(
                         CompassDebugInfo(
@@ -305,7 +315,7 @@ fun HorizontalCompassView(
                         )
                     )
 
-                    // **Only scroll if we're not already at the target**
+                    // ✅ **Only scroll if we're not already at the target**
                     if (currentVisibleIndex != targetIndex) {
                         lazyListState.animateScrollToItem(targetIndex, centerOffset.toInt())
                     }
