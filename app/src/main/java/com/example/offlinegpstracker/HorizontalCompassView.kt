@@ -107,54 +107,56 @@ fun HorizontalCompassView(
     repeat(cycles) { cycle ->
         val cycleOffset = cycle * 360f
 
-        majorDegrees.forEachIndexed { index, baseAngle ->
-            // This is the main major direction
-            val label = getHorizontalActiveDirection(baseAngle)
-            // extendedAngle for scrolling, displayAngle for on-screen text
-            extendedMarks.add(
-                CompassMark(
-                    extendedAngle = baseAngle + cycleOffset,
-                    displayAngle = baseAngle,
-                    label = label
-                )
-            )
+        // For each major interval, also generate 3 in-between ticks
+        majorDegrees.forEach { baseAngle ->
+            val steps = 4  // 0..3
+            val stepAngle = 45f / steps
 
-            // Now insert 3 separators in between the major directions
-            if (index < majorDegrees.size - 1) {
-                // e.g. 45 / 4 = 11.25
-                val step = 45f / 4f
-                for (j in 1..3) {
-                    val sepBaseAngle = baseAngle + j * step
-                    extendedMarks.add(
-                        CompassMark(
-                            extendedAngle = sepBaseAngle + cycleOffset,
-                            displayAngle = sepBaseAngle,
-                            label = ""  // no text label for separators
-                        )
+            for (j in 0 until steps) {
+                val angle = baseAngle + j * stepAngle + cycleOffset
+                // Always get the direction label for ANY angle
+                val label = getHorizontalActiveDirection(angle)
+
+                extendedMarks.add(
+                    CompassMark(
+                        extendedAngle = angle,
+                        displayAngle = angle,
+                        label = label
                     )
-                }
+                )
             }
         }
     }
 
-    // Find the index of the current direction for precise centering
+    // 1) Convert your real adjustedAzimuth into a 0–360 float
     val az = adjustedAzimuth.toFloat()
 
-// 1) Scan the entire extendedMarks list to find the item whose angle is closest to az
+    // 2) For debugging, log each item’s extendedAngle, label, difference from az
+    for (i in extendedMarks.indices) {
+        val rawAngle = extendedMarks[i].extendedAngle
+        val label = extendedMarks[i].label
+        // Convert to 0..360
+        val angle360 = ((rawAngle % 360) + 360) % 360
+        // Compute difference from user's az
+        val diff = kotlin.math.abs(angle360 - az)
+
+        Log.d(
+            "CompassDebug",
+            "Item $i → extendedAngle=$rawAngle, angle360=$angle360, label='$label', diff=$diff"
+        )
+    }
+
+    // 3) Then pick the item with the smallest diff
     val targetIndex = extendedMarks.indices.minByOrNull { i ->
-        // Normalize the item’s angle to [0..360) for distance comparison
         val angle360 = ((extendedMarks[i].extendedAngle % 360) + 360) % 360
         kotlin.math.abs(angle360 - az)
     } ?: 0
 
-// 2) That becomes our currentIndex for the auto-scroll
-    val currentIndex = targetIndex
-
     Log.d(
         "CompassView",
-        "Selected Index: $currentIndex, " +
-                "Angle: ${extendedMarks[currentIndex].extendedAngle}, " +
-                "Label: ${extendedMarks[currentIndex].label}, " +
+        "Selected Index: $targetIndex, " +
+                "Angle: ${extendedMarks[targetIndex].extendedAngle}, " +
+                "Label: '${extendedMarks[targetIndex].label}', " +
                 "Azimuth: $az, " +
                 "Current Direction: $currentDirection"
     )
@@ -222,14 +224,14 @@ fun HorizontalCompassView(
         }
 
         // Now that itemWidthPx is a known constant, we can do the auto-scroll
-        LaunchedEffect(currentIndex, itemWidthPx) {
+        LaunchedEffect(targetIndex, itemWidthPx) {
             if (itemWidthPx > 0) {
                 val viewportWidthPx = lazyListState.layoutInfo.viewportSize.width
                 val centerOffset = (viewportWidthPx - itemWidthPx) / 2
 
                 onDebugInfoUpdated(
                     CompassDebugInfo(
-                        currentIndex = currentIndex,
+                        currentIndex = targetIndex,
                         centerOffset = centerOffset,
                         viewportWidth = viewportWidthPx,
                         currentDirectionWidth = itemWidthPx
@@ -237,7 +239,7 @@ fun HorizontalCompassView(
                 )
 
                 if (viewportWidthPx > 0) {
-                    lazyListState.animateScrollToItem(currentIndex, centerOffset)
+                    lazyListState.animateScrollToItem(targetIndex, centerOffset)
                 }
             }
         }
