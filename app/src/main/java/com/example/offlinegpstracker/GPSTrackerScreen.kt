@@ -9,7 +9,9 @@ import android.hardware.SensorEventListener
 import android.hardware.SensorManager
 import android.net.Uri
 import android.widget.Toast
+import androidx.compose.animation.Crossfade
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -221,6 +223,8 @@ fun GPSTrackerScreen(locationViewModel: LocationViewModel = viewModel()) {
     // State for debug info from HorizontalCompassView
     var debugInfo by remember { mutableStateOf(CompassDebugInfo()) }
 
+    var isStaticCompass by remember { mutableStateOf(false) }
+
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -237,12 +241,20 @@ fun GPSTrackerScreen(locationViewModel: LocationViewModel = viewModel()) {
         Spacer(modifier = Modifier.height(24.dp))
 
         // Main Compass (Big Circular)
-        CompassView(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(300.dp)
-                .align(Alignment.CenterHorizontally)
-        )
+        Crossfade(targetState = isStaticCompass, label = "CompassSwitch") { isStatic ->
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(300.dp)
+                    .clickable { isStaticCompass = !isStaticCompass } // Toggle compass on tap
+            ) {
+                if (isStatic) {
+                    CompassViewStatic(modifier = Modifier.fillMaxSize())
+                } else {
+                    CompassView(modifier = Modifier.fillMaxSize())
+                }
+            }
+        }
 
         Spacer(modifier = Modifier.height(24.dp))
 
