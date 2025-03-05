@@ -20,7 +20,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -31,7 +30,6 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import kotlinx.coroutines.delay
 import kotlin.math.roundToInt
 
 fun getHorizontalActiveDirection(azimuth: Float): String {
@@ -99,51 +97,44 @@ fun HorizontalCompassView(
     // Define the LazyListState
     val lazyListState = rememberLazyListState()
 
-    // Store last known valid viewport width
+    // Store the last known valid viewport width
     var lastViewportWidth by remember { mutableFloatStateOf(0f) }
 
-    // Track viewport width safely
     val viewportWidthPx by remember {
         derivedStateOf {
             lazyListState.layoutInfo.viewportSize.width.takeIf { it > 0 }?.toFloat() ?: lastViewportWidth
         }
     }
 
-    // Ensure viewport width is stored safely
+    // Store the viewport width safely without unnecessary recompositions
     LaunchedEffect(viewportWidthPx) {
         if (viewportWidthPx > 0) {
             lastViewportWidth = viewportWidthPx
         }
     }
 
-    // **Avoid execution if viewport is unavailable**
+    // Prevent execution when viewport is unavailable
     // if (viewportWidthPx == 0f) return
 
-    val totalAzimuthRange = 360f
+    val totalAzimuthRange = 360f  // Full compass rotation
+    val adjustedAzimuth = ((azimuth + 360) % 360).roundToInt() - 90
 
-    // **Force compass to start from NORTH at launch**
-    var forceNorth by remember { mutableStateOf(true) }
-    val initialAzimuth = if (forceNorth) 0f else azimuth
-
-    val adjustedAzimuth = ((initialAzimuth + 360) % 360).roundToInt()
+    // Map azimuth to viewport width properly
     val scaledAzimuth = (adjustedAzimuth / totalAzimuthRange) * viewportWidthPx
-    val currentDirection = getHorizontalActiveDirection(initialAzimuth)
 
-    // Prevent redundant scrolling
+    val currentDirection = getHorizontalActiveDirection(azimuth)
+
+    // Prevent redundant scrolling by tracking last target index and time
     var lastTargetIndex by remember { mutableIntStateOf(-1) }
     var lastScrollTime by remember { mutableLongStateOf(0L) }
 
-    // Track first visible index
+    // Get the currently visible index to avoid unnecessary scrolling
     val currentVisibleIndex by remember {
         derivedStateOf { lazyListState.firstVisibleItemIndex }
     }
 
-    // **Ensure compass starts at North**
-    if (forceNorth && currentVisibleIndex != 0) {
-        LaunchedEffect(Unit) {
-            lazyListState.scrollToItem(0)
-        }
-    }
+    // Prevent execution at launch only if we are at Index 0 AND azimuth is still 0
+    if (adjustedAzimuth == 0 && currentVisibleIndex == 0) return
 
     Log.d("CompassView", "Azimuth: $azimuth, Adjusted: $adjustedAzimuth, Scaled: $scaledAzimuth, Direction: $currentDirection")
 
@@ -282,10 +273,7 @@ fun HorizontalCompassView(
 
         // Now that itemWidthPx is a known constant, we can do the auto-scroll
         LaunchedEffect(targetIndex, itemWidthPx, viewportWidthPx) {
-            // Ensure LazyList is fully initialized before attempting scroll
-            if (viewportWidthPx > 0 && itemWidthPx > 0 && targetIndex < extendedMarks.size &&
-                lazyListState.layoutInfo.totalItemsCount > 0) {
-
+            if (viewportWidthPx > 0 && itemWidthPx > 0 && targetIndex < extendedMarks.size && lazyListState.layoutInfo.totalItemsCount > 0) {
                 val selectedAngle = extendedMarks[targetIndex].displayAngle
                 val selectedAngle360 = ((selectedAngle % 360) + 360) % 360
 
@@ -295,21 +283,19 @@ fun HorizontalCompassView(
                 // Debug logs to track updates
                 Log.d(
                     "CompassScroll",
-                    "Viewport: $viewportWidthPx, Target Index: $targetIndex, Selected Angle: $selectedAngle360, " +
-                            "Scaled: $scaledAzimuth, Selected Angle Px: $selectedAnglePx"
+                    "Viewport: $viewportWidthPx, Target Index: $targetIndex, Selected Angle: $selectedAngle360, Scaled: $scaledAzimuth, Selected Angle Px: $selectedAnglePx"
                 )
 
                 val currentTime = System.currentTimeMillis()
                 val timeSinceLastScroll = currentTime - lastScrollTime
 
-                // Ensure no redundant scrolling, add debounce (400ms)
+                // Prevent redundant scrolling (debounce: 400ms)
                 if (lastTargetIndex != targetIndex && timeSinceLastScroll > 400) {
                     lastTargetIndex = targetIndex  // Store last target index
                     lastScrollTime = currentTime   // Store last scroll time
 
                     val centerOffset = (viewportWidthPx - itemWidthPx) / 2
 
-                    // Ensure the debug callback is always updated
                     onDebugInfoUpdated(
                         CompassDebugInfo(
                             currentIndex = targetIndex,
@@ -319,14 +305,7 @@ fun HorizontalCompassView(
                         )
                     )
 
-                    // **Ensure initial scroll starts at North, then transitions**
-                    if (forceNorth) {
-                        lazyListState.scrollToItem(0) // Start at North
-                        delay(500)  // Allow UI to settle before transition
-                        forceNorth = false
-                    }
-
-                    // **Only scroll if not already at the target**
+                    // **Only scroll if we're not already at the target**
                     if (currentVisibleIndex != targetIndex) {
                         lazyListState.animateScrollToItem(targetIndex, centerOffset.toInt())
                     }
