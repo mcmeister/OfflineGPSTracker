@@ -125,15 +125,7 @@ fun HorizontalCompassView(
     // if (viewportWidthPx == 0f) return
 
     val totalAzimuthRange = 360f  // Full compass rotation
-
-    val threshold = 1.5f  // Degrees (adjust as needed)
-
-    val filteredAzimuth by remember {
-        derivedStateOf {
-            if (kotlin.math.abs(azimuth - smoothedAzimuth) > threshold) azimuth else smoothedAzimuth
-        }
-    }
-    val adjustedAzimuth = ((filteredAzimuth + 360) % 360).roundToInt() - 90
+    val adjustedAzimuth = ((azimuth + 360) % 360).roundToInt() - 90
 
     // Map azimuth to viewport width properly
     val scaledAzimuth = (adjustedAzimuth / totalAzimuthRange) * viewportWidthPx
