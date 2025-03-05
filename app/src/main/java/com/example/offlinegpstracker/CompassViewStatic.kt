@@ -96,11 +96,11 @@ fun DirectionLettersStatic(azimuth: Float) {
         TextDirectionStatic("E", activeDirection == "E", Modifier.offset(x = 120.dp))    // Moves right
         TextDirectionStatic("W", activeDirection == "W", Modifier.offset(x = (-120).dp)) // Moves left
 
-        // Diagonal Directions (NW, NE, SW, SE) - Moved further & rotated left
-        TextDirectionRotatedStatic("NE", activeDirection == "NE", Modifier.offset(x = 90.dp, y = (-90).dp))
-        TextDirectionRotatedStatic("NW", activeDirection == "NW", Modifier.offset(x = (-90).dp, y = (-90).dp))
-        TextDirectionRotatedStatic("SE", activeDirection == "SE", Modifier.offset(x = 90.dp, y = 90.dp))
-        TextDirectionRotatedStatic("SW", activeDirection == "SW", Modifier.offset(x = (-90).dp, y = 90.dp))
+        // Diagonal Directions (NW, NE, SW, SE) - Moved further & rotated appropriately
+        TextDirectionRotatedStatic("NE", activeDirection == "NE", 30f, Modifier.offset(x = 90.dp, y = (-90).dp))
+        TextDirectionRotatedStatic("NW", activeDirection == "NW", -30f, Modifier.offset(x = (-90).dp, y = (-90).dp))
+        TextDirectionRotatedStatic("SE", activeDirection == "SE", 30f, Modifier.offset(x = 90.dp, y = 90.dp))
+        TextDirectionRotatedStatic("SW", activeDirection == "SW", -30f, Modifier.offset(x = (-90).dp, y = 90.dp))
     }
 }
 
@@ -116,15 +116,15 @@ fun TextDirectionStatic(letter: String, isActive: Boolean, modifier: Modifier) {
     )
 }
 
-// Rotated diagonal letters (for NE, NW, SE, SW) - Now rotated 30° left
+// Rotated diagonal letters (for NW, NE, SW, SE) - Allows different rotation values
 @Composable
-fun TextDirectionRotatedStatic(letter: String, isActive: Boolean, modifier: Modifier) {
+fun TextDirectionRotatedStatic(letter: String, isActive: Boolean, rotation: Float, modifier: Modifier) {
     Text(
         text = letter,
         fontSize = 18.sp,
         fontWeight = FontWeight.Bold,
         color = if (isActive) Color.Red else Color.Black,
-        modifier = modifier.graphicsLayer(rotationZ = -30f) // Rotated 30° left
+        modifier = modifier.graphicsLayer(rotationZ = rotation) // Apply rotation dynamically
     )
 }
 
