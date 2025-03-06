@@ -5,6 +5,7 @@ import android.util.Log
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.width
@@ -34,51 +35,23 @@ import kotlin.math.roundToInt
 
 fun getHorizontalActiveDirection(azimuth: Float): String {
     val adjustedAzimuth = ((azimuth + 360) % 360).toInt()
-    // Log.d("CompassDirection", "Azimuth: $azimuth, Adjusted Azimuth: $adjustedAzimuth")
     return when (adjustedAzimuth) {
-        in 337..360, in 0..22 -> {
-            // Log.d("CompassDirection", "Returning N for $adjustedAzimuth")
-            "N"
-        }
-        in 23..67 -> {
-            // Log.d("CompassDirection", "Returning NE for $adjustedAzimuth")
-            "NE"
-        }
-        in 68..112 -> {
-            // Log.d("CompassDirection", "Returning E for $adjustedAzimuth")
-            "E"
-        }
-        in 113..157 -> {
-            // Log.d("CompassDirection", "Returning SE for $adjustedAzimuth")
-            "SE"
-        }
-        in 158..202 -> {
-            // Log.d("CompassDirection", "Returning S for $adjustedAzimuth")
-            "S"
-        }
-        in 203..247 -> {
-            // Log.d("CompassDirection", "Returning SW for $adjustedAzimuth")
-            "SW"
-        }
-        in 248..292 -> {
-            // Log.d("CompassDirection", "Returning W for $adjustedAzimuth")
-            "W"
-        }
-        in 293..336 -> {
-            // Log.d("CompassDirection", "Returning NW for $adjustedAzimuth")
-            "NW"
-        }
-        else -> {
-            // Log.d("CompassDirection", "Defaulting to N for $adjustedAzimuth")
-            "N" // Default case
-        }
+        in 337..360, in 0..22 -> "N"
+        in 23..67 -> "NE"
+        in 68..112 -> "E"
+        in 113..157 -> "SE"
+        in 158..202 -> "S"
+        in 203..247 -> "SW"
+        in 248..292 -> "W"
+        in 293..336 -> "NW"
+        else -> "N"
     }
 }
 
 data class CompassMark(
     val extendedAngle: Float,  // includes cycle offset, e.g. 405°, 765°, etc.
     val displayAngle: Float,   // the base or separator angle (0°, 11.25°, 45°, etc.)
-    val label: String = ""     // e.g. "N", "NE", "S", or empty for separators
+    val label: String = ""     // e.g. "N", "NE", or empty for separators
 )
 
 data class CompassDebugInfo(
@@ -121,9 +94,6 @@ fun HorizontalCompassView(
         }
     }
 
-    // Prevent execution when viewport is unavailable
-    // if (viewportWidthPx == 0f) return
-
     val totalAzimuthRange = 360f  // Full compass rotation
     val adjustedAzimuth = ((azimuth + 360) % 360).roundToInt() - 90
 
@@ -146,10 +116,8 @@ fun HorizontalCompassView(
 
     Log.d("CompassView", "Azimuth: $azimuth, Adjusted: $adjustedAzimuth, Scaled: $scaledAzimuth, Direction: $currentDirection")
 
-    // We no longer measure NW dynamically, so remove directionWidths
-    // and rely on a fixed item width instead.
+    // Use fixed item width of 25.dp for both labels and separators (for auto-scroll calculations)
     val itemWidthDp = 25.dp
-    // Convert our chosen DP to pixels for scrolling calculations:
     val itemWidthPx = with(LocalDensity.current) { itemWidthDp.roundToPx() }
 
     // Generate compass marks (major directions & separators)
@@ -160,16 +128,15 @@ fun HorizontalCompassView(
     repeat(cycles) { cycle ->
         val cycleOffset = cycle * 360f
 
-        // For each major interval, also generate 3 in-between ticks
+        // For each major interval, generate 1 main label + 3 separator ticks.
         majorDegrees.forEach { baseAngle ->
             val steps = 4  // 0..3
             val stepAngle = 45f / steps
 
             for (j in 0 until steps) {
                 val angle = baseAngle + j * stepAngle + cycleOffset
-                // Always get the direction label for ANY angle
-                val label = getHorizontalActiveDirection(angle)
-
+                // Only the first tick in each group gets a label; the rest are separators.
+                val label = if (j == 0) getHorizontalActiveDirection(angle) else ""
                 extendedMarks.add(
                     CompassMark(
                         extendedAngle = angle,
@@ -184,26 +151,20 @@ fun HorizontalCompassView(
     // 1) Convert your real adjustedAzimuth into a 0–360 float
     val az = scaledAzimuth
 
-    // 2) For debugging, log each item’s extendedAngle, label, difference from az
+    // Debug logging for each mark (unchanged)
     for (i in extendedMarks.indices) {
         val rawAngle = extendedMarks[i].extendedAngle
         val label = extendedMarks[i].label
-        // Convert to 0..360
         val angle360 = ((rawAngle % 360) + 360) % 360
-        // Compute difference from user's az
         val diff = kotlin.math.abs(angle360 - az)
-
-        // Log.d(
-        //     "CompassDebug",
-        //     "Item $i → extendedAngle=$rawAngle, angle360=$angle360, label='$label', diff=$diff"
-        // )
+        // Debug log commented out
     }
 
-    // 3) Then pick the item with the smallest diff
+    // 3) Pick the item with the smallest diff
     val targetIndex = extendedMarks.indices.minByOrNull { i ->
         val angle360 = ((extendedMarks[i].extendedAngle % 360) + 360) % 360
         val diff = kotlin.math.abs(angle360 - adjustedAzimuth)
-        if (diff > 180) 360 - diff else diff  // Ensure closest wrap-around angle
+        if (diff > 180) 360 - diff else diff
     } ?: 0
 
     Log.d(
@@ -215,7 +176,7 @@ fun HorizontalCompassView(
                 "Current Direction: $currentDirection"
     )
 
-    // Main container
+    // Main container with background and centering arrow overlay
     Box(
         modifier = Modifier
             .fillMaxWidth()
@@ -226,7 +187,7 @@ fun HorizontalCompassView(
                 ),
                 shape = RoundedCornerShape(8.dp)
             ),
-        contentAlignment = Alignment.Center // Added for consistent centering
+        contentAlignment = Alignment.Center
     ) {
         LazyRow(
             state = lazyListState,
@@ -236,74 +197,68 @@ fun HorizontalCompassView(
             userScrollEnabled = false
         ) {
             itemsIndexed(extendedMarks) { index, mark ->
+                // A mark is a major direction if its label is not empty; otherwise it's a separator.
                 val isMajorDirection = mark.label.isNotEmpty()
-                val isMiddleSeparator = (index % 4 == 2) // optional style
-
                 Box(
                     modifier = Modifier
-                        .width(40.dp)
-                        .height(
-                            if (isMajorDirection) 40.dp
-                            else if (isMiddleSeparator) 40.dp
-                            else 20.dp
-                        )
-                    // Removed .padding(horizontal = 4.dp) for perfect centering
+                        .width(itemWidthDp) // Use fixed width of 25.dp for both labels and separators
+                        .height(40.dp)      // Fixed container height for consistent alignment
                 ) {
-                    // Convert displayAngle to [0..359] range for UI
-                    val modAngle = ((mark.displayAngle % 360) + 360) % 360
-                    val displayAngleInt = modAngle.roundToInt()
-
                     if (isMajorDirection) {
-                        val textToShow = if (mark.label == currentDirection) {
-                            "$adjustedAzimuth° ${mark.label}"
-                        } else {
-                            "$displayAngleInt° ${mark.label}"
+                        // For major directions, show a Column with the degree and the letter.
+                        val modAngle = ((mark.displayAngle % 360) + 360) % 360
+                        val displayAngleInt = modAngle.roundToInt()
+                        val degreeText = if (mark.label == currentDirection) "$adjustedAzimuth°" else "$displayAngleInt°"
+                        Column(
+                            modifier = Modifier.align(Alignment.Center),
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                            Text(
+                                text = degreeText,
+                                fontSize = 8.sp, // Reduced font size for degrees
+                                color = Color.LightGray
+                            )
+                            Text(
+                                text = mark.label,
+                                fontSize = if (mark.label == currentDirection) 18.sp else 14.sp,
+                                color = if (mark.label == currentDirection) Color.Red else Color.White
+                            )
                         }
-
-                        Text(
-                            text = textToShow,
-                            fontSize = if (mark.label == currentDirection) 18.sp else 14.sp,
-                            color = if (mark.label == currentDirection) Color.Red else Color.White,
-                            modifier = Modifier.align(Alignment.Center)
-                        )
                     } else {
-                        val sepAngleText = "${displayAngleInt}°"
-                        Text(
-                            text = sepAngleText,
-                            fontSize = 12.sp,
-                            color = Color.LightGray,
-                            modifier = Modifier.align(Alignment.Center)
+                        // For separators, draw a vertical line.
+                        // Determine which separator based on index % 4:
+                        //  - Type 2 (middle): longer line, white.
+                        //  - Types 1 and 3: shorter line, grey.
+                        val separatorType = index % 4
+                        val lineHeight = if (separatorType == 2) 40.dp else 20.dp
+                        val lineColor = if (separatorType == 2) Color.White else Color.Gray
+                        Box(
+                            modifier = Modifier
+                                .align(Alignment.Center)
+                                .width(2.dp) // Adjust thickness as needed
+                                .height(lineHeight)
+                                .background(lineColor)
                         )
                     }
                 }
             }
         }
 
-        // Now that itemWidthPx is a known constant, we can do the auto-scroll
+        // Auto-scroll logic (unchanged)
         LaunchedEffect(targetIndex, itemWidthPx, viewportWidthPx) {
             if (viewportWidthPx > 0 && itemWidthPx > 0 && targetIndex < extendedMarks.size && lazyListState.layoutInfo.totalItemsCount > 0) {
                 val selectedAngle = extendedMarks[targetIndex].displayAngle
                 val selectedAngle360 = ((selectedAngle % 360) + 360) % 360
-
-                // Convert selected angle to pixels
-                val selectedAnglePx = (selectedAngle360 / totalAzimuthRange) * viewportWidthPx
-
-                // Debug logs to track updates
                 Log.d(
                     "CompassScroll",
-                    "Viewport: $viewportWidthPx, Target Index: $targetIndex, Selected Angle: $selectedAngle360, Scaled: $scaledAzimuth, Selected Angle Px: $selectedAnglePx"
+                    "Viewport: $viewportWidthPx, Target Index: $targetIndex, Selected Angle: $selectedAngle360, Scaled: $scaledAzimuth"
                 )
-
                 val currentTime = System.currentTimeMillis()
                 val timeSinceLastScroll = currentTime - lastScrollTime
-
-                // Prevent redundant scrolling (debounce: 400ms)
                 if (lastTargetIndex != targetIndex && timeSinceLastScroll > 400) {
-                    lastTargetIndex = targetIndex  // Store last target index
-                    lastScrollTime = currentTime   // Store last scroll time
-
+                    lastTargetIndex = targetIndex
+                    lastScrollTime = currentTime
                     val centerOffset = (viewportWidthPx - itemWidthPx) / 2
-
                     onDebugInfoUpdated(
                         CompassDebugInfo(
                             currentIndex = targetIndex,
@@ -312,8 +267,6 @@ fun HorizontalCompassView(
                             currentDirectionWidth = itemWidthPx
                         )
                     )
-
-                    // **Only scroll if we're not already at the target**
                     if (currentVisibleIndex != targetIndex) {
                         lazyListState.animateScrollToItem(targetIndex, centerOffset.toInt())
                     }
@@ -321,7 +274,7 @@ fun HorizontalCompassView(
             }
         }
 
-        // Overlay the center arrow
+        // Overlay the center arrow (unchanged)
         Image(
             painter = painterResource(id = R.drawable.red_arrow),
             contentDescription = "Compass Arrow",
