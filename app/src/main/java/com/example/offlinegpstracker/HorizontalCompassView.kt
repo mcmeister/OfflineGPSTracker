@@ -106,8 +106,10 @@ fun HorizontalCompassView(
     }
 
     // Define the LazyListState
-    val baseCycleCount = extendedMarks.size / cycles
-    val initialIndex = baseCycleCount  // beginning of the middle cycle
+    val baseCycleCount = extendedMarks.size / cycles // e.g. totalItems / 3
+    // Start in the middle cycle so that the “real” directions are front and center
+    val initialIndex = baseCycleCount
+
     val lazyListState = rememberLazyListState(initialFirstVisibleItemIndex = initialIndex)
 
     // Store the last known valid viewport width
@@ -252,47 +254,75 @@ fun HorizontalCompassView(
         LaunchedEffect(targetIndex, itemWidthPx, viewportWidthPx) {
             if (viewportWidthPx > 0 && itemWidthPx > 0 &&
                 targetIndex < extendedMarks.size &&
-                lazyListState.layoutInfo.totalItemsCount > 0) {
-
-                // Get the target marker's normalized angle.
+                lazyListState.layoutInfo.totalItemsCount > 0
+            ) {
+                // 1) Identify current and next angles (normalized).
                 val currentMark = extendedMarks[targetIndex]
-                val currentMarkNormalized = ((currentMark.displayAngle % 360) + 360) % 360
+                val currentAngle = ((currentMark.displayAngle % 360) + 360) % 360
 
-                // Determine the next marker for interpolation.
+                // For the next index, wrap around if we're at the end.
                 val nextIndex = if (targetIndex == extendedMarks.lastIndex) targetIndex else targetIndex + 1
                 var nextAngle = ((extendedMarks[nextIndex].displayAngle % 360) + 360) % 360
-                // Adjust for wrap-around (e.g., from 350° to 10°).
-                if (nextAngle <= currentMarkNormalized) {
+
+                // If nextAngle < currentAngle, add 360 so we measure forward progress
+                if (nextAngle < currentAngle) {
                     nextAngle += 360f
                 }
 
-                // Adjust current azimuth if needed so it lies in the same cycle.
-                var currentAzimuthForCalc = adjustedAzimuth.toFloat()
-                if (currentAzimuthForCalc < currentMarkNormalized) {
-                    currentAzimuthForCalc += 360f
+                // 2) Also normalize the user’s azimuth to the same “cycle” so fraction is positive
+                val azimuthForCalc = adjustedAzimuth.toFloat()
+                val rawDiff = azimuthForCalc - currentAngle
+
+                // 2) If rawDiff < -180, it means azimuthForCalc is more than 180° behind currentAngle,
+                //    so add 360 to bring it forward into the same cycle.
+                //    If rawDiff > 180, it means azimuthForCalc is more than 180° ahead, subtract 360.
+                val fixedAzimuthForCalc = when {
+                    rawDiff < -180f -> azimuthForCalc + 360f
+                    rawDiff > 180f  -> azimuthForCalc - 360f
+                    else -> azimuthForCalc
                 }
 
-                // Calculate the fraction between current marker and next marker.
-                val fraction = ((currentAzimuthForCalc - currentMarkNormalized) / (nextAngle - currentMarkNormalized)).coerceIn(0f, 1f)
+                // 3) Compute fraction between currentAngle and nextAngle
+                val segmentSize = nextAngle - currentAngle
+                // If segmentSize is 0 (edge case), just treat fraction as 0
+                val fraction = if (segmentSize == 0f) {
+                    0f
+                } else {
+                    ((fixedAzimuthForCalc - currentAngle) / segmentSize).coerceIn(0f, 1f)
+                }
 
-                // The refined virtual index is targetIndex plus the fractional progress.
-                val refinedItemIndex = targetIndex + fraction
+                // Ensure fraction is within [0..1]
+                val clampedFraction = fraction.coerceIn(0f, 1f)
 
-                // Calculate the total scroll offset in pixels.
-                val refinedScrollOffset = refinedItemIndex * itemWidthPx - ((viewportWidthPx - itemWidthPx) / 2)
+                // 4) Compute the refined “virtual index”: targetIndex + fraction
+                val refinedIndex = targetIndex + clampedFraction
 
+                // 5) Convert refinedIndex to an absolute scroll offset in pixels
+                //    Subtract half the viewport so the item is centered
+                val refinedScrollPx = refinedIndex * itemWidthPx - (viewportWidthPx - itemWidthPx) / 2f
+
+                // Logging
                 Log.d(
                     "CompassScroll",
-                    "Viewport: $viewportWidthPx, Target Index: $targetIndex, " +
-                            "Refined Index: $refinedItemIndex, Scroll Offset: $refinedScrollOffset, " +
-                            "Adjusted Azimuth: $adjustedAzimuth"
+                    """
+            |Viewport: $viewportWidthPx
+            |targetIndex: $targetIndex
+            |currentAngle: $currentAngle
+            |nextAngle: $nextAngle
+            |azimuthForCalc: $azimuthForCalc
+            |fraction: $clampedFraction
+            |refinedIndex: $refinedIndex
+            |refinedScrollPx: $refinedScrollPx
+            """.trimMargin()
                 )
 
+                // 6) Debounce logic
                 val currentTime = System.currentTimeMillis()
                 val timeSinceLastScroll = currentTime - lastScrollTime
                 if (lastTargetIndex != targetIndex && timeSinceLastScroll > 400) {
                     lastTargetIndex = targetIndex
                     lastScrollTime = currentTime
+
                     val centerOffset = (viewportWidthPx - itemWidthPx) / 2
                     onDebugInfoUpdated(
                         CompassDebugInfo(
@@ -303,10 +333,15 @@ fun HorizontalCompassView(
                         )
                     )
 
-                    // Break the refined index into an integer base and an additional pixel offset.
-                    val baseIndex = refinedItemIndex.toInt()
-                    val extraOffset = ((refinedItemIndex - baseIndex) * itemWidthPx).toInt()
-                    lazyListState.animateScrollToItem(baseIndex, extraOffset)
+                    // 7) Animate scroll to the refined offset
+                    //    We can break refinedScrollPx into:
+                    //       baseItemIndex = floor(refinedIndex)
+                    //       extraPxOffset = fractionOfIndex * itemWidthPx
+                    val baseIndex = refinedIndex.toInt().coerceIn(0, extendedMarks.size - 1)
+                    val offsetPx = ((refinedIndex - baseIndex) * itemWidthPx).toInt()
+
+                    // Ensure offsetPx is within item bounds
+                    lazyListState.animateScrollToItem(baseIndex, offsetPx)
                 }
             }
         }

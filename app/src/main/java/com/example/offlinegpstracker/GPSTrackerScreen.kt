@@ -220,9 +220,6 @@ fun GPSTrackerScreen(locationViewModel: LocationViewModel = viewModel()) {
     // Calculate current direction
     val currentDirection = getHorizontalActiveDirection(azimuth)
 
-    // State for debug info from HorizontalCompassView
-    var debugInfo by remember { mutableStateOf(CompassDebugInfo()) }
-
     var isStaticCompass by remember { mutableStateOf(false) }
 
     Column(
@@ -266,15 +263,6 @@ fun GPSTrackerScreen(locationViewModel: LocationViewModel = viewModel()) {
 
         Spacer(modifier = Modifier.height(8.dp))
 
-        // Display Debug Info from HorizontalCompassView
-        Text(
-            text = "Debug - Index: ${debugInfo.currentIndex}, Offset: ${debugInfo.centerOffset}, Viewport: ${debugInfo.viewportWidth}, Direction Width: ${debugInfo.currentDirectionWidth}",
-            modifier = Modifier.align(Alignment.CenterHorizontally),
-            color = Color.Gray // Optional: Make debug text gray for distinction
-        )
-
-        Spacer(modifier = Modifier.height(8.dp))
-
         // Fixed Box for Horizontal Compass
         Box(
             modifier = Modifier
@@ -282,7 +270,7 @@ fun GPSTrackerScreen(locationViewModel: LocationViewModel = viewModel()) {
                 .height(80.dp),
             contentAlignment = Alignment.Center
         ) {
-            HorizontalCompassView(azimuth = azimuth) { debugInfo = it }
+            CompassViewRound(azimuth = azimuth)
         }
 
         Spacer(modifier = Modifier.height(24.dp))

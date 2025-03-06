@@ -87,20 +87,30 @@ fun DirectionLettersStatic(azimuth: Float) {
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .graphicsLayer(rotationZ = -azimuth), // Rotate letters around the compass
+            .graphicsLayer(rotationZ = -azimuth), // Rotate all letters around the compass
         contentAlignment = Alignment.Center
     ) {
-        // Cardinal Directions (N, S, E, W) - Moved further away from center
-        TextDirectionStatic("N", activeDirection == "N", Modifier.offset(y = (-120).dp))  // Moves up
-        TextDirectionStatic("S", activeDirection == "S", Modifier.offset(y = 120.dp))    // Moves down
-        TextDirectionStatic("E", activeDirection == "E", Modifier.offset(x = 120.dp))    // Moves right
-        TextDirectionStatic("W", activeDirection == "W", Modifier.offset(x = (-120).dp)) // Moves left
+        // Cardinal Directions (N, S, E, W) - Apply rotation to align bottom to center
+        TextDirectionStatic("N", activeDirection == "N", Modifier
+            .offset(y = (-120).dp)
+            .graphicsLayer(rotationZ = 0f))  // No rotation needed for N
 
-        // Diagonal Directions (NW, NE, SW, SE) - Moved further & rotated appropriately
-        TextDirectionRotatedStatic("NE", activeDirection == "NE", 30f, Modifier.offset(x = 90.dp, y = (-90).dp))
-        TextDirectionRotatedStatic("NW", activeDirection == "NW", -30f, Modifier.offset(x = (-90).dp, y = (-90).dp))
-        TextDirectionRotatedStatic("SE", activeDirection == "SE", 30f, Modifier.offset(x = 90.dp, y = 90.dp))
-        TextDirectionRotatedStatic("SW", activeDirection == "SW", -30f, Modifier.offset(x = (-90).dp, y = 90.dp))
+        TextDirectionStatic("S", activeDirection == "S", Modifier
+            .offset(y = 120.dp)
+            .graphicsLayer(rotationZ = 180f))  // Rotate 180° for S
+
+        TextDirectionStatic("E", activeDirection == "E", Modifier
+            .offset(x = 120.dp)
+            .graphicsLayer(rotationZ = 90f))  // Rotate 90° for E
+
+        TextDirectionStatic("W", activeDirection == "W", Modifier
+            .offset(x = (-120).dp)
+            .graphicsLayer(rotationZ = -90f))  // Rotate -90° for W
+
+        TextDirectionRotatedStatic("NW", "NW" == activeDirection, -45f, Modifier.offset(x = (-80).dp, y = (-80).dp))
+        TextDirectionRotatedStatic("NE", "NE" == activeDirection, 45f, Modifier.offset(x = 80.dp, y = (-80).dp))
+        TextDirectionRotatedStatic("SW", "SW" == activeDirection, 225f, Modifier.offset(x = (-80).dp, y = 80.dp))
+        TextDirectionRotatedStatic("SE", "SE" == activeDirection, -225f, Modifier.offset(x = 80.dp, y = 80.dp))
     }
 }
 
