@@ -75,8 +75,40 @@ fun HorizontalCompassView(
         smoothedAzimuth = (alpha * azimuth) + (1 - alpha) * smoothedAzimuth
     }
 
+    // Generate compass marks (major directions & separators) for three cycles
+    val extendedMarks = mutableListOf<CompassMark>()
+    val majorDegrees = listOf(0f, 45f, 90f, 135f, 180f, 225f, 270f, 315f)
+    val cycles = 3
+
+    repeat(cycles) { cycle ->
+        val cycleOffset = cycle * 360f
+        // For each major interval, generate 1 main label + 3 separator ticks.
+        majorDegrees.forEach { baseAngle ->
+            val steps = 4  // 0..3
+            val stepAngle = 45f / steps
+
+            for (j in 0 until steps) {
+                // The raw angle in this cycle:
+                val angle = baseAngle + j * stepAngle + cycleOffset
+                // Normalize for display: every cycle should show the same label for the same angle modulo 360
+                val normalizedAngle = ((angle % 360) + 360) % 360
+                // Only the first tick in each group gets a label; the rest are separators.
+                val label = if (j == 0) getHorizontalActiveDirection(normalizedAngle) else ""
+                extendedMarks.add(
+                    CompassMark(
+                        extendedAngle = angle,         // keep the full angle (for ordering)
+                        displayAngle = normalizedAngle,  // use normalized angle for label/scroll comparison
+                        label = label
+                    )
+                )
+            }
+        }
+    }
+
     // Define the LazyListState
-    val lazyListState = rememberLazyListState()
+    val baseCycleCount = extendedMarks.size / cycles
+    val initialIndex = baseCycleCount  // beginning of the middle cycle
+    val lazyListState = rememberLazyListState(initialFirstVisibleItemIndex = initialIndex)
 
     // Store the last known valid viewport width
     var lastViewportWidth by remember { mutableFloatStateOf(0f) }
@@ -95,7 +127,7 @@ fun HorizontalCompassView(
     }
 
     val totalAzimuthRange = 360f  // Full compass rotation
-    val adjustedAzimuth = ((azimuth + 360) % 360).roundToInt() - 90
+    val adjustedAzimuth = ((azimuth + 360) % 360).roundToInt()
 
     // Map azimuth to viewport width properly
     val scaledAzimuth = (adjustedAzimuth / totalAzimuthRange) * viewportWidthPx
@@ -119,34 +151,6 @@ fun HorizontalCompassView(
     // Use fixed item width of 25.dp for both labels and separators (for auto-scroll calculations)
     val itemWidthDp = 25.dp
     val itemWidthPx = with(LocalDensity.current) { itemWidthDp.roundToPx() }
-
-    // Generate compass marks (major directions & separators)
-    val extendedMarks = mutableListOf<CompassMark>()
-    val majorDegrees = listOf(0f, 45f, 90f, 135f, 180f, 225f, 270f, 315f)
-    val cycles = 3
-
-    repeat(cycles) { cycle ->
-        val cycleOffset = cycle * 360f
-
-        // For each major interval, generate 1 main label + 3 separator ticks.
-        majorDegrees.forEach { baseAngle ->
-            val steps = 4  // 0..3
-            val stepAngle = 45f / steps
-
-            for (j in 0 until steps) {
-                val angle = baseAngle + j * stepAngle + cycleOffset
-                // Only the first tick in each group gets a label; the rest are separators.
-                val label = if (j == 0) getHorizontalActiveDirection(angle) else ""
-                extendedMarks.add(
-                    CompassMark(
-                        extendedAngle = angle,
-                        displayAngle = angle,
-                        label = label
-                    )
-                )
-            }
-        }
-    }
 
     // 1) Convert your real adjustedAzimuth into a 0–360 float
     val az = scaledAzimuth
@@ -246,13 +250,44 @@ fun HorizontalCompassView(
 
         // Auto-scroll logic (unchanged)
         LaunchedEffect(targetIndex, itemWidthPx, viewportWidthPx) {
-            if (viewportWidthPx > 0 && itemWidthPx > 0 && targetIndex < extendedMarks.size && lazyListState.layoutInfo.totalItemsCount > 0) {
-                val selectedAngle = extendedMarks[targetIndex].displayAngle
-                val selectedAngle360 = ((selectedAngle % 360) + 360) % 360
+            if (viewportWidthPx > 0 && itemWidthPx > 0 &&
+                targetIndex < extendedMarks.size &&
+                lazyListState.layoutInfo.totalItemsCount > 0) {
+
+                // Get the target marker's normalized angle.
+                val currentMark = extendedMarks[targetIndex]
+                val currentMarkNormalized = ((currentMark.displayAngle % 360) + 360) % 360
+
+                // Determine the next marker for interpolation.
+                val nextIndex = if (targetIndex == extendedMarks.lastIndex) targetIndex else targetIndex + 1
+                var nextAngle = ((extendedMarks[nextIndex].displayAngle % 360) + 360) % 360
+                // Adjust for wrap-around (e.g., from 350° to 10°).
+                if (nextAngle <= currentMarkNormalized) {
+                    nextAngle += 360f
+                }
+
+                // Adjust current azimuth if needed so it lies in the same cycle.
+                var currentAzimuthForCalc = adjustedAzimuth.toFloat()
+                if (currentAzimuthForCalc < currentMarkNormalized) {
+                    currentAzimuthForCalc += 360f
+                }
+
+                // Calculate the fraction between current marker and next marker.
+                val fraction = ((currentAzimuthForCalc - currentMarkNormalized) / (nextAngle - currentMarkNormalized)).coerceIn(0f, 1f)
+
+                // The refined virtual index is targetIndex plus the fractional progress.
+                val refinedItemIndex = targetIndex + fraction
+
+                // Calculate the total scroll offset in pixels.
+                val refinedScrollOffset = refinedItemIndex * itemWidthPx - ((viewportWidthPx - itemWidthPx) / 2)
+
                 Log.d(
                     "CompassScroll",
-                    "Viewport: $viewportWidthPx, Target Index: $targetIndex, Selected Angle: $selectedAngle360, Scaled: $scaledAzimuth"
+                    "Viewport: $viewportWidthPx, Target Index: $targetIndex, " +
+                            "Refined Index: $refinedItemIndex, Scroll Offset: $refinedScrollOffset, " +
+                            "Adjusted Azimuth: $adjustedAzimuth"
                 )
+
                 val currentTime = System.currentTimeMillis()
                 val timeSinceLastScroll = currentTime - lastScrollTime
                 if (lastTargetIndex != targetIndex && timeSinceLastScroll > 400) {
@@ -267,9 +302,11 @@ fun HorizontalCompassView(
                             currentDirectionWidth = itemWidthPx
                         )
                     )
-                    if (currentVisibleIndex != targetIndex) {
-                        lazyListState.animateScrollToItem(targetIndex, centerOffset.toInt())
-                    }
+
+                    // Break the refined index into an integer base and an additional pixel offset.
+                    val baseIndex = refinedItemIndex.toInt()
+                    val extraOffset = ((refinedItemIndex - baseIndex) * itemWidthPx).toInt()
+                    lazyListState.animateScrollToItem(baseIndex, extraOffset)
                 }
             }
         }
