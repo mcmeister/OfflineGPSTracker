@@ -95,12 +95,12 @@ fun HorizontalCompassView(
     }
 
     val totalAzimuthRange = 360f  // Full compass rotation
-    val adjustedAzimuth = ((azimuth + 360) % 360).roundToInt() - 90
+    val adjustedAzimuth = ((azimuth + 360) % 360).roundToInt()
 
     // Map azimuth to viewport width properly
     val scaledAzimuth = (adjustedAzimuth / totalAzimuthRange) * viewportWidthPx
 
-    val currentDirection = getHorizontalActiveDirection(azimuth)
+    val currentDirection = getHorizontalActiveDirection(adjustedAzimuth.toFloat())
 
     // Prevent redundant scrolling by tracking last target index and time
     var lastTargetIndex by remember { mutableIntStateOf(-1) }
