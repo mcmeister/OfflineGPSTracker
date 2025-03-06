@@ -48,32 +48,46 @@ fun CompassViewRound(azimuth: Float) {
     }
 
     val currentDirection = getActiveDirectionRound(smoothedAzimuth)
-    var isRoundCompass by remember { mutableStateOf(false) }
+    var compassType by remember { mutableStateOf(CompassType.Round) }
 
-    Crossfade(targetState = isRoundCompass, label = "CompassSwitch") { isRound ->
+    Crossfade(targetState = compassType, label = "CompassSwitch") { type ->
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .clickable { isRoundCompass = !isRoundCompass },
+                .clickable {
+                    compassType = when (compassType) {
+                        CompassType.Round -> CompassType.Horizontal
+                        CompassType.Horizontal -> CompassType.Round
+                    }
+                },
             contentAlignment = Alignment.Center
         ) {
-            if (isRound) {
-                Box(
-                    modifier = Modifier
-                        .size(100.dp)
-                        .background(Color.Black, shape = androidx.compose.foundation.shape.CircleShape),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(
-                        text = currentDirection,
-                        fontSize = 36.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = Color.Red
-                    )
+            when (type) {
+                CompassType.Round -> {
+                    Box(
+                        modifier = Modifier
+                            .size(100.dp)
+                            .background(Color.Black, shape = androidx.compose.foundation.shape.CircleShape),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = currentDirection,
+                            fontSize = 36.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color.Red
+                        )
+                    }
                 }
-            } else {
-                HorizontalCompassView(azimuth = smoothedAzimuth)
+
+                CompassType.Horizontal -> {
+                    HorizontalCompassGauge(azimuth = smoothedAzimuth)
+                }
             }
         }
     }
+}
+
+enum class CompassType {
+    Round,
+    Horizontal
 }
