@@ -10,7 +10,9 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -27,7 +29,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -87,6 +88,14 @@ fun CompassViewRound(modifier: Modifier = Modifier, azimuth: Float) {
         ), label = "side_letter_move"
     )
 
+    val degreeOffset by transition.animateFloat(
+        initialValue = 0f, targetValue = -80f, // Moves left
+        animationSpec = infiniteRepeatable(
+            animation = tween(4000, easing = LinearEasing), // Slower movement for readability
+            repeatMode = RepeatMode.Restart
+        ), label = "degree_scroll"
+    )
+
     Box(
         modifier = modifier
             .fillMaxWidth()
@@ -96,8 +105,8 @@ fun CompassViewRound(modifier: Modifier = Modifier, azimuth: Float) {
     ) {
         Box(
             modifier = Modifier
-                .size(200.dp, 120.dp)
-                .shadow(10.dp, RoundedCornerShape(60.dp))
+                .size(300.dp, 120.dp)
+                // .shadow(10.dp, RoundedCornerShape(60.dp))
                 .background(
                     Brush.linearGradient(
                         colors = listOf(Color(0xFFB0BEC5), Color(0xFF78909C)),
@@ -110,7 +119,7 @@ fun CompassViewRound(modifier: Modifier = Modifier, azimuth: Float) {
             contentAlignment = Alignment.Center
         ) {
             Box(modifier = Modifier.fillMaxSize()) {
-                Canvas(modifier = Modifier.size(180.dp, 100.dp).align(Alignment.Center)) {
+                Canvas(modifier = Modifier.size(280.dp, 100.dp).align(Alignment.Center)) {
                     val tickLength = 10.dp.toPx()
                     val majorTickLength = 20.dp.toPx()
                     val tickColor = Color.White
@@ -163,6 +172,15 @@ fun CompassViewRound(modifier: Modifier = Modifier, azimuth: Float) {
                         modifier = Modifier.offset(x = -sideOffset.dp)
                     )
 
+                    // Next Direction
+                    Text(
+                        text = nextDirection,
+                        fontSize = 24.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color(0xFFFFF9C4),
+                        modifier = Modifier.offset(x = sideOffset.dp)
+                    )
+
                     // Current Direction
                     Text(
                         text = currentDirection,
@@ -170,17 +188,42 @@ fun CompassViewRound(modifier: Modifier = Modifier, azimuth: Float) {
                         fontWeight = FontWeight.Bold,
                         color = Color.Red
                     )
+                }
 
-                    // Next Direction
-                    Text(
-                        text = nextDirection,
-                        fontSize = 24.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = Color(0xFFFFFF8D),
-                        modifier = Modifier.offset(x = sideOffset.dp)
-                    )
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .align(Alignment.BottomCenter)
+                ) {
+                    InfiniteDegreeScroll(azimuth, degreeOffset)
                 }
             }
+        }
+    }
+}
+
+@Composable
+fun InfiniteDegreeScroll(azimuth: Float, degreeOffset: Float) {
+    val degreesRange = (-180..180).toList() // Covers a full rotation
+    val currentDegree = azimuth.toInt()
+
+    val displayedDegrees = remember(currentDegree) {
+        degreesRange.map { (currentDegree + it + 360) % 360 } // Ensures looping
+    }
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .offset(x = degreeOffset.dp), // Moves leftward
+        horizontalArrangement = Arrangement.Center
+    ) {
+        displayedDegrees.forEach { degree ->
+            Text(
+                text = "$degree°",
+                fontSize = 12.sp, // Small text size
+                color = Color.White.copy(alpha = 0.8f),
+                modifier = Modifier.padding(horizontal = 8.dp)
+            )
         }
     }
 }
