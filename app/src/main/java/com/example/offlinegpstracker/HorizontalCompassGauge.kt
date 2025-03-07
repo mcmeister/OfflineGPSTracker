@@ -27,11 +27,12 @@ import kotlin.math.roundToInt
 
 @Composable
 fun HorizontalCompassGauge(azimuth: Float, modifier: Modifier = Modifier) {
-    val gaugeWidthDp = 1000.dp // Gauge width (make this larger than the screen width)
-    val offsetX = with(LocalDensity.current) {
-        // Convert degrees to dp offset, adjust factor as needed for smooth scrolling
-        -(azimuth / 360f) * gaugeWidthDp.toPx()
-    }
+    val gaugeWidthDp = 2500.dp
+    val gaugeWidthPx = with(LocalDensity.current) { gaugeWidthDp.toPx() }
+
+    // Normalize azimuth to [0,360)
+    val normalizedAzimuth = (azimuth + 360) % 360
+    val offsetX = -(normalizedAzimuth / 360f) * gaugeWidthPx
 
     Box(
         modifier = modifier
@@ -47,10 +48,24 @@ fun HorizontalCompassGauge(azimuth: Float, modifier: Modifier = Modifier) {
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceEvenly
         ) {
-            CompassGaugeDirectionLetters()
+            val directions = listOf(
+                "N", "NE", "E", "SE", "S", "SW", "W", "NW",
+                "N", "NE", "E", "SE", "S", "SW", "W", "NW",
+                "N", "NE", "E", "SE", "S", "SW", "W", "NW"
+            )
+
+            directions.forEach { dir ->
+                Text(
+                    text = dir,
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = Color.White,
+                    modifier = Modifier.padding(horizontal = 24.dp)
+                )
+            }
         }
 
-        // Center red arrow
+        // Center red arrow indicator
         Icon(
             Icons.Default.ArrowDropUp,
             contentDescription = "Current Direction",
