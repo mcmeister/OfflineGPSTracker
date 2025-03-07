@@ -14,7 +14,7 @@ class CompassViewModel : ViewModel() {
     private lateinit var sensorManager: SensorManager
     private var accelerometer: Sensor? = null
     private var magnetometer: Sensor? = null
-    var lightX by mutableFloatStateOf(100f)
+    var lightX by mutableFloatStateOf(150f)
     var lightY by mutableFloatStateOf(60f)
 
     fun initialize(context: Context) {
@@ -36,7 +36,7 @@ class CompassViewModel : ViewModel() {
         override fun onSensorChanged(event: SensorEvent?) {
             if (event?.sensor?.type == Sensor.TYPE_ACCELEROMETER) {
                 // Update lightX and lightY based on accelerometer data
-                lightX = 100f + event.values[0] * 10 // Adjust multiplier as needed
+                lightX = 150f + event.values[0] * 10
                 lightY = 60f + event.values[1] * 10
             }
         }
