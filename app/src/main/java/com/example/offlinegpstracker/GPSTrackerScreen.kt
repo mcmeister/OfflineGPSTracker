@@ -252,7 +252,7 @@ fun GPSTrackerScreen(locationViewModel: LocationViewModel = viewModel()) {
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .padding(16.dp)
+            // .padding(16.dp)
             .verticalScroll(rememberScrollState()),
         verticalArrangement = Arrangement.Center,
         horizontalAlignment = Alignment.CenterHorizontally
@@ -273,7 +273,8 @@ fun GPSTrackerScreen(locationViewModel: LocationViewModel = viewModel()) {
                         .height(300.dp)
                         .clickable {
                             compassViewType = (compassViewType + 1) % 3
-                        }
+                        },
+                    contentAlignment = Alignment.Center
                 ) {
                     when (viewType) {
                         0 -> CompassView(modifier = Modifier.fillMaxSize())

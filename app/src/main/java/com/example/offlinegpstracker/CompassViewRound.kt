@@ -57,13 +57,13 @@ fun getActiveDirectionRound(azimuth: Float): String {
 }
 
 fun getNextDirection(azimuth: Float): String {
-    val directions = listOf("N", "NE", "E", "SE", "S", "SW", "W", "NW", "N")
+    val directions = listOf("N", "NE", "E", "SE", "S", "SW", "W", "NW")
     val currentIndex = directions.indexOf(getActiveDirectionRound(azimuth))
     return directions[(currentIndex + 1) % directions.size]
 }
 
 fun getPreviousDirection(azimuth: Float): String {
-    val directions = listOf("N", "NE", "E", "SE", "S", "SW", "W", "NW", "N")
+    val directions = listOf("N", "NE", "E", "SE", "S", "SW", "W", "NW")
     val currentIndex = directions.indexOf(getActiveDirectionRound(azimuth))
     return directions[(currentIndex - 1 + directions.size) % directions.size]
 }
@@ -117,18 +117,20 @@ fun CompassViewRound(modifier: Modifier = Modifier, azimuth: Float) {
         }
     }
 
-    // Outer Box: if contentAlignment is not supported in your Compose version, remove it.
+    // 1) The outer Box fills the entire screen and centers the gauge box.
     Box(
-        modifier = Modifier.fillMaxSize(),  // Fills the entire screen
-        contentAlignment = Alignment.Center  // Centers the child within the screen
+        modifier = Modifier.fillMaxSize(),
+        contentAlignment = Alignment.Center
     ) {
-        // This is your gauge box, now centered on the screen.
+        // 2) The gauge box: fill some fraction of width or a fixed width, plus a fixed height.
+        //    **Add contentAlignment = Alignment.Center** here so children are centered.
         Box(
             modifier = modifier
-                .fillMaxWidth(0.8f)  // Adjust this fraction as needed.
-                .height(120.dp)
+                .fillMaxWidth(0.8f)
+                .height(120.dp),
+            contentAlignment = Alignment.Center // <-- CRITICAL CHANGE
         ) {
-            // Background layer for the gauge background.
+            // --- GAUGE BACKGROUND LAYER ---
             Box(
                 modifier = Modifier
                     .size(300.dp, 120.dp)
@@ -150,7 +152,7 @@ fun CompassViewRound(modifier: Modifier = Modifier, azimuth: Float) {
                     }
             )
 
-            // Metallic overlay background layer.
+            // --- METALLIC OVERLAY LAYER ---
             Box(
                 modifier = Modifier
                     .size(300.dp, 120.dp)
@@ -183,7 +185,7 @@ fun CompassViewRound(modifier: Modifier = Modifier, azimuth: Float) {
                     }
             )
 
-            // Glass cover overlay (transparent).
+            // --- GLASS COVER (TRANSPARENT) ---
             Box(
                 modifier = Modifier
                     .matchParentSize()
@@ -212,7 +214,7 @@ fun CompassViewRound(modifier: Modifier = Modifier, azimuth: Float) {
                     )
             )
 
-            // Gauge elements (ticks, needle, and text) drawn on top using a higher z-index.
+            // --- GAUGE ELEMENTS (TICKS, LETTERS) ON TOP ---
             Box(
                 modifier = Modifier
                     .fillMaxSize()
@@ -231,10 +233,8 @@ fun CompassViewRound(modifier: Modifier = Modifier, azimuth: Float) {
                         val angleRad = Math.toRadians(i.toDouble())
                         val startLength = if (i % 90 == 0) majorTickLength else tickLength
 
-                        val startX =
-                            (size.width / 2 + cos(angleRad) * (size.width / 2 - startLength)).toFloat()
-                        val startY =
-                            (size.height / 2 + sin(angleRad) * (size.height / 2 - startLength)).toFloat()
+                        val startX = (size.width / 2 + cos(angleRad) * (size.width / 2 - startLength)).toFloat()
+                        val startY = (size.height / 2 + sin(angleRad) * (size.height / 2 - startLength)).toFloat()
                         val endX = (size.width / 2 + cos(angleRad) * (size.width / 2)).toFloat()
                         val endY = (size.height / 2 + sin(angleRad) * (size.height / 2)).toFloat()
 
@@ -248,9 +248,7 @@ fun CompassViewRound(modifier: Modifier = Modifier, azimuth: Float) {
                 }
 
                 // Centered text for previous, next, and current directions.
-                Box(
-                    modifier = Modifier.fillMaxSize()
-                ) {
+                Box(modifier = Modifier.fillMaxSize()) {
                     // Previous direction, moving left from the center
                     Text(
                         text = prevDirection,
