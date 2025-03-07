@@ -5,7 +5,6 @@ import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 
 // Define the DataStore instance
@@ -29,10 +28,4 @@ class UserPreferences(private val context: Context) {
         }
     }
 
-    // Fetch synchronously (for debugging if needed)
-    suspend fun getCompassType(): Int {
-        return context.dataStore.data.map { preferences ->
-            preferences[COMPASS_TYPE_KEY] ?: 0
-        }.first()
-    }
 }
