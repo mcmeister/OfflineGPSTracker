@@ -69,10 +69,26 @@ fun getPreviousDirection(azimuth: Float): String {
 @Composable
 fun CompassViewRound(modifier: Modifier = Modifier, azimuth: Float) {
     var smoothedAzimuth by remember { mutableFloatStateOf(0f) }
+    var previousAzimuth by remember { mutableFloatStateOf(azimuth) }
+    var degreeOffset by remember { mutableFloatStateOf(0f) }
     val alpha = 0.2f
 
     LaunchedEffect(azimuth) {
+        // Smooth the azimuth change
         smoothedAzimuth = (alpha * azimuth) + (1 - alpha) * smoothedAzimuth
+
+        // Calculate azimuth difference
+        val deltaAzimuth = smoothedAzimuth - previousAzimuth
+
+        // Update degree offset (negative to ensure opposite movement)
+        degreeOffset -= deltaAzimuth * 2f  // Scale the movement effect
+
+        // Keep offset within range
+        if (degreeOffset > 360f) degreeOffset -= 360f
+        if (degreeOffset < -360f) degreeOffset += 360f
+
+        // Update previous azimuth
+        previousAzimuth = smoothedAzimuth
     }
 
     val currentDirection = getActiveDirectionRound(smoothedAzimuth)
@@ -86,14 +102,6 @@ fun CompassViewRound(modifier: Modifier = Modifier, azimuth: Float) {
             animation = tween(1500, easing = LinearEasing),
             repeatMode = RepeatMode.Restart
         ), label = "side_letter_move"
-    )
-
-    val degreeOffset by transition.animateFloat(
-        initialValue = 0f, targetValue = -80f, // Moves left
-        animationSpec = infiniteRepeatable(
-            animation = tween(4000, easing = LinearEasing), // Slower movement for readability
-            repeatMode = RepeatMode.Restart
-        ), label = "degree_scroll"
     )
 
     Box(
@@ -195,7 +203,7 @@ fun CompassViewRound(modifier: Modifier = Modifier, azimuth: Float) {
                         .fillMaxWidth()
                         .align(Alignment.BottomCenter)
                 ) {
-                    InfiniteDegreeScroll(azimuth, degreeOffset)
+                    InfiniteDegreeScroll(smoothedAzimuth, degreeOffset)
                 }
             }
         }
@@ -214,7 +222,7 @@ fun InfiniteDegreeScroll(azimuth: Float, degreeOffset: Float) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .offset(x = degreeOffset.dp), // Moves leftward
+            .offset(x = degreeOffset.dp), // Moves dynamically based on azimuth change
         horizontalArrangement = Arrangement.Center
     ) {
         displayedDegrees.forEach { degree ->
