@@ -192,7 +192,7 @@ fun CompassViewRound(modifier: Modifier = Modifier, azimuth: Float) {
                     .background(
                         Brush.radialGradient(
                             colors = listOf(
-                                Color.White.copy(alpha = 0.3f),
+                                Color.Black.copy(alpha = 0.3f),
                                 Color.Transparent
                             ),
                             center = Offset(lightX, lightY),
@@ -204,7 +204,7 @@ fun CompassViewRound(modifier: Modifier = Modifier, azimuth: Float) {
                         Brush.linearGradient(
                             colors = listOf(
                                 Color.Transparent,
-                                Color.White.copy(alpha = 0.1f),
+                                Color.Black.copy(alpha = 0.1f),
                                 Color.Transparent
                             ),
                             start = Offset(0f, 0f),
