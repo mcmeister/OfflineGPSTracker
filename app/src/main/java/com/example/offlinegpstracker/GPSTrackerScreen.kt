@@ -38,9 +38,12 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.livedata.observeAsState
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -220,14 +223,38 @@ fun GPSTrackerScreen(locationViewModel: LocationViewModel = viewModel()) {
     // Calculate current direction
     val currentDirection = getHorizontalActiveDirection(azimuth)
 
-    var isStaticCompass by remember { mutableStateOf(false) }
+    val userPreferences = remember { UserPreferences(context) }
+
+    // Track whether DataStore has finished retrieving stored state
+    var isCompassTypeLoaded by remember { mutableStateOf(false) }
+
+    // Flow-backed state for persisted compass selection
+    val storedCompassType by userPreferences.compassType.collectAsState(initial = -1)
+
+    // Mutable state for UI tracking
+    var compassViewType by remember { mutableIntStateOf(0) }
+
+    // Ensure stored value is applied **only once** after retrieval
+    LaunchedEffect(storedCompassType) {
+        if (storedCompassType != -1 && !isCompassTypeLoaded) {
+            compassViewType = storedCompassType
+            isCompassTypeLoaded = true
+        }
+    }
+
+    // Track compass selection changes and save asynchronously
+    LaunchedEffect(compassViewType) {
+        if (isCompassTypeLoaded) {
+            userPreferences.saveCompassType(compassViewType)
+        }
+    }
 
     Column(
         modifier = Modifier
             .fillMaxSize()
             .padding(16.dp)
             .verticalScroll(rememberScrollState()),
-        verticalArrangement = Arrangement.Top,
+        verticalArrangement = Arrangement.Center,
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         Text(
@@ -238,19 +265,26 @@ fun GPSTrackerScreen(locationViewModel: LocationViewModel = viewModel()) {
         Spacer(modifier = Modifier.height(24.dp))
 
         // Main Compass (Big Circular)
-        Crossfade(targetState = isStaticCompass, label = "CompassSwitch") { isStatic ->
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(300.dp)
-                    .clickable { isStaticCompass = !isStaticCompass } // Toggle compass on tap
-            ) {
-                if (isStatic) {
-                    CompassViewStatic(modifier = Modifier.fillMaxSize())
-                } else {
-                    CompassView(modifier = Modifier.fillMaxSize())
+        if (isCompassTypeLoaded) { // Only show compass when DataStore has loaded
+            Crossfade(targetState = compassViewType, label = "CompassSwitch") { viewType ->
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(300.dp)
+                        .clickable {
+                            compassViewType = (compassViewType + 1) % 3
+                        }
+                ) {
+                    when (viewType) {
+                        0 -> CompassView(modifier = Modifier.fillMaxSize())
+                        1 -> CompassViewStatic(modifier = Modifier.fillMaxSize())
+                        2 -> CompassViewRound(azimuth = azimuth)
+                    }
                 }
             }
+        } else {
+            // Show loading indicator or placeholder until DataStore finishes loading
+            Text("Loading compass...", modifier = Modifier.align(Alignment.CenterHorizontally))
         }
 
         Spacer(modifier = Modifier.height(24.dp))
@@ -262,18 +296,6 @@ fun GPSTrackerScreen(locationViewModel: LocationViewModel = viewModel()) {
         )
 
         Spacer(modifier = Modifier.height(8.dp))
-
-        // Fixed Box for Horizontal Compass
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(80.dp),
-            contentAlignment = Alignment.Center
-        ) {
-            CompassViewRound(azimuth = azimuth)
-        }
-
-        Spacer(modifier = Modifier.height(24.dp))
 
         // Location Info (Lat, Long, Alt)
         LocationInfoChipRow(latitude = latitude, longitude = longitude, altitude = altitude)

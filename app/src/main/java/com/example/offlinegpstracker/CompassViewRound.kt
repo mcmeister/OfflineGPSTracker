@@ -1,22 +1,35 @@
 package com.example.offlinegpstracker
 
 import android.annotation.SuppressLint
-import androidx.compose.animation.Crossfade
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -37,9 +50,21 @@ fun getActiveDirectionRound(azimuth: Float): String {
     }
 }
 
+fun getNextDirection(azimuth: Float): String {
+    val directions = listOf("N", "NE", "E", "SE", "S", "SW", "W", "NW", "N") // Circular wrap
+    val currentIndex = directions.indexOf(getActiveDirectionRound(azimuth))
+    return directions[(currentIndex + 1) % directions.size]
+}
+
+fun getPreviousDirection(azimuth: Float): String {
+    val directions = listOf("N", "NE", "E", "SE", "S", "SW", "W", "NW", "N") // Circular wrap
+    val currentIndex = directions.indexOf(getActiveDirectionRound(azimuth))
+    return directions[(currentIndex - 1 + directions.size) % directions.size]
+}
+
 @SuppressLint("MutableCollectionMutableState")
 @Composable
-fun CompassViewRound(azimuth: Float) {
+fun CompassViewRound(modifier: Modifier = Modifier, azimuth: Float) {
     var smoothedAzimuth by remember { mutableFloatStateOf(0f) }
     val alpha = 0.2f
 
@@ -48,46 +73,71 @@ fun CompassViewRound(azimuth: Float) {
     }
 
     val currentDirection = getActiveDirectionRound(smoothedAzimuth)
-    var compassType by remember { mutableStateOf(CompassType.Round) }
+    val nextDirection = getNextDirection(smoothedAzimuth)
+    val prevDirection = getPreviousDirection(smoothedAzimuth)
 
-    Crossfade(targetState = compassType, label = "CompassSwitch") { type ->
+    val transition = rememberInfiniteTransition(label = "letter_slide")
+    val offsetX by transition.animateFloat(
+        initialValue = 40f, targetValue = -40f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(1000, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart
+        ), label = "letter_move"
+    )
+
+    Box(
+        modifier = modifier
+            .fillMaxWidth() // Ensure full width for proper centering
+            .padding(horizontal = 16.dp) // Padding for safety
+            .padding(vertical = 80.dp)
+            .height(120.dp),
+        contentAlignment = Alignment.Center
+    ) {
         Box(
             modifier = Modifier
-                .fillMaxSize()
-                .clickable {
-                    compassType = when (compassType) {
-                        CompassType.Round -> CompassType.Horizontal
-                        CompassType.Horizontal -> CompassType.Round
-                    }
-                },
+                .size(200.dp, 120.dp) // Enlarged for better centering
+                .shadow(10.dp, RoundedCornerShape(50.dp))
+                .background(
+                    Brush.verticalGradient(listOf(Color.Black, Color.DarkGray)),
+                    RoundedCornerShape(50.dp)
+                ),
             contentAlignment = Alignment.Center
         ) {
-            when (type) {
-                CompassType.Round -> {
-                    Box(
-                        modifier = Modifier
-                            .size(100.dp)
-                            .background(Color.Black, shape = androidx.compose.foundation.shape.CircleShape),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(
-                            text = currentDirection,
-                            fontSize = 36.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = Color.Red
-                        )
-                    }
-                }
+            // Animated Direction Letters
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.Center
+            ) {
+                // Left Side Letter (Previous)
+                Text(
+                    text = prevDirection,
+                    fontSize = 24.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = Color.Gray,
+                    modifier = Modifier.offset(x = offsetX.dp)
+                )
 
-                CompassType.Horizontal -> {
-                    HorizontalCompassGauge(azimuth = smoothedAzimuth)
-                }
+                Spacer(modifier = Modifier.width(12.dp))
+
+                // Center Letter (Highlighted in Red)
+                Text(
+                    text = currentDirection,
+                    fontSize = 42.sp, // Larger size for emphasis
+                    fontWeight = FontWeight.Bold,
+                    color = Color.Red
+                )
+
+                Spacer(modifier = Modifier.width(12.dp))
+
+                // Right Side Letter (Next)
+                Text(
+                    text = nextDirection,
+                    fontSize = 24.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = Color.Gray,
+                    modifier = Modifier.offset(x = -offsetX.dp)
+                )
             }
         }
     }
-}
-
-enum class CompassType {
-    Round,
-    Horizontal
 }
