@@ -143,13 +143,6 @@ fun CompassViewRound(modifier: Modifier = Modifier, azimuth: Float) {
                         RoundedCornerShape(50.dp)
                     )
                     .border(8.dp, Color(0xFF546E7A), RoundedCornerShape(50.dp))
-                    .drawWithContent {
-                        drawCircle(
-                            color = Color.Black.copy(alpha = 0.05f),
-                            radius = 10.dp.toPx(),
-                            center = Offset(50f, 50f)
-                        )
-                    }
             )
 
             // --- METALLIC OVERLAY LAYER ---
@@ -192,7 +185,7 @@ fun CompassViewRound(modifier: Modifier = Modifier, azimuth: Float) {
                     .background(
                         Brush.radialGradient(
                             colors = listOf(
-                                Color.Black.copy(alpha = 0.3f),
+                                Color.White.copy(alpha = 0.3f),
                                 Color.Transparent
                             ),
                             center = Offset(lightX, lightY),
@@ -204,7 +197,7 @@ fun CompassViewRound(modifier: Modifier = Modifier, azimuth: Float) {
                         Brush.linearGradient(
                             colors = listOf(
                                 Color.Transparent,
-                                Color.Black.copy(alpha = 0.1f),
+                                Color.White.copy(alpha = 0.1f),
                                 Color.Transparent
                             ),
                             start = Offset(0f, 0f),
