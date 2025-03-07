@@ -12,6 +12,7 @@ import android.widget.Toast
 import androidx.compose.animation.Crossfade
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -271,9 +272,11 @@ fun GPSTrackerScreen(locationViewModel: LocationViewModel = viewModel()) {
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(300.dp)
-                        .clickable {
-                            compassViewType = (compassViewType + 1) % 3
-                        },
+                        .clickable(
+                            onClick = { compassViewType = (compassViewType + 1) % 3 },
+                            indication = null, // Disable ripple effect
+                            interactionSource = remember { MutableInteractionSource() } // Required when setting indication
+                        ),
                     contentAlignment = Alignment.Center
                 ) {
                     when (viewType) {

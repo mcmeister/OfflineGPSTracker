@@ -11,14 +11,11 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
-import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
@@ -74,11 +71,13 @@ fun getPreviousDirection(azimuth: Float): String {
 @SuppressLint("MutableCollectionMutableState")
 @Composable
 fun CompassViewRound(modifier: Modifier = Modifier, azimuth: Float) {
+    // Get the CompassViewModel (ensure CompassViewModel extends ViewModel)
     val viewModel = viewModel<CompassViewModel>()
 
     var smoothedAzimuth by remember { mutableFloatStateOf(0f) }
     val alpha = 0.2f
 
+    // Smooth azimuth transition
     LaunchedEffect(azimuth) {
         smoothedAzimuth = alpha * azimuth + (1 - alpha) * smoothedAzimuth
     }
@@ -104,10 +103,11 @@ fun CompassViewRound(modifier: Modifier = Modifier, azimuth: Float) {
         label = "side_letter_move"
     )
 
-    // Directly assign sensor-based light values.
+    // Directly assign values (they are observable mutable state)
     val lightX = viewModel.lightX
     val lightY = viewModel.lightY
 
+    // Get the context outside of DisposableEffect to avoid calling composable functions in a non-composable lambda.
     val context = LocalContext.current
     DisposableEffect(Unit) {
         viewModel.initialize(context)
@@ -117,20 +117,19 @@ fun CompassViewRound(modifier: Modifier = Modifier, azimuth: Float) {
         }
     }
 
-    // Wrap everything in a Column to show gauge and debug info
-    Column(
+    // 1) The outer Box fills the entire screen and centers the gauge box.
+    Box(
         modifier = Modifier.fillMaxSize(),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center
+        contentAlignment = Alignment.Center
     ) {
-        // Gauge Box (existing implementation)
+        // 2) The gauge box: fill some fraction of width or a fixed width, plus a fixed height.
+        //    **Add contentAlignment = Alignment.Center** here so children are centered.
         Box(
             modifier = modifier
                 .fillMaxWidth(0.8f)
                 .height(120.dp),
-            contentAlignment = Alignment.Center
+            contentAlignment = Alignment.Center // <-- CRITICAL CHANGE
         ) {
-            // [Gauge background, overlay, glass cover, and gauge elements]
             // --- GAUGE BACKGROUND LAYER ---
             Box(
                 modifier = Modifier
@@ -248,7 +247,9 @@ fun CompassViewRound(modifier: Modifier = Modifier, azimuth: Float) {
                     }
                 }
 
+                // Centered text for previous, next, and current directions.
                 Box(modifier = Modifier.fillMaxSize()) {
+                    // Previous direction, moving left from the center
                     Text(
                         text = prevDirection,
                         fontSize = 24.sp,
@@ -256,6 +257,7 @@ fun CompassViewRound(modifier: Modifier = Modifier, azimuth: Float) {
                         color = Color(0xFFFFF9C4),
                         modifier = Modifier.align(Alignment.Center).offset(x = -sideOffset.dp)
                     )
+                    // Next direction, moving right from the center
                     Text(
                         text = nextDirection,
                         fontSize = 24.sp,
@@ -263,19 +265,13 @@ fun CompassViewRound(modifier: Modifier = Modifier, azimuth: Float) {
                         color = Color(0xFFFFF9C4),
                         modifier = Modifier.align(Alignment.Center).offset(x = sideOffset.dp)
                     )
+                    // Current direction (centered both horizontally and vertically)
                     Text(
                         text = currentDirection,
                         fontSize = 42.sp,
                         fontWeight = FontWeight.Bold,
                         color = Color.Red,
                         modifier = Modifier.align(Alignment.Center)
-                    )
-                    // --- DEBUG INFO BELOW THE GAUGE ---
-                    Text(
-                        text = "lightX: $lightX, lightY: $lightY",
-                        fontSize = 14.sp,
-                        color = Color.White,
-                        modifier = Modifier.padding(top = 16.dp)
                     )
                 }
             }
