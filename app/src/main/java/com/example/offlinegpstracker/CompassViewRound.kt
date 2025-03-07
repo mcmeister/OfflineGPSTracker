@@ -38,6 +38,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.zIndex
 import androidx.lifecycle.viewmodel.compose.viewModel
 import kotlin.math.cos
 import kotlin.math.sin
@@ -124,9 +125,8 @@ fun CompassViewRound(modifier: Modifier = Modifier, azimuth: Float) {
             .fillMaxWidth()
             .padding(horizontal = 16.dp, vertical = 80.dp)
             .height(120.dp)
-        // Remove contentAlignment here if unsupported
     ) {
-        // Inner Box for the gauge background
+        // Background layer for the gauge background.
         Box(
             modifier = Modifier
                 .size(300.dp, 120.dp)
@@ -146,132 +146,143 @@ fun CompassViewRound(modifier: Modifier = Modifier, azimuth: Float) {
                         center = Offset(50f, 50f)
                     )
                 }
-            // Remove contentAlignment if unsupported
-        ) {
-            Box(modifier = Modifier.fillMaxSize()) {
-                Canvas(modifier = Modifier.size(280.dp, 100.dp).align(Alignment.Center)) {
-                    val tickLength = 10.dp.toPx()
-                    val majorTickLength = 20.dp.toPx()
-                    val tickColor = Color.White
+        )
 
-                    for (i in 0 until 360 step 10) {
-                        val angleRad = Math.toRadians(i.toDouble())
-                        val startLength = if (i % 90 == 0) majorTickLength else tickLength
-
-                        val startX = (size.width / 2 + cos(angleRad) * (size.width / 2 - startLength)).toFloat()
-                        val startY = (size.height / 2 + sin(angleRad) * (size.height / 2 - startLength)).toFloat()
-                        val endX = (size.width / 2 + cos(angleRad) * (size.width / 2)).toFloat()
-                        val endY = (size.height / 2 + sin(angleRad) * (size.height / 2)).toFloat()
-
-                        drawLine(
-                            color = if (i % 90 == 0) Color.Red else tickColor,
-                            start = Offset(startX, startY),
-                            end = Offset(endX, endY),
-                            strokeWidth = if (i % 90 == 0) 4f else 2f
-                        )
-                    }
-
-                    // Draw the needle which rotates with the azimuth
-                    val needleAngle = Math.toRadians((-animatedAzimuth).toDouble())
-                    val needleLength = 40.dp.toPx()
-                    val needleX = (size.width / 2 + cos(needleAngle) * needleLength).toFloat()
-                    val needleY = (size.height / 2 + sin(needleAngle) * needleLength).toFloat()
+        // Metallic overlay background layer.
+        Box(
+            modifier = Modifier
+                .size(300.dp, 120.dp)
+                .background(
+                    Brush.linearGradient(
+                        colors = listOf(
+                            Color(0xFFD3D3D3),
+                            Color(0xFFA0A0A0),
+                            Color(0xFFD3D3D3)
+                        ),
+                        start = Offset.Zero,
+                        end = Offset.Infinite
+                    ),
+                    RoundedCornerShape(50.dp)
+                )
+                .border(8.dp, Color(0xFF546E7A), RoundedCornerShape(50.dp))
+                .drawWithContent {
                     drawLine(
-                        color = Color.Red,
-                        start = Offset(size.width / 2, size.height / 2),
-                        end = Offset(needleX, needleY),
-                        strokeWidth = 3f
+                        color = Color.Black.copy(alpha = 0.03f),
+                        start = Offset(30f, 20f),
+                        end = Offset(50f, 40f),
+                        strokeWidth = 1f
+                    )
+                    drawLine(
+                        color = Color.Black.copy(alpha = 0.03f),
+                        start = Offset(250f, 80f),
+                        end = Offset(270f, 100f),
+                        strokeWidth = 1f
+                    )
+                }
+        )
+
+        // Glass cover overlay (transparent).
+        Box(
+            modifier = Modifier
+                .matchParentSize()
+                .background(
+                    Brush.radialGradient(
+                        colors = listOf(
+                            Color.White.copy(alpha = 0.3f),
+                            Color.Transparent
+                        ),
+                        center = Offset(lightX, lightY),
+                        radius = 150f
+                    ),
+                    RoundedCornerShape(50.dp)
+                )
+                .background(
+                    Brush.linearGradient(
+                        colors = listOf(
+                            Color.Transparent,
+                            Color.White.copy(alpha = 0.1f),
+                            Color.Transparent
+                        ),
+                        start = Offset(0f, 0f),
+                        end = Offset(300f, 120f)
+                    ),
+                    RoundedCornerShape(50.dp)
+                )
+        )
+
+        // Gauge elements (ticks, needle, and text) drawn on top using a higher z-index.
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .zIndex(1f)
+        ) {
+            Canvas(
+                modifier = Modifier
+                    .size(280.dp, 100.dp)
+                    .align(Alignment.Center)
+            ) {
+                val tickLength = 10.dp.toPx()
+                val majorTickLength = 20.dp.toPx()
+                val tickColor = Color.White
+
+                for (i in 0 until 360 step 10) {
+                    val angleRad = Math.toRadians(i.toDouble())
+                    val startLength = if (i % 90 == 0) majorTickLength else tickLength
+
+                    val startX =
+                        (size.width / 2 + cos(angleRad) * (size.width / 2 - startLength)).toFloat()
+                    val startY =
+                        (size.height / 2 + sin(angleRad) * (size.height / 2 - startLength)).toFloat()
+                    val endX = (size.width / 2 + cos(angleRad) * (size.width / 2)).toFloat()
+                    val endY = (size.height / 2 + sin(angleRad) * (size.height / 2)).toFloat()
+
+                    drawLine(
+                        color = if (i % 90 == 0) Color.Red else tickColor,
+                        start = Offset(startX, startY),
+                        end = Offset(endX, endY),
+                        strokeWidth = if (i % 90 == 0) 4f else 2f
                     )
                 }
 
-                Box(
-                    modifier = Modifier
-                        .size(300.dp, 120.dp)
-                        .background(
-                            Brush.linearGradient(
-                                colors = listOf(
-                                    Color(0xFFD3D3D3),
-                                    Color(0xFFA0A0A0),
-                                    Color(0xFFD3D3D3)
-                                ),
-                                start = Offset.Zero,
-                                end = Offset.Infinite
-                            ),
-                            RoundedCornerShape(50.dp)
-                        )
-                        .border(8.dp, Color(0xFF546E7A), RoundedCornerShape(50.dp))
-                        .drawWithContent {
-                            drawLine(
-                                color = Color.Black.copy(alpha = 0.03f),
-                                start = Offset(30f, 20f),
-                                end = Offset(50f, 40f),
-                                strokeWidth = 1f
-                            )
-                            drawLine(
-                                color = Color.Black.copy(alpha = 0.03f),
-                                start = Offset(250f, 80f),
-                                end = Offset(270f, 100f),
-                                strokeWidth = 1f
-                            )
-                        }
-                    // Remove contentAlignment if unsupported
+                // Draw the needle which rotates with the azimuth.
+                val needleAngle = Math.toRadians((-animatedAzimuth).toDouble())
+                val needleLength = 40.dp.toPx()
+                val needleX = (size.width / 2 + cos(needleAngle) * needleLength).toFloat()
+                val needleY = (size.height / 2 + sin(needleAngle) * needleLength).toFloat()
+                drawLine(
+                    color = Color.Red,
+                    start = Offset(size.width / 2, size.height / 2),
+                    end = Offset(needleX, needleY),
+                    strokeWidth = 3f
                 )
+            }
 
-                Box(
-                    modifier = Modifier
-                        .matchParentSize()
-                        .background(
-                            Brush.radialGradient(
-                                colors = listOf(
-                                    Color.White.copy(alpha = 0.3f),
-                                    Color.Transparent
-                                ),
-                                center = Offset(lightX, lightY),
-                                radius = 150f
-                            ),
-                            RoundedCornerShape(50.dp)
-                        )
-                        .background(
-                            Brush.linearGradient(
-                                colors = listOf(
-                                    Color.Transparent,
-                                    Color.White.copy(alpha = 0.1f),
-                                    Color.Transparent
-                                ),
-                                start = Offset(0f, 0f),
-                                end = Offset(300f, 120f)
-                            ),
-                            RoundedCornerShape(50.dp)
-                        )
+            // Centered text for previous, next, and current directions.
+            Column(
+                modifier = Modifier.fillMaxSize(),
+                verticalArrangement = androidx.compose.foundation.layout.Arrangement.Center,
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Text(
+                    text = prevDirection,
+                    fontSize = 24.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = Color(0xFFFFF9C4),
+                    modifier = Modifier.offset(x = -sideOffset.dp)
                 )
-
-                // Use a Column to center the texts if contentAlignment is unavailable in Box
-                Column(
-                    modifier = Modifier.fillMaxSize(),
-                    verticalArrangement = androidx.compose.foundation.layout.Arrangement.Center,
-                    horizontalAlignment = Alignment.CenterHorizontally
-                ) {
-                    Text(
-                        text = prevDirection,
-                        fontSize = 24.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = Color(0xFFFFF9C4),
-                        modifier = Modifier.offset(x = -sideOffset.dp)
-                    )
-                    Text(
-                        text = nextDirection,
-                        fontSize = 24.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = Color(0xFFFFF9C4),
-                        modifier = Modifier.offset(x = sideOffset.dp)
-                    )
-                    Text(
-                        text = currentDirection,
-                        fontSize = 42.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = Color.Red
-                    )
-                }
+                Text(
+                    text = nextDirection,
+                    fontSize = 24.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = Color(0xFFFFF9C4),
+                    modifier = Modifier.offset(x = sideOffset.dp)
+                )
+                Text(
+                    text = currentDirection,
+                    fontSize = 42.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = Color.Red
+                )
             }
         }
     }
