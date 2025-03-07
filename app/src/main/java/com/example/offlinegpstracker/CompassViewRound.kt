@@ -11,9 +11,8 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -23,6 +22,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
@@ -30,12 +30,15 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.viewmodel.compose.viewModel
 import kotlin.math.cos
 import kotlin.math.sin
 
@@ -55,13 +58,13 @@ fun getActiveDirectionRound(azimuth: Float): String {
 }
 
 fun getNextDirection(azimuth: Float): String {
-    val directions = listOf("N", "NE", "E", "SE", "S", "SW", "W", "NW", "N") // Circular wrap
+    val directions = listOf("N", "NE", "E", "SE", "S", "SW", "W", "NW", "N")
     val currentIndex = directions.indexOf(getActiveDirectionRound(azimuth))
     return directions[(currentIndex + 1) % directions.size]
 }
 
 fun getPreviousDirection(azimuth: Float): String {
-    val directions = listOf("N", "NE", "E", "SE", "S", "SW", "W", "NW", "N") // Circular wrap
+    val directions = listOf("N", "NE", "E", "SE", "S", "SW", "W", "NW", "N")
     val currentIndex = directions.indexOf(getActiveDirectionRound(azimuth))
     return directions[(currentIndex - 1 + directions.size) % directions.size]
 }
@@ -69,58 +72,81 @@ fun getPreviousDirection(azimuth: Float): String {
 @SuppressLint("MutableCollectionMutableState")
 @Composable
 fun CompassViewRound(modifier: Modifier = Modifier, azimuth: Float) {
+    // Get the CompassViewModel (ensure CompassViewModel extends ViewModel)
+    val viewModel = viewModel<CompassViewModel>()
+
     var smoothedAzimuth by remember { mutableFloatStateOf(0f) }
-    var previousAzimuth by remember { mutableFloatStateOf(azimuth) }
-    var degreeOffset by remember { mutableFloatStateOf(0f) }
     val alpha = 0.2f
 
+    // Smooth azimuth transition
     LaunchedEffect(azimuth) {
-        // Simple low-pass filter
         smoothedAzimuth = alpha * azimuth + (1 - alpha) * smoothedAzimuth
     }
 
-    // 2) If you want an animation from old smoothedAzimuth to new smoothedAzimuth:
     val animatedAzimuth by animateFloatAsState(
         targetValue = smoothedAzimuth,
-        animationSpec = tween(durationMillis = 300), label = "" // tune to taste
+        animationSpec = tween(durationMillis = 300),
+        label = ""
     )
 
     val currentDirection = getActiveDirectionRound(animatedAzimuth)
     val nextDirection = getNextDirection(animatedAzimuth)
     val prevDirection = getPreviousDirection(animatedAzimuth)
 
-    val degreeScrollOffset = -animatedAzimuth
-
     val transition = rememberInfiniteTransition(label = "letter_slide")
     val sideOffset by transition.animateFloat(
-        initialValue = 20f, targetValue = 80f,
+        initialValue = 20f,
+        targetValue = 80f,
         animationSpec = infiniteRepeatable(
             animation = tween(1500, easing = LinearEasing),
             repeatMode = RepeatMode.Restart
-        ), label = "side_letter_move"
+        ),
+        label = "side_letter_move"
     )
 
+    // Directly assign values (they are observable mutable state)
+    val lightX = viewModel.lightX
+    val lightY = viewModel.lightY
+
+    // Get the context outside of DisposableEffect to avoid calling composable functions in a non-composable lambda.
+    val context = LocalContext.current
+    DisposableEffect(Unit) {
+        viewModel.initialize(context)
+        viewModel.startListening()
+        onDispose {
+            viewModel.stopListening()
+        }
+    }
+
+    // Outer Box: if contentAlignment is not supported in your Compose version, remove it.
     Box(
         modifier = modifier
             .fillMaxWidth()
             .padding(horizontal = 16.dp, vertical = 80.dp)
-            .height(120.dp),
-        contentAlignment = Alignment.Center
+            .height(120.dp)
+        // Remove contentAlignment here if unsupported
     ) {
+        // Inner Box for the gauge background
         Box(
             modifier = Modifier
                 .size(300.dp, 120.dp)
-                // .shadow(10.dp, RoundedCornerShape(60.dp))
                 .background(
                     Brush.linearGradient(
-                        colors = listOf(Color(0xFFB0BEC5), Color(0xFF78909C)),
+                        colors = listOf(Color(0xFFD3D3D3), Color(0xFFB0BEC5)),
                         start = Offset.Zero,
                         end = Offset.Infinite
                     ),
                     RoundedCornerShape(50.dp)
                 )
-                .border(8.dp, Color(0xFF546E7A), RoundedCornerShape(50.dp)),
-            contentAlignment = Alignment.Center
+                .border(8.dp, Color(0xFF546E7A), RoundedCornerShape(50.dp))
+                .drawWithContent {
+                    drawCircle(
+                        color = Color.Black.copy(alpha = 0.05f),
+                        radius = 10.dp.toPx(),
+                        center = Offset(50f, 50f)
+                    )
+                }
+            // Remove contentAlignment if unsupported
         ) {
             Box(modifier = Modifier.fillMaxSize()) {
                 Canvas(modifier = Modifier.size(280.dp, 100.dp).align(Alignment.Center)) {
@@ -130,13 +156,10 @@ fun CompassViewRound(modifier: Modifier = Modifier, azimuth: Float) {
 
                     for (i in 0 until 360 step 10) {
                         val angleRad = Math.toRadians(i.toDouble())
-
                         val startLength = if (i % 90 == 0) majorTickLength else tickLength
 
-                        val startX =
-                            (size.width / 2 + cos(angleRad) * (size.width / 2 - startLength)).toFloat()
-                        val startY =
-                            (size.height / 2 + sin(angleRad) * (size.height / 2 - startLength)).toFloat()
+                        val startX = (size.width / 2 + cos(angleRad) * (size.width / 2 - startLength)).toFloat()
+                        val startY = (size.height / 2 + sin(angleRad) * (size.height / 2 - startLength)).toFloat()
                         val endX = (size.width / 2 + cos(angleRad) * (size.width / 2)).toFloat()
                         val endY = (size.height / 2 + sin(angleRad) * (size.height / 2)).toFloat()
 
@@ -147,27 +170,87 @@ fun CompassViewRound(modifier: Modifier = Modifier, azimuth: Float) {
                             strokeWidth = if (i % 90 == 0) 4f else 2f
                         )
                     }
+
+                    // Draw the needle which rotates with the azimuth
+                    val needleAngle = Math.toRadians((-animatedAzimuth).toDouble())
+                    val needleLength = 40.dp.toPx()
+                    val needleX = (size.width / 2 + cos(needleAngle) * needleLength).toFloat()
+                    val needleY = (size.height / 2 + sin(needleAngle) * needleLength).toFloat()
+                    drawLine(
+                        color = Color.Red,
+                        start = Offset(size.width / 2, size.height / 2),
+                        end = Offset(needleX, needleY),
+                        strokeWidth = 3f
+                    )
                 }
 
-                // Glass reflection effect
+                Box(
+                    modifier = Modifier
+                        .size(300.dp, 120.dp)
+                        .background(
+                            Brush.linearGradient(
+                                colors = listOf(
+                                    Color(0xFFD3D3D3),
+                                    Color(0xFFA0A0A0),
+                                    Color(0xFFD3D3D3)
+                                ),
+                                start = Offset.Zero,
+                                end = Offset.Infinite
+                            ),
+                            RoundedCornerShape(50.dp)
+                        )
+                        .border(8.dp, Color(0xFF546E7A), RoundedCornerShape(50.dp))
+                        .drawWithContent {
+                            drawLine(
+                                color = Color.Black.copy(alpha = 0.03f),
+                                start = Offset(30f, 20f),
+                                end = Offset(50f, 40f),
+                                strokeWidth = 1f
+                            )
+                            drawLine(
+                                color = Color.Black.copy(alpha = 0.03f),
+                                start = Offset(250f, 80f),
+                                end = Offset(270f, 100f),
+                                strokeWidth = 1f
+                            )
+                        }
+                    // Remove contentAlignment if unsupported
+                )
+
                 Box(
                     modifier = Modifier
                         .matchParentSize()
                         .background(
                             Brush.radialGradient(
-                                colors = listOf(Color.Transparent, Color.White.copy(alpha = 0.15f)),
-                                center = Offset(100f + smoothedAzimuth, 60f),
-                                radius = 200f
+                                colors = listOf(
+                                    Color.White.copy(alpha = 0.3f),
+                                    Color.Transparent
+                                ),
+                                center = Offset(lightX, lightY),
+                                radius = 150f
+                            ),
+                            RoundedCornerShape(50.dp)
+                        )
+                        .background(
+                            Brush.linearGradient(
+                                colors = listOf(
+                                    Color.Transparent,
+                                    Color.White.copy(alpha = 0.1f),
+                                    Color.Transparent
+                                ),
+                                start = Offset(0f, 0f),
+                                end = Offset(300f, 120f)
                             ),
                             RoundedCornerShape(50.dp)
                         )
                 )
 
-                Box(
+                // Use a Column to center the texts if contentAlignment is unavailable in Box
+                Column(
                     modifier = Modifier.fillMaxSize(),
-                    contentAlignment = Alignment.Center
+                    verticalArrangement = androidx.compose.foundation.layout.Arrangement.Center,
+                    horizontalAlignment = Alignment.CenterHorizontally
                 ) {
-                    // Previous Direction
                     Text(
                         text = prevDirection,
                         fontSize = 24.sp,
@@ -175,8 +258,6 @@ fun CompassViewRound(modifier: Modifier = Modifier, azimuth: Float) {
                         color = Color(0xFFFFF9C4),
                         modifier = Modifier.offset(x = -sideOffset.dp)
                     )
-
-                    // Next Direction
                     Text(
                         text = nextDirection,
                         fontSize = 24.sp,
@@ -184,8 +265,6 @@ fun CompassViewRound(modifier: Modifier = Modifier, azimuth: Float) {
                         color = Color(0xFFFFF9C4),
                         modifier = Modifier.offset(x = sideOffset.dp)
                     )
-
-                    // Current Direction
                     Text(
                         text = currentDirection,
                         fontSize = 42.sp,
@@ -193,44 +272,7 @@ fun CompassViewRound(modifier: Modifier = Modifier, azimuth: Float) {
                         color = Color.Red
                     )
                 }
-
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .align(Alignment.BottomCenter)
-                ) {
-                    InfiniteDegreeScroll(animatedAzimuth, degreeScrollOffset)
-                }
             }
-        }
-    }
-}
-
-@Composable
-fun InfiniteDegreeScroll(azimuth: Float, offsetDegrees: Float) {
-    // If azimuth = 100°, offsetDegrees = -100, we want the "100°" to appear in the center.
-
-    // Generate 360 labels, then we’ll shift them horizontally by offsetDegrees
-    val degreesList = (0..359).toList()
-
-    // We can animate the offset or just convert offsetDegrees to dp.
-    // You can scale the offset if you prefer. For instance, 1 degree = 10.dp, etc.
-    val pxPerDegree = 10.dp // tune to taste
-    val finalOffset = offsetDegrees.dp * pxPerDegree.value / 1.dp.value
-
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .offset(x = finalOffset),
-        horizontalArrangement = Arrangement.Center
-    ) {
-        degreesList.forEach { deg ->
-            Text(
-                text = "$deg°",
-                fontSize = 12.sp,
-                color = Color.White.copy(alpha = 0.8f),
-                modifier = Modifier.padding(horizontal = 8.dp)
-            )
         }
     }
 }
