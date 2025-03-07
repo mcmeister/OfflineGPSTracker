@@ -4,6 +4,7 @@ import android.annotation.SuppressLint
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
@@ -74,26 +75,21 @@ fun CompassViewRound(modifier: Modifier = Modifier, azimuth: Float) {
     val alpha = 0.2f
 
     LaunchedEffect(azimuth) {
-        // Smooth the azimuth change
-        smoothedAzimuth = (alpha * azimuth) + (1 - alpha) * smoothedAzimuth
-
-        // Calculate azimuth difference
-        val deltaAzimuth = smoothedAzimuth - previousAzimuth
-
-        // Update degree offset (negative to ensure opposite movement)
-        degreeOffset -= deltaAzimuth * 2f  // Scale the movement effect
-
-        // Keep offset within range
-        if (degreeOffset > 360f) degreeOffset -= 360f
-        if (degreeOffset < -360f) degreeOffset += 360f
-
-        // Update previous azimuth
-        previousAzimuth = smoothedAzimuth
+        // Simple low-pass filter
+        smoothedAzimuth = alpha * azimuth + (1 - alpha) * smoothedAzimuth
     }
 
-    val currentDirection = getActiveDirectionRound(smoothedAzimuth)
-    val nextDirection = getNextDirection(smoothedAzimuth)
-    val prevDirection = getPreviousDirection(smoothedAzimuth)
+    // 2) If you want an animation from old smoothedAzimuth to new smoothedAzimuth:
+    val animatedAzimuth by animateFloatAsState(
+        targetValue = smoothedAzimuth,
+        animationSpec = tween(durationMillis = 300), label = "" // tune to taste
+    )
+
+    val currentDirection = getActiveDirectionRound(animatedAzimuth)
+    val nextDirection = getNextDirection(animatedAzimuth)
+    val prevDirection = getPreviousDirection(animatedAzimuth)
+
+    val degreeScrollOffset = -animatedAzimuth
 
     val transition = rememberInfiniteTransition(label = "letter_slide")
     val sideOffset by transition.animateFloat(
@@ -203,7 +199,7 @@ fun CompassViewRound(modifier: Modifier = Modifier, azimuth: Float) {
                         .fillMaxWidth()
                         .align(Alignment.BottomCenter)
                 ) {
-                    InfiniteDegreeScroll(smoothedAzimuth, degreeOffset)
+                    InfiniteDegreeScroll(animatedAzimuth, degreeScrollOffset)
                 }
             }
         }
@@ -211,24 +207,27 @@ fun CompassViewRound(modifier: Modifier = Modifier, azimuth: Float) {
 }
 
 @Composable
-fun InfiniteDegreeScroll(azimuth: Float, degreeOffset: Float) {
-    val degreesRange = (-180..180).toList() // Covers a full rotation
-    val currentDegree = azimuth.toInt()
+fun InfiniteDegreeScroll(azimuth: Float, offsetDegrees: Float) {
+    // If azimuth = 100°, offsetDegrees = -100, we want the "100°" to appear in the center.
 
-    val displayedDegrees = remember(currentDegree) {
-        degreesRange.map { (currentDegree + it + 360) % 360 } // Ensures looping
-    }
+    // Generate 360 labels, then we’ll shift them horizontally by offsetDegrees
+    val degreesList = (0..359).toList()
+
+    // We can animate the offset or just convert offsetDegrees to dp.
+    // You can scale the offset if you prefer. For instance, 1 degree = 10.dp, etc.
+    val pxPerDegree = 10.dp // tune to taste
+    val finalOffset = offsetDegrees.dp * pxPerDegree.value / 1.dp.value
 
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .offset(x = degreeOffset.dp), // Moves dynamically based on azimuth change
+            .offset(x = finalOffset),
         horizontalArrangement = Arrangement.Center
     ) {
-        displayedDegrees.forEach { degree ->
+        degreesList.forEach { deg ->
             Text(
-                text = "$degree°",
-                fontSize = 12.sp, // Small text size
+                text = "$deg°",
+                fontSize = 12.sp,
                 color = Color.White.copy(alpha = 0.8f),
                 modifier = Modifier.padding(horizontal = 8.dp)
             )
