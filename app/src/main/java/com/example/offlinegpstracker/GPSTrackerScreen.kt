@@ -282,7 +282,7 @@ fun GPSTrackerScreen(locationViewModel: LocationViewModel = viewModel()) {
                     when (viewType) {
                         0 -> CompassView(modifier = Modifier.fillMaxSize())
                         1 -> CompassViewStatic(modifier = Modifier.fillMaxSize())
-                        2 -> CompassViewRound(azimuth = azimuth)
+                        2 -> CompassViewGauge(azimuth = azimuth)
                     }
                 }
             }

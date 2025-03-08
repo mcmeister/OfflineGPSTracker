@@ -28,7 +28,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -41,7 +40,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import kotlin.math.cos
 import kotlin.math.sin
 
-fun getActiveDirectionRound(azimuth: Float): String {
+fun getActiveDirectionGauge(azimuth: Float): String {
     val adjustedAzimuth = ((azimuth + 360) % 360).toInt()
     return when (adjustedAzimuth) {
         in 337..360, in 0..22 -> "N"
@@ -58,26 +57,24 @@ fun getActiveDirectionRound(azimuth: Float): String {
 
 fun getNextDirection(azimuth: Float): String {
     val directions = listOf("N", "NE", "E", "SE", "S", "SW", "W", "NW")
-    val currentIndex = directions.indexOf(getActiveDirectionRound(azimuth))
+    val currentIndex = directions.indexOf(getActiveDirectionGauge(azimuth))
     return directions[(currentIndex + 1) % directions.size]
 }
 
 fun getPreviousDirection(azimuth: Float): String {
     val directions = listOf("N", "NE", "E", "SE", "S", "SW", "W", "NW")
-    val currentIndex = directions.indexOf(getActiveDirectionRound(azimuth))
+    val currentIndex = directions.indexOf(getActiveDirectionGauge(azimuth))
     return directions[(currentIndex - 1 + directions.size) % directions.size]
 }
 
 @SuppressLint("MutableCollectionMutableState")
 @Composable
-fun CompassViewRound(modifier: Modifier = Modifier, azimuth: Float) {
-    // Get the CompassViewModel (ensure CompassViewModel extends ViewModel)
+fun CompassViewGauge(modifier: Modifier = Modifier, azimuth: Float) {
     val viewModel = viewModel<CompassViewModel>()
 
     var smoothedAzimuth by remember { mutableFloatStateOf(0f) }
     val alpha = 0.2f
 
-    // Smooth azimuth transition
     LaunchedEffect(azimuth) {
         smoothedAzimuth = alpha * azimuth + (1 - alpha) * smoothedAzimuth
     }
@@ -88,26 +85,36 @@ fun CompassViewRound(modifier: Modifier = Modifier, azimuth: Float) {
         label = ""
     )
 
-    val currentDirection = getActiveDirectionRound(animatedAzimuth)
+    val currentDirection = getActiveDirectionGauge(animatedAzimuth)
     val nextDirection = getNextDirection(animatedAzimuth)
     val prevDirection = getPreviousDirection(animatedAzimuth)
 
     val transition = rememberInfiniteTransition(label = "letter_slide")
+
     val sideOffset by transition.animateFloat(
         initialValue = 20f,
         targetValue = 100f,
         animationSpec = infiniteRepeatable(
-            animation = tween(1500, easing = LinearEasing),
+            animation = tween(2000, easing = LinearEasing),
             repeatMode = RepeatMode.Restart
         ),
         label = "side_letter_move"
     )
 
-    // Directly assign values (they are observable mutable state)
+    // Animate text size from initial size to 4sp
+    val animatedTextSize by transition.animateFloat(
+        initialValue = 32f, // Initial size in sp
+        targetValue = 4f,  // Decreasing step by step
+        animationSpec = infiniteRepeatable(
+            animation = tween(2000, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "text_size_animation"
+    )
+
     val lightX = viewModel.lightX
     val lightY = viewModel.lightY
 
-    // Get the context outside of DisposableEffect to avoid calling composable functions in a non-composable lambda.
     val context = LocalContext.current
     DisposableEffect(Unit) {
         viewModel.initialize(context)
@@ -117,20 +124,16 @@ fun CompassViewRound(modifier: Modifier = Modifier, azimuth: Float) {
         }
     }
 
-    // 1) The outer Box fills the entire screen and centers the gauge box.
     Box(
         modifier = Modifier.fillMaxSize(),
         contentAlignment = Alignment.Center
     ) {
-        // 2) The gauge box: fill some fraction of width or a fixed width, plus a fixed height.
-        //    **Add contentAlignment = Alignment.Center** here so children are centered.
         Box(
             modifier = modifier
                 .fillMaxWidth(0.8f)
                 .height(120.dp),
-            contentAlignment = Alignment.Center // <-- CRITICAL CHANGE
+            contentAlignment = Alignment.Center
         ) {
-            // --- GAUGE BACKGROUND LAYER ---
             Box(
                 modifier = Modifier
                     .size(300.dp, 120.dp)
@@ -145,7 +148,6 @@ fun CompassViewRound(modifier: Modifier = Modifier, azimuth: Float) {
                     .border(8.dp, Color(0xFF546E7A), RoundedCornerShape(50.dp))
             )
 
-            // --- METALLIC OVERLAY LAYER ---
             Box(
                 modifier = Modifier
                     .size(300.dp, 120.dp)
@@ -162,32 +164,14 @@ fun CompassViewRound(modifier: Modifier = Modifier, azimuth: Float) {
                         RoundedCornerShape(50.dp)
                     )
                     .border(8.dp, Color(0xFF546E7A), RoundedCornerShape(50.dp))
-                    .drawWithContent {
-                        drawLine(
-                            color = Color.Black.copy(alpha = 0.03f),
-                            start = Offset(30f, 20f),
-                            end = Offset(50f, 40f),
-                            strokeWidth = 1f
-                        )
-                        drawLine(
-                            color = Color.Black.copy(alpha = 0.03f),
-                            start = Offset(250f, 80f),
-                            end = Offset(270f, 100f),
-                            strokeWidth = 1f
-                        )
-                    }
             )
 
-            // --- GLASS COVER (TRANSPARENT) ---
             Box(
                 modifier = Modifier
                     .matchParentSize()
                     .background(
                         Brush.radialGradient(
-                            colors = listOf(
-                                Color.White.copy(alpha = 0.3f),
-                                Color.Transparent
-                            ),
+                            colors = listOf(Color.White.copy(alpha = 0.3f), Color.Transparent),
                             center = Offset(lightX, lightY),
                             radius = 150f
                         ),
@@ -207,7 +191,38 @@ fun CompassViewRound(modifier: Modifier = Modifier, azimuth: Float) {
                     )
             )
 
-            // --- GAUGE ELEMENTS (TICKS, LETTERS) ON TOP ---
+            // Letters behind ticks (zIndex 0f)
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .zIndex(0f) // Ensure letters are behind ticks
+            ) {
+                Text(
+                    text = prevDirection,
+                    fontSize = animatedTextSize.sp, // Apply animated text size
+                    fontWeight = FontWeight.Bold,
+                    color = Color(0xFFFFF9C4),
+                    modifier = Modifier.align(Alignment.Center).offset(x = -sideOffset.dp)
+                )
+
+                Text(
+                    text = nextDirection,
+                    fontSize = animatedTextSize.sp, // Apply animated text size
+                    fontWeight = FontWeight.Bold,
+                    color = Color(0xFFFFF9C4),
+                    modifier = Modifier.align(Alignment.Center).offset(x = sideOffset.dp)
+                )
+
+                Text(
+                    text = currentDirection,
+                    fontSize = 42.sp, // Apply animated text size
+                    fontWeight = FontWeight.Bold,
+                    color = Color.Red,
+                    modifier = Modifier.align(Alignment.Center)
+                )
+            }
+
+            // Ticks in front of letters (zIndex 1f)
             Box(
                 modifier = Modifier
                     .fillMaxSize()
@@ -226,8 +241,10 @@ fun CompassViewRound(modifier: Modifier = Modifier, azimuth: Float) {
                         val angleRad = Math.toRadians(i.toDouble())
                         val startLength = if (i % 90 == 0) majorTickLength else tickLength
 
-                        val startX = (size.width / 2 + cos(angleRad) * (size.width / 2 - startLength)).toFloat()
-                        val startY = (size.height / 2 + sin(angleRad) * (size.height / 2 - startLength)).toFloat()
+                        val startX =
+                            (size.width / 2 + cos(angleRad) * (size.width / 2 - startLength)).toFloat()
+                        val startY =
+                            (size.height / 2 + sin(angleRad) * (size.height / 2 - startLength)).toFloat()
                         val endX = (size.width / 2 + cos(angleRad) * (size.width / 2)).toFloat()
                         val endY = (size.height / 2 + sin(angleRad) * (size.height / 2)).toFloat()
 
@@ -238,34 +255,6 @@ fun CompassViewRound(modifier: Modifier = Modifier, azimuth: Float) {
                             strokeWidth = if (i % 90 == 0) 4f else 2f
                         )
                     }
-                }
-
-                // Centered text for previous, next, and current directions.
-                Box(modifier = Modifier.fillMaxSize()) {
-                    // Previous direction, moving left from the center
-                    Text(
-                        text = prevDirection,
-                        fontSize = 24.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = Color(0xFFFFF9C4),
-                        modifier = Modifier.align(Alignment.Center).offset(x = -sideOffset.dp)
-                    )
-                    // Next direction, moving right from the center
-                    Text(
-                        text = nextDirection,
-                        fontSize = 24.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = Color(0xFFFFF9C4),
-                        modifier = Modifier.align(Alignment.Center).offset(x = sideOffset.dp)
-                    )
-                    // Current direction (centered both horizontally and vertically)
-                    Text(
-                        text = currentDirection,
-                        fontSize = 42.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = Color.Red,
-                        modifier = Modifier.align(Alignment.Center)
-                    )
                 }
             }
         }
