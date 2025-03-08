@@ -13,19 +13,35 @@ private val Context.dataStore by preferencesDataStore(name = "user_prefs")
 class UserPreferences(private val context: Context) {
 
     companion object {
+        const val SKIN_CLASSIC = 0
+        const val SKIN_FUTURISTIC = 1
+        const val SKIN_MINIMALISTIC = 2
+
         private val COMPASS_TYPE_KEY = intPreferencesKey("compass_type")
+        private val COMPASS_SKIN_KEY = intPreferencesKey("compass_skin")
     }
 
-    // Retrieve stored compass type as a Flow
+    // Retrieve stored compass type as a Flow (existing logic)
     val compassType: Flow<Int> = context.dataStore.data.map { preferences ->
-        preferences[COMPASS_TYPE_KEY] ?: 0 // Default to CompassView (0)
+        preferences[COMPASS_TYPE_KEY] ?: 0 // Default compass type
     }
 
-    // Save the selected compass type
+    // Retrieve stored compass skin as a Flow (new addition)
+    val compassSkin: Flow<Int> = context.dataStore.data.map { preferences ->
+        preferences[COMPASS_SKIN_KEY] ?: SKIN_CLASSIC // Default to Classic skin
+    }
+
+    // Save the selected compass type (existing functionality)
     suspend fun saveCompassType(type: Int) {
         context.dataStore.edit { preferences ->
             preferences[COMPASS_TYPE_KEY] = type
         }
     }
 
+    // Save the selected compass skin (new addition)
+    suspend fun saveCompassSkin(skin: Int) {
+        context.dataStore.edit { preferences ->
+            preferences[COMPASS_SKIN_KEY] = skin
+        }
+    }
 }

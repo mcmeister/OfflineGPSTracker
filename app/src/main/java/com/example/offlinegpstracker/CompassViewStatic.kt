@@ -84,33 +84,54 @@ fun CompassViewStatic(modifier: Modifier = Modifier) {
 fun DirectionLettersStatic(azimuth: Float) {
     val activeDirection = getActiveDirectionStatic(azimuth)
 
+    // Increase each offset by 20.dp
+    val cardinalOffset = 140.dp  // was 120.dp
+    val diagonalOffset = 100.dp  // was 80.dp
+
     Box(
         modifier = Modifier
             .fillMaxSize()
             .graphicsLayer(rotationZ = -azimuth), // Rotate all letters around the compass
         contentAlignment = Alignment.Center
     ) {
-        // Cardinal Directions (N, S, E, W) - Apply rotation to align bottom to center
-        TextDirectionStatic("N", activeDirection == "N", Modifier
-            .offset(y = (-120).dp)
-            .graphicsLayer(rotationZ = 0f))  // No rotation needed for N
+        // Cardinal Directions
+        TextDirectionStatic("N", activeDirection == "N",
+            Modifier
+                .offset(y = -cardinalOffset)
+                .graphicsLayer(rotationZ = 0f)
+        )
 
-        TextDirectionStatic("S", activeDirection == "S", Modifier
-            .offset(y = 120.dp)
-            .graphicsLayer(rotationZ = 180f))  // Rotate 180° for S
+        TextDirectionStatic("S", activeDirection == "S",
+            Modifier
+                .offset(y = cardinalOffset)
+                .graphicsLayer(rotationZ = 180f)
+        )
 
-        TextDirectionStatic("E", activeDirection == "E", Modifier
-            .offset(x = 120.dp)
-            .graphicsLayer(rotationZ = 90f))  // Rotate 90° for E
+        TextDirectionStatic("E", activeDirection == "E",
+            Modifier
+                .offset(x = cardinalOffset)
+                .graphicsLayer(rotationZ = 90f)
+        )
 
-        TextDirectionStatic("W", activeDirection == "W", Modifier
-            .offset(x = (-120).dp)
-            .graphicsLayer(rotationZ = -90f))  // Rotate -90° for W
+        TextDirectionStatic("W", activeDirection == "W",
+            Modifier
+                .offset(x = -cardinalOffset)
+                .graphicsLayer(rotationZ = -90f)
+        )
 
-        TextDirectionRotatedStatic("NW", "NW" == activeDirection, -45f, Modifier.offset(x = (-80).dp, y = (-80).dp))
-        TextDirectionRotatedStatic("NE", "NE" == activeDirection, 45f, Modifier.offset(x = 80.dp, y = (-80).dp))
-        TextDirectionRotatedStatic("SW", "SW" == activeDirection, 225f, Modifier.offset(x = (-80).dp, y = 80.dp))
-        TextDirectionRotatedStatic("SE", "SE" == activeDirection, -225f, Modifier.offset(x = 80.dp, y = 80.dp))
+        // Diagonals
+        TextDirectionRotatedStatic("NW", activeDirection == "NW", -45f,
+            Modifier.offset(x = -diagonalOffset, y = -diagonalOffset)
+        )
+        TextDirectionRotatedStatic("NE", activeDirection == "NE", 45f,
+            Modifier.offset(x = diagonalOffset, y = -diagonalOffset)
+        )
+        TextDirectionRotatedStatic("SW", activeDirection == "SW", 225f,
+            Modifier.offset(x = -diagonalOffset, y = diagonalOffset)
+        )
+        TextDirectionRotatedStatic("SE", activeDirection == "SE", -225f,
+            Modifier.offset(x = diagonalOffset, y = diagonalOffset)
+        )
     }
 }
 

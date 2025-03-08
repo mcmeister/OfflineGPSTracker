@@ -20,8 +20,8 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.remember
@@ -70,13 +70,16 @@ fun getPreviousDirection(azimuth: Float): String {
 @SuppressLint("MutableCollectionMutableState")
 @Composable
 fun CompassViewGauge(modifier: Modifier = Modifier, azimuth: Float) {
+    val context = LocalContext.current
     val viewModel = viewModel<CompassViewModel>()
+    val userPrefs = remember { UserPreferences(context) }
+    val skinType by userPrefs.compassSkin.collectAsState(initial = UserPreferences.SKIN_CLASSIC)
 
-    var smoothedAzimuth by remember { mutableFloatStateOf(0f) }
+    var smoothedAzimuth by remember { mutableFloatStateOf(azimuth) }
     val alpha = 0.2f
 
     LaunchedEffect(azimuth) {
-        smoothedAzimuth = alpha * azimuth + (1 - alpha) * smoothedAzimuth
+        smoothedAzimuth = smoothedAzimuth * (1 - alpha) + azimuth * alpha
     }
 
     val animatedAzimuth by animateFloatAsState(
@@ -90,7 +93,6 @@ fun CompassViewGauge(modifier: Modifier = Modifier, azimuth: Float) {
     val prevDirection = getPreviousDirection(animatedAzimuth)
 
     val transition = rememberInfiniteTransition(label = "letter_slide")
-
     val sideOffset by transition.animateFloat(
         initialValue = 20f,
         targetValue = 100f,
@@ -101,10 +103,9 @@ fun CompassViewGauge(modifier: Modifier = Modifier, azimuth: Float) {
         label = "side_letter_move"
     )
 
-    // Animate text size from initial size to 4sp
     val animatedTextSize by transition.animateFloat(
-        initialValue = 32f, // Initial size in sp
-        targetValue = 4f,  // Decreasing step by step
+        initialValue = 32f,
+        targetValue = 4f,
         animationSpec = infiniteRepeatable(
             animation = tween(2000, easing = LinearEasing),
             repeatMode = RepeatMode.Restart
@@ -115,15 +116,54 @@ fun CompassViewGauge(modifier: Modifier = Modifier, azimuth: Float) {
     val lightX = viewModel.lightX
     val lightY = viewModel.lightY
 
-    val context = LocalContext.current
-    DisposableEffect(Unit) {
-        viewModel.initialize(context)
-        viewModel.startListening()
-        onDispose {
-            viewModel.stopListening()
+    // Removed inner pointerInput so that single taps are not consumed here.
+    Box(
+        modifier = modifier.fillMaxSize(),
+        contentAlignment = Alignment.Center
+    ) {
+        when (skinType) {
+            UserPreferences.SKIN_CLASSIC ->
+                ClassicCompass(
+                    modifier = modifier,
+                    currentDirection = currentDirection,
+                    prevDirection = prevDirection,
+                    nextDirection = nextDirection,
+                    animatedTextSize = animatedTextSize,
+                    sideOffset = sideOffset,
+                    lightX = lightX,
+                    lightY = lightY
+                )
+            UserPreferences.SKIN_FUTURISTIC ->
+                FuturisticCompass(
+                    currentDirection = currentDirection,
+                    nextDirection = nextDirection,
+                    prevDirection = prevDirection,
+                    animatedTextSize = animatedTextSize,
+                    sideOffset = sideOffset
+                )
+            UserPreferences.SKIN_MINIMALISTIC ->
+                MinimalisticCompass(
+                    currentDirection = currentDirection,
+                    nextDirection = nextDirection,
+                    prevDirection = prevDirection,
+                    animatedTextSize = animatedTextSize,
+                    sideOffset = sideOffset
+                )
         }
     }
+}
 
+@Composable
+fun ClassicCompass(
+    modifier: Modifier = Modifier,
+    currentDirection: String,
+    prevDirection: String,
+    nextDirection: String,
+    animatedTextSize: Float,
+    sideOffset: Float,
+    lightX: Float,
+    lightY: Float
+) {
     Box(
         modifier = Modifier.fillMaxSize(),
         contentAlignment = Alignment.Center
@@ -256,6 +296,171 @@ fun CompassViewGauge(modifier: Modifier = Modifier, azimuth: Float) {
                         )
                     }
                 }
+            }
+        }
+    }
+}
+
+@Composable
+fun FuturisticCompass(
+    currentDirection: String,
+    prevDirection: String,
+    nextDirection: String,
+    animatedTextSize: Float,
+    sideOffset: Float
+) {
+    Box(
+        modifier = Modifier.fillMaxSize(),
+        contentAlignment = Alignment.Center
+    ) {
+        // Background
+        Box(
+            modifier = Modifier
+                .size(300.dp, 120.dp)
+                .background(
+                    Brush.linearGradient(
+                        listOf(Color(0xFF121212), Color(0xFF263238)),
+                        start = Offset.Zero,
+                        end = Offset.Infinite
+                    ),
+                    RoundedCornerShape(50.dp)
+                )
+                .border(2.dp, Color.Cyan, RoundedCornerShape(50.dp))
+        )
+
+        // Animated letters
+        Box(
+            modifier = Modifier.fillMaxSize().zIndex(0f)
+        ) {
+            Text(
+                text = prevDirection,
+                fontSize = animatedTextSize.sp,
+                fontWeight = FontWeight.Bold,
+                color = Color(0xFF607D8B),
+                modifier = Modifier.align(Alignment.Center).offset(x = -sideOffset.dp)
+            )
+
+            Text(
+                text = nextDirection,
+                fontSize = animatedTextSize.sp,
+                fontWeight = FontWeight.Bold,
+                color = Color(0xFF90A4AE),
+                modifier = Modifier.align(Alignment.Center).offset(x = sideOffset.dp)
+            )
+
+            Text(
+                text = currentDirection,
+                fontSize = 42.sp,
+                fontWeight = FontWeight.Bold,
+                color = Color.Cyan,
+                modifier = Modifier.align(Alignment.Center)
+            )
+        }
+
+        // ✅ Added Ticks Canvas
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .zIndex(1f)
+        ) {
+            Canvas(
+                modifier = Modifier
+                    .size(240.dp, 100.dp)
+                    .align(Alignment.Center)
+            ) {
+                val tickLength = 10.dp.toPx()
+                val majorTickLength = 20.dp.toPx()
+
+                for (i in 0 until 360 step 10) {
+                    val angleRad = Math.toRadians(i.toDouble())
+                    val startLength = if (i % 90 == 0) majorTickLength else tickLength
+
+                    val startX =
+                        (size.width / 2 + cos(angleRad) * (size.width / 2 - startLength)).toFloat()
+                    val startY =
+                        (size.height / 2 + sin(angleRad) * (size.height / 2 - startLength)).toFloat()
+                    val endX = (size.width / 2 + cos(angleRad) * (size.width / 2)).toFloat()
+                    val endY = (size.height / 2 + sin(angleRad) * (size.height / 2)).toFloat()
+
+                    drawLine(
+                        color = if (i % 90 == 0) Color.Cyan else Color(0xFF607D8B),
+                        start = Offset(startX, startY),
+                        end = Offset(endX, endY),
+                        strokeWidth = if (i % 90 == 0) 4f else 2f
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun MinimalisticCompass(
+    currentDirection: String,
+    nextDirection: String,
+    prevDirection: String,
+    animatedTextSize: Float,
+    sideOffset: Float
+) {
+    Box(
+        modifier = Modifier.size(300.dp, 120.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(
+            text = prevDirection,
+            fontSize = animatedTextSize.sp,
+            fontWeight = FontWeight.Bold,
+            color = Color.Gray,
+            modifier = Modifier.align(Alignment.Center).offset(x = (-sideOffset).dp)
+        )
+
+        Text(
+            text = nextDirection,
+            fontSize = animatedTextSize.sp,
+            fontWeight = FontWeight.Bold,
+            color = Color.Gray,
+            modifier = Modifier.align(Alignment.Center).offset(x = sideOffset.dp)
+        )
+
+        Text(
+            text = currentDirection,
+            fontSize = 42.sp,
+            fontWeight = FontWeight.Bold,
+            color = Color.Red,
+            modifier = Modifier.align(Alignment.Center)
+        )
+    }
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .zIndex(1f)
+    ) {
+        Canvas(
+            modifier = Modifier
+                .size(240.dp, 100.dp)
+                .align(Alignment.Center)
+        ) {
+            val tickLength = 10.dp.toPx()
+            val majorTickLength = 20.dp.toPx()
+
+            for (i in 0 until 360 step 10) {
+                val angleRad = Math.toRadians(i.toDouble())
+                val startLength = if (i % 90 == 0) majorTickLength else tickLength
+
+                val startX =
+                    (size.width / 2 + cos(angleRad) * (size.width / 2 - startLength)).toFloat()
+                val startY =
+                    (size.height / 2 + sin(angleRad) * (size.height / 2 - startLength)).toFloat()
+                val endX = (size.width / 2 + cos(angleRad) * (size.width / 2)).toFloat()
+                val endY = (size.height / 2 + sin(angleRad) * (size.height / 2)).toFloat()
+
+                drawLine(
+                    color = if (i % 90 == 0) Color.Black else Color.Gray,
+                    start = Offset(startX, startY),
+                    end = Offset(endX, endY),
+                    strokeWidth = if (i % 90 == 0) 4f else 2f
+                )
             }
         }
     }

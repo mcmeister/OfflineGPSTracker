@@ -11,13 +11,13 @@ import android.net.Uri
 import android.widget.Toast
 import androidx.compose.animation.Crossfade
 import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -33,6 +33,7 @@ import androidx.compose.material.icons.filled.Terrain
 import androidx.compose.material3.Button
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedCard
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
@@ -47,17 +48,20 @@ import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -221,9 +225,6 @@ fun GPSTrackerScreen(locationViewModel: LocationViewModel = viewModel()) {
         onDispose { sensorManager.unregisterListener(sensorEventListener) }
     }
 
-    // Calculate current direction
-    val currentDirection = getHorizontalActiveDirection(azimuth)
-
     val userPreferences = remember { UserPreferences(context) }
 
     // Track whether DataStore has finished retrieving stored state
@@ -231,11 +232,12 @@ fun GPSTrackerScreen(locationViewModel: LocationViewModel = viewModel()) {
 
     // Flow-backed state for persisted compass selection
     val storedCompassType by userPreferences.compassType.collectAsState(initial = -1)
+    val storedCompassSkin by userPreferences.compassSkin.collectAsState(initial = UserPreferences.SKIN_CLASSIC)
 
     // Mutable state for UI tracking
-    var compassViewType by remember { mutableIntStateOf(0) }
+    var compassViewType by remember { mutableIntStateOf(storedCompassType) }
 
-    // Ensure stored value is applied **only once** after retrieval
+    // Ensure stored value is applied only once after retrieval
     LaunchedEffect(storedCompassType) {
         if (storedCompassType != -1 && !isCompassTypeLoaded) {
             compassViewType = storedCompassType
@@ -250,63 +252,76 @@ fun GPSTrackerScreen(locationViewModel: LocationViewModel = viewModel()) {
         }
     }
 
+    val coroutineScope = rememberCoroutineScope()
+
+    // Main layout in a Column for vertical ordering
     Column(
         modifier = Modifier
             .fillMaxSize()
-            // .padding(16.dp)
-            .verticalScroll(rememberScrollState()),
-        verticalArrangement = Arrangement.Center,
+            .verticalScroll(rememberScrollState())
+            .padding(16.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
+        // 1) Top Title
         Text(
             text = "Amazon Jungle",
+            style = MaterialTheme.typography.titleLarge,
             modifier = Modifier.align(Alignment.CenterHorizontally)
         )
 
-        Spacer(modifier = Modifier.height(24.dp))
+        Spacer(modifier = Modifier.height(16.dp))
 
-        // Main Compass (Big Circular)
-        if (isCompassTypeLoaded) { // Only show compass when DataStore has loaded
-            Crossfade(targetState = compassViewType, label = "CompassSwitch") { viewType ->
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(300.dp)
-                        .clickable(
-                            onClick = { compassViewType = (compassViewType + 1) % 3 },
-                            indication = null, // Disable ripple effect
-                            interactionSource = remember { MutableInteractionSource() } // Required when setting indication
-                        ),
-                    contentAlignment = Alignment.Center
-                ) {
+        // 2) Compass block (Box) — single & double tap logic is here
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .aspectRatio(1f) // Make it a square; adjust as desired
+                .pointerInput(Unit) {
+                    detectTapGestures(
+                        onTap = {
+                            compassViewType = (compassViewType + 1) % 3
+                        },
+                        onDoubleTap = {
+                            if (compassViewType == 2) { // Only in gauge view
+                                val newSkin = (storedCompassSkin + 1) % 3
+                                coroutineScope.launch {
+                                    userPreferences.saveCompassSkin(newSkin)
+                                }
+                            }
+                        }
+                    )
+                },
+            contentAlignment = Alignment.Center
+        ) {
+            if (isCompassTypeLoaded) {
+                Crossfade(targetState = compassViewType, label = "CompassSwitch") { viewType ->
                     when (viewType) {
                         0 -> CompassView(modifier = Modifier.fillMaxSize())
                         1 -> CompassViewStatic(modifier = Modifier.fillMaxSize())
                         2 -> CompassViewGauge(azimuth = azimuth)
                     }
                 }
+            } else {
+                Text("Loading compass...")
             }
-        } else {
-            // Show loading indicator or placeholder until DataStore finishes loading
-            Text("Loading compass...", modifier = Modifier.align(Alignment.CenterHorizontally))
         }
 
-        Spacer(modifier = Modifier.height(24.dp))
+        Spacer(modifier = Modifier.height(16.dp))
 
-        // Display Azimuth and Direction
+        // 3) Azimuth text
         Text(
-            text = "Azimuth: ${String.format("%.2f", azimuth)}°, Direction: $currentDirection",
-            modifier = Modifier.align(Alignment.CenterHorizontally)
+            text = "Azimuth: ${String.format("%.0f", azimuth)}°",
+            style = MaterialTheme.typography.bodyLarge
         )
 
         Spacer(modifier = Modifier.height(8.dp))
 
-        // Location Info (Lat, Long, Alt)
+        // 4) Lat/Long/Elevation chips
         LocationInfoChipRow(latitude = latitude, longitude = longitude, altitude = altitude)
 
         Spacer(modifier = Modifier.height(24.dp))
 
-        // Text Input Field
+        // 5) Location Name input
         OutlinedTextField(
             value = name,
             onValueChange = { name = it },
@@ -316,7 +331,7 @@ fun GPSTrackerScreen(locationViewModel: LocationViewModel = viewModel()) {
 
         Spacer(modifier = Modifier.height(24.dp))
 
-        // Buttons Row (Share & Save)
+        // 6) Share/Save buttons
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween

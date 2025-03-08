@@ -94,7 +94,7 @@ fun DirectionLetters(azimuth: Float) {
     val activeDirection = getActiveDirection(azimuth)
 
     Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-        val distance = 120.dp // adjust this distance as needed to position letters equally
+        val distance = 140.dp // adjust this distance as needed to position letters equally
 
         // N
         TextDirection(
@@ -125,7 +125,7 @@ fun DirectionLetters(azimuth: Float) {
         )
 
         // Diagonal letters (NE, NW, SE, SW)
-        val diagonalOffset = 80.dp
+        val diagonalOffset = 100.dp
         TextDirectionRotated(
             "NW",
             "NW" == activeDirection,
