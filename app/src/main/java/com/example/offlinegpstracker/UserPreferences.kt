@@ -14,8 +14,8 @@ class UserPreferences(private val context: Context) {
 
     companion object {
         const val SKIN_CLASSIC = 0
-        const val SKIN_FUTURISTIC = 1
-        const val SKIN_MINIMALISTIC = 2
+        const val SKIN_NEON = 1
+        const val SKIN_MINIMAL = 2
 
         private val COMPASS_TYPE_KEY = intPreferencesKey("compass_type")
         private val COMPASS_SKIN_KEY = intPreferencesKey("compass_skin")

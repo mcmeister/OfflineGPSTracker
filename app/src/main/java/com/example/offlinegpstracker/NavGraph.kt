@@ -1,12 +1,10 @@
 package com.example.offlinegpstracker
 
-import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.PagerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.unit.dp
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
@@ -28,7 +26,7 @@ fun NavGraph(
             // Remove the page count parameter since it's provided in pagerState
             HorizontalPager(
                 state = pagerState,
-                modifier = Modifier.padding(16.dp)
+                modifier = Modifier
             ) { page ->
                 when (page) {
                     0 -> GPSTrackerScreen(locationViewModel)

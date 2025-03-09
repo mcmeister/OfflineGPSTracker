@@ -13,7 +13,6 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.size
@@ -133,16 +132,16 @@ fun CompassViewGauge(modifier: Modifier = Modifier, azimuth: Float) {
                     lightX = lightX,
                     lightY = lightY
                 )
-            UserPreferences.SKIN_FUTURISTIC ->
-                FuturisticCompass(
+            UserPreferences.SKIN_NEON ->
+                NeonCompass(
                     currentDirection = currentDirection,
                     nextDirection = nextDirection,
                     prevDirection = prevDirection,
                     animatedTextSize = animatedTextSize,
                     sideOffset = sideOffset
                 )
-            UserPreferences.SKIN_MINIMALISTIC ->
-                MinimalisticCompass(
+            UserPreferences.SKIN_MINIMAL ->
+                MinimalCompass(
                     currentDirection = currentDirection,
                     nextDirection = nextDirection,
                     prevDirection = prevDirection,
@@ -170,7 +169,6 @@ fun ClassicCompass(
     ) {
         Box(
             modifier = modifier
-                .fillMaxWidth(0.8f)
                 .height(120.dp),
             contentAlignment = Alignment.Center
         ) {
@@ -302,7 +300,7 @@ fun ClassicCompass(
 }
 
 @Composable
-fun FuturisticCompass(
+fun NeonCompass(
     currentDirection: String,
     prevDirection: String,
     nextDirection: String,
@@ -395,7 +393,7 @@ fun FuturisticCompass(
 }
 
 @Composable
-fun MinimalisticCompass(
+fun MinimalCompass(
     currentDirection: String,
     nextDirection: String,
     prevDirection: String,
@@ -456,7 +454,7 @@ fun MinimalisticCompass(
                 val endY = (size.height / 2 + sin(angleRad) * (size.height / 2)).toFloat()
 
                 drawLine(
-                    color = if (i % 90 == 0) Color.Black else Color.Gray,
+                    color = if (i % 90 == 0) Color.White else Color.Gray,
                     start = Offset(startX, startY),
                     end = Offset(endX, endY),
                     strokeWidth = if (i % 90 == 0) 4f else 2f
