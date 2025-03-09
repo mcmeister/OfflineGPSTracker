@@ -14,14 +14,17 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.core.app.ActivityCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.compose.rememberNavController
@@ -36,6 +39,8 @@ class MainActivity : AppCompatActivity() {
         LocationViewModelFactory(application, (application as MyApplication).repository)
     }
 
+    private val userPreferences by lazy { UserPreferences(application) }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContent {
@@ -46,6 +51,9 @@ class MainActivity : AppCompatActivity() {
                 ) {
                     val navController = rememberNavController()
                     val scope = rememberCoroutineScope()
+
+                    val currentSkin by userPreferences.compassSkin.collectAsStateWithLifecycle(initialValue = UserPreferences.SKIN_CLASSIC)
+                    val compassType by userPreferences.compassType.collectAsStateWithLifecycle(initialValue = 0) // Track Compass Type
 
                     // Collecting locations in a Lifecycle-aware manner
                     val locations by locationViewModel.locations.collectAsStateWithLifecycle(lifecycleOwner.lifecycle)
@@ -76,7 +84,10 @@ class MainActivity : AppCompatActivity() {
 
                     Scaffold(
                         bottomBar = {
-                            NavigationBar {
+                            // Apply color logic only when CompassViewGauge is selected
+                            val (navTextColor, navBackgroundColor, selectedItemColor) = getNavBarColors(currentSkin, compassType)
+
+                            NavigationBar(containerColor = navBackgroundColor) {
                                 NavigationBarItem(
                                     selected = pagerState.currentPage == 0,
                                     onClick = {
@@ -97,8 +108,8 @@ class MainActivity : AppCompatActivity() {
                                             }
                                         }
                                     },
-                                    label = { Text("GPS Tracker") },
-                                    icon = { Icon(Icons.Default.LocationOn, contentDescription = null) }
+                                    label = { Text("GPS Tracker", color = if (pagerState.currentPage == 0) selectedItemColor else navTextColor) },
+                                    icon = { Icon(Icons.Default.LocationOn, contentDescription = null, tint = if (pagerState.currentPage == 0) selectedItemColor else navTextColor) }
                                 )
                                 NavigationBarItem(
                                     selected = pagerState.currentPage == 1,
@@ -120,8 +131,8 @@ class MainActivity : AppCompatActivity() {
                                             }
                                         }
                                     },
-                                    label = { Text("Locations") },
-                                    icon = { Icon(Icons.AutoMirrored.Filled.List, contentDescription = null) }
+                                    label = { Text("Locations", color = if (pagerState.currentPage == 1) selectedItemColor else navTextColor) },
+                                    icon = { Icon(Icons.AutoMirrored.Filled.List, contentDescription = null, tint = if (pagerState.currentPage == 1) selectedItemColor else navTextColor) }
                                 )
                             }
                         }
@@ -138,6 +149,21 @@ class MainActivity : AppCompatActivity() {
             }
         }
         requestLocationPermission()
+    }
+
+    @Composable
+    fun getNavBarColors(currentSkin: Int, compassType: Int): Triple<Color, Color, Color> {
+        return if (compassType == 2) { // Only change color if CompassViewGauge is selected
+            when (currentSkin) {
+                UserPreferences.SKIN_CLASSIC -> Triple(Color.Black, Color(0xFFB0BEC5), Color.DarkGray)
+                UserPreferences.SKIN_NEON -> Triple(Color.Cyan, Color.Black, Color(0xFF007799))
+                UserPreferences.SKIN_MINIMAL -> Triple(Color.Gray, Color.Black, Color.Gray)
+                else -> Triple(MaterialTheme.colorScheme.onBackground, MaterialTheme.colorScheme.background, MaterialTheme.colorScheme.primary)
+            }
+        } else {
+            // Default colors when CompassViewGauge is NOT selected (Keep Material defaults)
+            Triple(MaterialTheme.colorScheme.onBackground, MaterialTheme.colorScheme.background, MaterialTheme.colorScheme.primary)
+        }
     }
 
     private fun requestLocationPermission() {

@@ -11,6 +11,7 @@ import android.net.Uri
 import android.widget.Toast
 import androidx.compose.animation.Crossfade
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.detectTapGestures
@@ -63,7 +64,9 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
@@ -114,6 +117,7 @@ fun LocationInfoChipRow(
             Modifier
                 .fillMaxWidth()
                 .padding(vertical = 8.dp)
+                .background(Color.Black.copy(alpha = 0.5f), RoundedCornerShape(4.dp))
                 .border(1.dp, Color.Cyan, RoundedCornerShape(4.dp))
 
         UserPreferences.SKIN_MINIMAL ->
@@ -309,26 +313,16 @@ fun GPSTrackerScreen(locationViewModel: LocationViewModel = viewModel()) {
     val isGauge = (compassViewType == 2)
     val currentSkin = if (isGauge) storedCompassSkin else UserPreferences.SKIN_CLASSIC
 
-    val screenModifier = if (isGauge && currentSkin == UserPreferences.SKIN_CLASSIC) {
-        Modifier
-            .fillMaxSize()
-            .background(
-                Brush.linearGradient(
-                    colors = listOf(Color(0xFFD3D3D3), Color(0xFFB0BEC5)),
-                    start = Offset.Zero,
-                    end = Offset.Infinite
-                )
-            )
-    } else {
-        Modifier
-            .fillMaxSize()
-            .background(
-                when {
-                    isGauge && (currentSkin == UserPreferences.SKIN_NEON || currentSkin == UserPreferences.SKIN_MINIMAL) -> Color.Black
-                    else -> MaterialTheme.colorScheme.background
-                }
-            )
-    }
+    val screenModifier = Modifier
+        .fillMaxSize()
+        .then(
+            when {
+                isGauge && currentSkin == UserPreferences.SKIN_CLASSIC -> Modifier.background(Color.Transparent) // Handled by Box with Image
+                isGauge && currentSkin == UserPreferences.SKIN_NEON -> Modifier.background(Color.Transparent) // Background handled by Image
+                isGauge && currentSkin == UserPreferences.SKIN_MINIMAL -> Modifier.background(Color.Black)
+                else -> Modifier.background(MaterialTheme.colorScheme.background)
+            }
+        )
         .verticalScroll(rememberScrollState())
         .padding(16.dp)
 
@@ -341,258 +335,326 @@ fun GPSTrackerScreen(locationViewModel: LocationViewModel = viewModel()) {
         }
     } else MaterialTheme.colorScheme.onBackground
 
-    Column(
-        modifier = screenModifier,
-        horizontalAlignment = Alignment.CenterHorizontally
+    Box(
+        modifier = Modifier.fillMaxSize()
     ) {
-        // Top Title
-        Text(
-            text = "Amazon Jungle",
-            style = MaterialTheme.typography.titleLarge,
-            color = textColor,
-            modifier = Modifier.align(Alignment.CenterHorizontally)
-        )
-        Spacer(modifier = Modifier.height(16.dp))
+        // Apply metallic background image for Classic skin
+        if (isGauge && currentSkin == UserPreferences.SKIN_CLASSIC) {
+            Image(
+                painter = painterResource(id = R.drawable.metallic_background),
+                contentDescription = null,
+                modifier = Modifier.fillMaxSize(),
+                contentScale = ContentScale.Crop // Ensures full-screen coverage
+            )
+        }
 
-        // Compass block (the tap logic remains unchanged)
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .aspectRatio(1f)
-                .pointerInput(Unit) {
-                    detectTapGestures(
-                        onDoubleTap = {
-                            compassViewType = (compassViewType + 1) % 3
-                        },
-                        onTap = {
-                            if (compassViewType == 2) { // Only in Gauge view
-                                val newSkin = (storedCompassSkin + 1) % 3
-                                coroutineScope.launch {
-                                    userPreferences.saveCompassSkin(newSkin)
+        if (isGauge && currentSkin == UserPreferences.SKIN_NEON) {
+            Image(
+                painter = painterResource(id = R.drawable.neon_background),
+                contentDescription = null,
+                modifier = Modifier.fillMaxSize(),
+                contentScale = ContentScale.Crop
+            )
+        }
+
+        Column(
+            modifier = screenModifier,
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            // Top Title
+            Box(
+                modifier = Modifier
+                    .then(
+                        if (isGauge && currentSkin == UserPreferences.SKIN_NEON) {
+                            Modifier
+                                .border(1.dp, Color.Cyan, RoundedCornerShape(12.dp)) // ✅ Border first!
+                                .background(Color.Black.copy(alpha = 0.5f), RoundedCornerShape(12.dp))
+                                .padding(horizontal = 12.dp, vertical = 6.dp) // ✅ Increased padding to match border size
+                        } else Modifier
+                    )
+            ) {
+                Text(
+                    text = "Amazon Jungle",
+                    style = MaterialTheme.typography.titleLarge,
+                    color = textColor,
+                    modifier = Modifier
+                )
+            }
+            Spacer(modifier = Modifier.height(12.dp))
+
+            // Compass block (the tap logic remains unchanged)
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .aspectRatio(1f)
+                    .pointerInput(Unit) {
+                        detectTapGestures(
+                            onDoubleTap = {
+                                compassViewType = (compassViewType + 1) % 3
+                            },
+                            onTap = {
+                                if (compassViewType == 2) { // Only in Gauge view
+                                    val newSkin = (storedCompassSkin + 1) % 3
+                                    coroutineScope.launch {
+                                        userPreferences.saveCompassSkin(newSkin)
+                                    }
                                 }
                             }
+                        )
+                    },
+                contentAlignment = Alignment.Center
+            ) {
+                if (isCompassTypeLoaded) {
+                    Crossfade(targetState = compassViewType, label = "CompassSwitch") { viewType ->
+                        when (viewType) {
+                            0 -> CompassView(modifier = Modifier.fillMaxSize())
+                            1 -> CompassViewStatic(modifier = Modifier.fillMaxSize())
+                            2 -> CompassViewGauge(azimuth = azimuth)
                         }
-                    )
-                },
-            contentAlignment = Alignment.Center
-        ) {
-            if (isCompassTypeLoaded) {
-                Crossfade(targetState = compassViewType, label = "CompassSwitch") { viewType ->
-                    when (viewType) {
-                        0 -> CompassView(modifier = Modifier.fillMaxSize())
-                        1 -> CompassViewStatic(modifier = Modifier.fillMaxSize())
-                        2 -> CompassViewGauge(azimuth = azimuth)
                     }
+                } else {
+                    Text(
+                        "Loading compass...",
+                        color = if (isGauge) textColor else Color.Unspecified
+                    )
                 }
-            } else {
-                Text("Loading compass...", color = if (isGauge) textColor else Color.Unspecified)
             }
-        }
-        Spacer(modifier = Modifier.height(16.dp))
-        // Azimuth text
-        Text(
-            text = "Azimuth: ${String.format("%.0f", azimuth)}°",
-            style = MaterialTheme.typography.bodyLarge,
-            color = if (isGauge) textColor else MaterialTheme.typography.bodyLarge.color
-        )
-        Spacer(modifier = Modifier.height(8.dp))
-
-        // Pass skin and textColor to the chip row
-        LocationInfoChipRow(
-            latitude = latitude,
-            longitude = longitude,
-            altitude = altitude,
-            textColor = if (isGauge) textColor else Color.Black, // default black text
-            skin = if (isGauge) currentSkin else -1 // default skin indicator for no border
-        )
-        Spacer(modifier = Modifier.height(24.dp))
-
-        // --- Adjusted Location Name input ---
-        OutlinedTextField(
-            value = name,
-            onValueChange = { newValue -> name = newValue },
-            label = {
-                Text(
-                    "Enter Location Name",
-                    color = if (isGauge) textColor else MaterialTheme.colorScheme.onSurface
-                )
-            },
-            placeholder = {
-                Text(
-                    "Leave blank to auto-generate",
-                    fontSize = 12.sp, // Smaller font size for subtlety
-                    color = (if (isGauge) textColor else MaterialTheme.colorScheme.onSurface).copy(
-                        alpha = 0.5f
+            Spacer(modifier = Modifier.height(4.dp))
+            // Azimuth text
+            Box(
+                modifier = Modifier
+                    .then(
+                        if (isGauge && currentSkin == UserPreferences.SKIN_NEON) {
+                            Modifier
+                                .border(1.dp, Color.Cyan, RoundedCornerShape(12.dp)) // ✅ Border first!
+                                .background(Color.Black.copy(alpha = 0.5f), RoundedCornerShape(12.dp))
+                                .padding(horizontal = 12.dp, vertical = 6.dp) // ✅ Increased padding to match border size
+                        } else Modifier
                     )
+            ) {
+                Text(
+                    text = "Azimuth: ${String.format("%.0f", azimuth)}°",
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = if (isGauge) textColor else MaterialTheme.typography.bodyLarge.color
                 )
-            },
-            modifier = Modifier.fillMaxWidth(),
-            colors = when (currentSkin) {
-                UserPreferences.SKIN_CLASSIC -> TextFieldDefaults.colors(
-                    focusedContainerColor = Color.Transparent,
-                    unfocusedContainerColor = Color.Transparent,
-                    focusedTextColor = textColor,
-                    unfocusedTextColor = textColor,
-                    cursorColor = textColor,
-                    focusedIndicatorColor = Color(0xFF546E7A),
-                    unfocusedIndicatorColor = Color(0xFF546E7A),
-                    focusedLabelColor = textColor,
-                    unfocusedLabelColor = textColor
-                )
-
-                UserPreferences.SKIN_NEON -> TextFieldDefaults.colors(
-                    focusedContainerColor = Color.Transparent,
-                    unfocusedContainerColor = Color.Transparent,
-                    focusedTextColor = textColor,
-                    unfocusedTextColor = textColor,
-                    cursorColor = textColor,
-                    focusedIndicatorColor = Color.Cyan,
-                    unfocusedIndicatorColor = Color.Cyan,
-                    focusedLabelColor = textColor,
-                    unfocusedLabelColor = textColor
-                )
-
-                UserPreferences.SKIN_MINIMAL -> TextFieldDefaults.colors(
-                    focusedContainerColor = Color.Transparent,
-                    unfocusedContainerColor = Color.Transparent,
-                    focusedTextColor = textColor,
-                    unfocusedTextColor = textColor,
-                    cursorColor = textColor,
-                    focusedIndicatorColor = Color.Transparent,
-                    unfocusedIndicatorColor = Color.Transparent,
-                    focusedLabelColor = textColor,
-                    unfocusedLabelColor = textColor
-                )
-
-                else -> TextFieldDefaults.colors()
             }
-        )
-        Spacer(modifier = Modifier.height(24.dp))
+            Spacer(modifier = Modifier.height(16.dp))
 
-        // --- Adjusted buttons ---
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween
-        ) {
-            if (isGauge) {
-                when (currentSkin) {
-                    UserPreferences.SKIN_CLASSIC -> {
-                        Button(
-                            onClick = { shareLocation(context, latitude, longitude) },
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = Color(0xFFB0BEC5),
-                                contentColor = textColor
-                            ),
-                            border = BorderStroke(1.dp, Color.Black)
-                        ) {
-                            Text("Share")
-                        }
-                        Button(
-                            onClick = {
-                                if (name.isEmpty()) {
-                                    name = generateLocationName()
-                                }
-                                saveLocation(
-                                    context,
-                                    name,
-                                    latitude,
-                                    longitude,
-                                    altitude,
-                                    locationViewModel
-                                )
-                            },
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = Color(0xFFB0BEC5),
-                                contentColor = textColor
-                            ),
-                            border = BorderStroke(1.dp, Color.Black)
-                        ) {
-                            Text("Save")
-                        }
-                    }
+            // Pass skin and textColor to the chip row
+            LocationInfoChipRow(
+                latitude = latitude,
+                longitude = longitude,
+                altitude = altitude,
+                textColor = if (isGauge) textColor else Color.Black, // default black text
+                skin = if (isGauge) currentSkin else -1 // default skin indicator for no border
+            )
+            Spacer(modifier = Modifier.height(8.dp))
 
-                    UserPreferences.SKIN_NEON -> {
-                        OutlinedButton(
-                            onClick = { shareLocation(context, latitude, longitude) },
-                            border = BorderStroke(1.dp, Color.Cyan),
-                            colors = ButtonDefaults.outlinedButtonColors(
-                                containerColor = Color.Transparent,
-                                contentColor = Color.Cyan
-                            )
-                        ) {
-                            Text("Share")
-                        }
-                        OutlinedButton(
-                            onClick = {
-                                if (name.isEmpty()) {
-                                    name = TextFieldValue(generateLocationName()).toString()
-                                }
-                                saveLocation(
-                                    context,
-                                    name,
-                                    latitude,
-                                    longitude,
-                                    altitude,
-                                    locationViewModel
-                                )
-                            },
-                            border = BorderStroke(1.dp, Color.Cyan),
-                            colors = ButtonDefaults.outlinedButtonColors(
-                                containerColor = Color.Transparent,
-                                contentColor = Color.Cyan
-                            )
-                        ) {
-                            Text("Save")
-                        }
-                    }
-
-                    UserPreferences.SKIN_MINIMAL -> {
-                        TextButton(
-                            onClick = { shareLocation(context, latitude, longitude) },
-                            colors = ButtonDefaults.textButtonColors(contentColor = Color.White)
-                        ) {
-                            Text("Share")
-                        }
-                        TextButton(
-                            onClick = {
-                                if (name.isEmpty()) {
-                                    name = TextFieldValue(generateLocationName()).toString()
-                                }
-                                saveLocation(
-                                    context,
-                                    name,
-                                    latitude,
-                                    longitude,
-                                    altitude,
-                                    locationViewModel
-                                )
-                            },
-                            colors = ButtonDefaults.textButtonColors(contentColor = Color.White)
-                        ) {
-                            Text("Save")
-                        }
-                    }
-                }
-            } else {
-                Button(onClick = {
-                    shareLocation(context, latitude, longitude)
-                }) {
-                    Text("Share")
-                }
-                Button(onClick = {
-                    if (name.isEmpty()) {
-                        name = TextFieldValue(generateLocationName()).toString()
-                    }
-                    saveLocation(
-                        context,
-                        name,
-                        latitude,
-                        longitude,
-                        altitude,
-                        locationViewModel
+            // --- Adjusted Location Name input ---
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .then(
+                        if (currentSkin == UserPreferences.SKIN_NEON) {
+                            Modifier.background(Color.Black.copy(alpha = 0.3f), RoundedCornerShape(4.dp))
+                        } else Modifier
                     )
-                }) {
-                    Text("Save")
+            ) {
+                OutlinedTextField(
+                    value = name,
+                    onValueChange = { newValue -> name = newValue },
+                    label = {
+                        Text(
+                            "Enter Location Name",
+                            color = if (isGauge) textColor else MaterialTheme.colorScheme.onSurface
+                        )
+                    },
+                    placeholder = {
+                        Text(
+                            "Leave blank to auto-generate",
+                            fontSize = 12.sp, // Smaller font size for subtlety
+                            color = (if (isGauge) textColor else MaterialTheme.colorScheme.onSurface).copy(alpha = 0.5f)
+                        )
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = when (currentSkin) {
+                        UserPreferences.SKIN_CLASSIC -> TextFieldDefaults.colors(
+                            focusedContainerColor = Color.Transparent,
+                            unfocusedContainerColor = Color.Transparent,
+                            focusedTextColor = textColor,
+                            unfocusedTextColor = textColor,
+                            cursorColor = textColor,
+                            focusedIndicatorColor = Color(0xFF546E7A),
+                            unfocusedIndicatorColor = Color(0xFF546E7A),
+                            focusedLabelColor = textColor,
+                            unfocusedLabelColor = textColor
+                        )
+
+                        UserPreferences.SKIN_NEON -> TextFieldDefaults.colors(
+                            focusedContainerColor = Color.Transparent,
+                            unfocusedContainerColor = Color.Transparent,
+                            focusedTextColor = textColor,
+                            unfocusedTextColor = textColor,
+                            cursorColor = textColor,
+                            focusedIndicatorColor = Color.Cyan,
+                            unfocusedIndicatorColor = Color.Cyan,
+                            focusedLabelColor = textColor,
+                            unfocusedLabelColor = textColor
+                        )
+
+                        UserPreferences.SKIN_MINIMAL -> TextFieldDefaults.colors(
+                            focusedContainerColor = Color.Transparent,
+                            unfocusedContainerColor = Color.Transparent,
+                            focusedTextColor = textColor,
+                            unfocusedTextColor = textColor,
+                            cursorColor = textColor,
+                            focusedIndicatorColor = Color.Transparent,
+                            unfocusedIndicatorColor = Color.Transparent,
+                            focusedLabelColor = textColor,
+                            unfocusedLabelColor = textColor
+                        )
+
+                        else -> TextFieldDefaults.colors(
+                            focusedContainerColor = Color.Transparent,
+                            unfocusedContainerColor = Color.Transparent,
+                            focusedTextColor = textColor,
+                            unfocusedTextColor = textColor,
+                            cursorColor = textColor,
+                            focusedIndicatorColor = Color.Black,  // Black border when no specific skin is applied
+                            unfocusedIndicatorColor = Color.Black, // Black border when no specific skin is applied
+                            focusedLabelColor = textColor,
+                            unfocusedLabelColor = textColor
+                        )
+                    }
+                )
+            }
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // --- Adjusted buttons ---
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                if (isGauge) {
+                    when (currentSkin) {
+                        UserPreferences.SKIN_CLASSIC -> {
+                            Button(
+                                onClick = { shareLocation(context, latitude, longitude) },
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = Color(0xFFB0BEC5),
+                                    contentColor = textColor
+                                ),
+                                border = BorderStroke(1.dp, Color.Black)
+                            ) {
+                                Text("Share")
+                            }
+                            Button(
+                                onClick = {
+                                    if (name.isEmpty()) {
+                                        name = generateLocationName()
+                                    }
+                                    saveLocation(
+                                        context,
+                                        name,
+                                        latitude,
+                                        longitude,
+                                        altitude,
+                                        locationViewModel
+                                    )
+                                },
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = Color(0xFFB0BEC5),
+                                    contentColor = textColor
+                                ),
+                                border = BorderStroke(1.dp, Color.Black)
+                            ) {
+                                Text("Save")
+                            }
+                        }
+
+                        UserPreferences.SKIN_NEON -> {
+                            OutlinedButton(
+                                onClick = { shareLocation(context, latitude, longitude) },
+                                border = BorderStroke(1.dp, Color.Cyan),
+                                colors = ButtonDefaults.outlinedButtonColors(
+                                    containerColor = Color.Transparent,
+                                    contentColor = Color.Cyan
+                                )
+                            ) {
+                                Text("Share")
+                            }
+                            OutlinedButton(
+                                onClick = {
+                                    if (name.isEmpty()) {
+                                        name = TextFieldValue(generateLocationName()).toString()
+                                    }
+                                    saveLocation(
+                                        context,
+                                        name,
+                                        latitude,
+                                        longitude,
+                                        altitude,
+                                        locationViewModel
+                                    )
+                                },
+                                border = BorderStroke(1.dp, Color.Cyan),
+                                colors = ButtonDefaults.outlinedButtonColors(
+                                    containerColor = Color.Transparent,
+                                    contentColor = Color.Cyan
+                                )
+                            ) {
+                                Text("Save")
+                            }
+                        }
+
+                        UserPreferences.SKIN_MINIMAL -> {
+                            TextButton(
+                                onClick = { shareLocation(context, latitude, longitude) },
+                                colors = ButtonDefaults.textButtonColors(contentColor = Color.White)
+                            ) {
+                                Text("Share")
+                            }
+                            TextButton(
+                                onClick = {
+                                    if (name.isEmpty()) {
+                                        name = TextFieldValue(generateLocationName()).toString()
+                                    }
+                                    saveLocation(
+                                        context,
+                                        name,
+                                        latitude,
+                                        longitude,
+                                        altitude,
+                                        locationViewModel
+                                    )
+                                },
+                                colors = ButtonDefaults.textButtonColors(contentColor = Color.White)
+                            ) {
+                                Text("Save")
+                            }
+                        }
+                    }
+                } else {
+                    Button(onClick = {
+                        shareLocation(context, latitude, longitude)
+                    }) {
+                        Text("Share")
+                    }
+                    Button(onClick = {
+                        if (name.isEmpty()) {
+                            name = TextFieldValue(generateLocationName()).toString()
+                        }
+                        saveLocation(
+                            context,
+                            name,
+                            latitude,
+                            longitude,
+                            altitude,
+                            locationViewModel
+                        )
+                    }) {
+                        Text("Save")
+                    }
                 }
             }
         }
