@@ -35,7 +35,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
-import androidx.lifecycle.viewmodel.compose.viewModel
 import kotlin.math.cos
 import kotlin.math.sin
 
@@ -70,7 +69,6 @@ fun getPreviousDirection(azimuth: Float): String {
 @Composable
 fun CompassViewGauge(modifier: Modifier = Modifier, azimuth: Float) {
     val context = LocalContext.current
-    val viewModel = viewModel<CompassViewModel>()
     val userPrefs = remember { UserPreferences(context) }
     val skinType by userPrefs.compassSkin.collectAsState(initial = UserPreferences.SKIN_CLASSIC)
 
@@ -112,9 +110,6 @@ fun CompassViewGauge(modifier: Modifier = Modifier, azimuth: Float) {
         label = "text_size_animation"
     )
 
-    val lightX = viewModel.lightX
-    val lightY = viewModel.lightY
-
     // Removed inner pointerInput so that single taps are not consumed here.
     Box(
         modifier = modifier.fillMaxSize(),
@@ -128,9 +123,7 @@ fun CompassViewGauge(modifier: Modifier = Modifier, azimuth: Float) {
                     prevDirection = prevDirection,
                     nextDirection = nextDirection,
                     animatedTextSize = animatedTextSize,
-                    sideOffset = sideOffset,
-                    lightX = lightX,
-                    lightY = lightY
+                    sideOffset = sideOffset
                 )
             UserPreferences.SKIN_NEON ->
                 NeonCompass(
@@ -159,9 +152,7 @@ fun ClassicCompass(
     prevDirection: String,
     nextDirection: String,
     animatedTextSize: Float,
-    sideOffset: Float,
-    lightX: Float,
-    lightY: Float
+    sideOffset: Float
 ) {
     Box(
         modifier = Modifier.fillMaxSize(),
@@ -210,7 +201,6 @@ fun ClassicCompass(
                     .background(
                         Brush.radialGradient(
                             colors = listOf(Color.White.copy(alpha = 0.3f), Color.Transparent),
-                            center = Offset(lightX, lightY),
                             radius = 150f
                         ),
                         RoundedCornerShape(50.dp)

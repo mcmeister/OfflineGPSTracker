@@ -120,7 +120,7 @@ fun LocationInfoChipRow(
             Modifier
                 .fillMaxWidth()
                 .padding(vertical = 8.dp)
-                .border(1.dp, Color.Black)
+                .border(1.dp, Color.Black, RoundedCornerShape(4.dp))
 
         else -> // default for non-gauge screens
             Modifier
