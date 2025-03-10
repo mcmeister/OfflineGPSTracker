@@ -50,7 +50,7 @@ fun OfflineGPSTrackerTheme(
 
     MaterialTheme(
         colorScheme = colorScheme,
-        typography = Typography,
+        typography = Type,
         content = content
     )
 }

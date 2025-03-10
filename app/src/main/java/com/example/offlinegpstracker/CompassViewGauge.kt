@@ -166,16 +166,10 @@ fun ClassicCompass(
             Box(
                 modifier = Modifier
                     .size(300.dp, 120.dp)
-                    .background(
-                        Brush.linearGradient(
-                            colors = listOf(Color(0xFFD3D3D3), Color(0xFFB0BEC5)),
-                            start = Offset.Zero,
-                            end = Offset.Infinite
-                        ),
-                        RoundedCornerShape(50.dp)
-                    )
+                    .background(Color.Transparent)
                     .border(8.dp, Color(0xFF546E7A), RoundedCornerShape(50.dp))
             )
+            RoundedCornerShape(50.dp)
 
             Box(
                 modifier = Modifier
@@ -305,12 +299,7 @@ fun NeonCompass(
         Box(
             modifier = Modifier
                 .size(300.dp, 120.dp)
-                .background(
-                    Brush.linearGradient(
-                        listOf(Color(0xFF121212), Color(0xFF263238)),
-                        start = Offset.Zero,
-                        end = Offset.Infinite
-                    ),
+                .background(Color.Black.copy(alpha = 0.7f),
                     RoundedCornerShape(50.dp)
                 )
                 .border(2.dp, Color.Cyan, RoundedCornerShape(50.dp))

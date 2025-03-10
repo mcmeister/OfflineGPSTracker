@@ -59,8 +59,6 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
@@ -104,13 +102,7 @@ fun LocationInfoChipRow(
             Modifier
                 .fillMaxWidth()
                 .padding(vertical = 8.dp)
-                .background(
-                    Brush.linearGradient(
-                        colors = listOf(Color(0xFFD3D3D3), Color(0xFFB0BEC5)),
-                        start = Offset.Zero,
-                        end = Offset.Infinite
-                    )
-                )
+                .background(Color.Transparent)
                 .border(1.dp, Color(0xFF546E7A), RoundedCornerShape(4.dp))
 
         UserPreferences.SKIN_NEON ->
@@ -311,7 +303,7 @@ fun GPSTrackerScreen(locationViewModel: LocationViewModel = viewModel()) {
     val coroutineScope = rememberCoroutineScope()
 
     val isGauge = (compassViewType == 2)
-    val currentSkin = if (isGauge) storedCompassSkin else UserPreferences.SKIN_CLASSIC
+    val currentSkin = if (isGauge) storedCompassSkin else UserPreferences.NO_SKIN
 
     val screenModifier = Modifier
         .fillMaxSize()
@@ -368,9 +360,14 @@ fun GPSTrackerScreen(locationViewModel: LocationViewModel = viewModel()) {
                         if (isGauge && currentSkin == UserPreferences.SKIN_NEON) {
                             Modifier
                                 .border(1.dp, Color.Cyan, RoundedCornerShape(12.dp)) // ✅ Border first!
-                                .background(Color.Black.copy(alpha = 0.5f), RoundedCornerShape(12.dp))
+                                .background(Color.Black.copy(alpha = 0.3f), RoundedCornerShape(12.dp))
                                 .padding(horizontal = 12.dp, vertical = 6.dp) // ✅ Increased padding to match border size
-                        } else Modifier
+                        } else {
+                            Modifier
+                                .border(1.dp, Color.Transparent, RoundedCornerShape(12.dp)) // ✅ Border first!
+                                .background(Color.Transparent, RoundedCornerShape(12.dp))
+                                .padding(horizontal = 12.dp, vertical = 6.dp) // ✅ Increased padding to match border size
+                        }
                     )
             ) {
                 Text(
@@ -427,7 +424,7 @@ fun GPSTrackerScreen(locationViewModel: LocationViewModel = viewModel()) {
                         if (isGauge && currentSkin == UserPreferences.SKIN_NEON) {
                             Modifier
                                 .border(1.dp, Color.Cyan, RoundedCornerShape(12.dp)) // ✅ Border first!
-                                .background(Color.Black.copy(alpha = 0.5f), RoundedCornerShape(12.dp))
+                                .background(Color.Black.copy(alpha = 0.7f), RoundedCornerShape(12.dp))
                                 .padding(horizontal = 12.dp, vertical = 6.dp) // ✅ Increased padding to match border size
                         } else Modifier
                     )
@@ -541,7 +538,7 @@ fun GPSTrackerScreen(locationViewModel: LocationViewModel = viewModel()) {
                             Button(
                                 onClick = { shareLocation(context, latitude, longitude) },
                                 colors = ButtonDefaults.buttonColors(
-                                    containerColor = Color(0xFFB0BEC5),
+                                    containerColor = Color.Transparent,
                                     contentColor = textColor
                                 ),
                                 border = BorderStroke(1.dp, Color.Black)
@@ -563,7 +560,7 @@ fun GPSTrackerScreen(locationViewModel: LocationViewModel = viewModel()) {
                                     )
                                 },
                                 colors = ButtonDefaults.buttonColors(
-                                    containerColor = Color(0xFFB0BEC5),
+                                    containerColor = Color.Transparent,
                                     contentColor = textColor
                                 ),
                                 border = BorderStroke(1.dp, Color.Black)
@@ -577,7 +574,7 @@ fun GPSTrackerScreen(locationViewModel: LocationViewModel = viewModel()) {
                                 onClick = { shareLocation(context, latitude, longitude) },
                                 border = BorderStroke(1.dp, Color.Cyan),
                                 colors = ButtonDefaults.outlinedButtonColors(
-                                    containerColor = Color.Transparent,
+                                    containerColor = Color.Black.copy(alpha = 0.3f),
                                     contentColor = Color.Cyan
                                 )
                             ) {
@@ -599,7 +596,7 @@ fun GPSTrackerScreen(locationViewModel: LocationViewModel = viewModel()) {
                                 },
                                 border = BorderStroke(1.dp, Color.Cyan),
                                 colors = ButtonDefaults.outlinedButtonColors(
-                                    containerColor = Color.Transparent,
+                                    containerColor = Color.Black.copy(alpha = 0.3f),
                                     contentColor = Color.Cyan
                                 )
                             ) {

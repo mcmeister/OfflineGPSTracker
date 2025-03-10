@@ -13,6 +13,7 @@ private val Context.dataStore by preferencesDataStore(name = "user_prefs")
 class UserPreferences(private val context: Context) {
 
     companion object {
+        const val NO_SKIN = -1
         const val SKIN_CLASSIC = 0
         const val SKIN_NEON = 1
         const val SKIN_MINIMAL = 2

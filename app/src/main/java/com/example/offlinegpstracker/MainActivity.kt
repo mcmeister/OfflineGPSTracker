@@ -43,6 +43,7 @@ class MainActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
         setContent {
             OfflineGPSTrackerTheme {
                 val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
