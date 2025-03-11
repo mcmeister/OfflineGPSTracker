@@ -299,7 +299,7 @@ fun NeonCompass(
         Box(
             modifier = Modifier
                 .size(300.dp, 120.dp)
-                .background(Color.Black.copy(alpha = 0.7f),
+                .background(Color.Black.copy(alpha = 0.6f),
                     RoundedCornerShape(50.dp)
                 )
                 .border(2.dp, Color.Cyan, RoundedCornerShape(50.dp))
@@ -313,7 +313,7 @@ fun NeonCompass(
                 text = prevDirection,
                 fontSize = animatedTextSize.sp,
                 fontWeight = FontWeight.Bold,
-                color = Color(0xFF607D8B),
+                color = Color(0xFF90A4AE),
                 modifier = Modifier.align(Alignment.Center).offset(x = -sideOffset.dp)
             )
 

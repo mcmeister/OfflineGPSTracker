@@ -66,7 +66,6 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -109,7 +108,7 @@ fun LocationInfoChipRow(
             Modifier
                 .fillMaxWidth()
                 .padding(vertical = 8.dp)
-                .background(Color.Black.copy(alpha = 0.5f), RoundedCornerShape(4.dp))
+                .background(Color.Black.copy(alpha = 0.4f), RoundedCornerShape(4.dp))
                 .border(1.dp, Color.Cyan, RoundedCornerShape(4.dp))
 
         UserPreferences.SKIN_MINIMAL ->
@@ -122,6 +121,7 @@ fun LocationInfoChipRow(
             Modifier
                 .fillMaxWidth()
                 .padding(vertical = 8.dp)
+                .border(1.dp, Color.Gray, RoundedCornerShape(4.dp))
     }
 
     OutlinedCard(
@@ -424,9 +424,14 @@ fun GPSTrackerScreen(locationViewModel: LocationViewModel = viewModel()) {
                         if (isGauge && currentSkin == UserPreferences.SKIN_NEON) {
                             Modifier
                                 .border(1.dp, Color.Cyan, RoundedCornerShape(12.dp)) // ✅ Border first!
-                                .background(Color.Black.copy(alpha = 0.7f), RoundedCornerShape(12.dp))
+                                .background(Color.Black.copy(alpha = 0.5f), RoundedCornerShape(12.dp))
                                 .padding(horizontal = 12.dp, vertical = 6.dp) // ✅ Increased padding to match border size
-                        } else Modifier
+                        } else {
+                            Modifier
+                                .border(1.dp, Color.Transparent, RoundedCornerShape(12.dp)) // ✅ Border first!
+                                .background(Color.Transparent, RoundedCornerShape(12.dp))
+                                .padding(horizontal = 12.dp, vertical = 6.dp) // ✅ Increased padding to match border size
+                        }
                     )
             ) {
                 Text(
@@ -453,7 +458,7 @@ fun GPSTrackerScreen(locationViewModel: LocationViewModel = viewModel()) {
                     .fillMaxWidth()
                     .then(
                         if (currentSkin == UserPreferences.SKIN_NEON) {
-                            Modifier.background(Color.Black.copy(alpha = 0.3f), RoundedCornerShape(4.dp))
+                            Modifier.background(Color.Black.copy(alpha = 0.1f), RoundedCornerShape(4.dp))
                         } else Modifier
                     )
             ) {
@@ -517,8 +522,8 @@ fun GPSTrackerScreen(locationViewModel: LocationViewModel = viewModel()) {
                             focusedTextColor = textColor,
                             unfocusedTextColor = textColor,
                             cursorColor = textColor,
-                            focusedIndicatorColor = Color.Black,  // Black border when no specific skin is applied
-                            unfocusedIndicatorColor = Color.Black, // Black border when no specific skin is applied
+                            focusedIndicatorColor = Color.Gray,
+                            unfocusedIndicatorColor = Color.Gray,
                             focusedLabelColor = textColor,
                             unfocusedLabelColor = textColor
                         )
@@ -541,7 +546,7 @@ fun GPSTrackerScreen(locationViewModel: LocationViewModel = viewModel()) {
                                     containerColor = Color.Transparent,
                                     contentColor = textColor
                                 ),
-                                border = BorderStroke(1.dp, Color.Black)
+                                border = BorderStroke(1.dp, Color(0xFF546E7A))
                             ) {
                                 Text("Share")
                             }
@@ -583,7 +588,7 @@ fun GPSTrackerScreen(locationViewModel: LocationViewModel = viewModel()) {
                             OutlinedButton(
                                 onClick = {
                                     if (name.isEmpty()) {
-                                        name = TextFieldValue(generateLocationName()).toString()
+                                        name = generateLocationName()
                                     }
                                     saveLocation(
                                         context,
@@ -614,7 +619,7 @@ fun GPSTrackerScreen(locationViewModel: LocationViewModel = viewModel()) {
                             TextButton(
                                 onClick = {
                                     if (name.isEmpty()) {
-                                        name = TextFieldValue(generateLocationName()).toString()
+                                        name = generateLocationName()
                                     }
                                     saveLocation(
                                         context,
@@ -639,7 +644,7 @@ fun GPSTrackerScreen(locationViewModel: LocationViewModel = viewModel()) {
                     }
                     Button(onClick = {
                         if (name.isEmpty()) {
-                            name = TextFieldValue(generateLocationName()).toString()
+                            name = generateLocationName()
                         }
                         saveLocation(
                             context,
