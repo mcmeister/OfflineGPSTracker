@@ -13,7 +13,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -83,13 +82,6 @@ fun LocationsScreen(
                     }
                 }
             }
-
-            // ✅ Keeps the divider gray
-            HorizontalDivider(
-                modifier = Modifier.padding(horizontal = 8.dp),
-                thickness = 1.dp,
-                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.2f)
-            )
         }
     }
 }
