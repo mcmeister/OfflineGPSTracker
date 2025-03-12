@@ -299,7 +299,7 @@ fun NeonCompass(
         Box(
             modifier = Modifier
                 .size(300.dp, 120.dp)
-                .background(Color.Black.copy(alpha = 0.6f),
+                .background(Color.Black.copy(alpha = 0.5f),
                     RoundedCornerShape(50.dp)
                 )
                 .border(2.dp, Color.Cyan, RoundedCornerShape(50.dp))
@@ -360,7 +360,7 @@ fun NeonCompass(
                     val endY = (size.height / 2 + sin(angleRad) * (size.height / 2)).toFloat()
 
                     drawLine(
-                        color = if (i % 90 == 0) Color.Cyan else Color(0xFF607D8B),
+                        color = if (i % 90 == 0) Color.Cyan else Color.Cyan.copy(alpha = 0.5f),
                         start = Offset(startX, startY),
                         end = Offset(endX, endY),
                         strokeWidth = if (i % 90 == 0) 4f else 2f

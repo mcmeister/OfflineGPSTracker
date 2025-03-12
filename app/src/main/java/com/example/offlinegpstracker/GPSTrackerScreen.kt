@@ -11,7 +11,6 @@ import android.net.Uri
 import android.widget.Toast
 import androidx.compose.animation.Crossfade
 import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.detectTapGestures
@@ -62,9 +61,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -311,7 +308,7 @@ fun GPSTrackerScreen(locationViewModel: LocationViewModel = viewModel()) {
             when {
                 isGauge && currentSkin == UserPreferences.SKIN_CLASSIC -> Modifier.background(Color.Transparent) // Handled by Box with Image
                 isGauge && currentSkin == UserPreferences.SKIN_NEON -> Modifier.background(Color.Transparent) // Background handled by Image
-                isGauge && currentSkin == UserPreferences.SKIN_MINIMAL -> Modifier.background(Color.Black)
+                isGauge && currentSkin == UserPreferences.SKIN_MINIMAL -> Modifier.background(Color.Transparent)
                 else -> Modifier.background(MaterialTheme.colorScheme.background)
             }
         )
@@ -330,25 +327,6 @@ fun GPSTrackerScreen(locationViewModel: LocationViewModel = viewModel()) {
     Box(
         modifier = Modifier.fillMaxSize()
     ) {
-        // Apply metallic background image for Classic skin
-        if (isGauge && currentSkin == UserPreferences.SKIN_CLASSIC) {
-            Image(
-                painter = painterResource(id = R.drawable.metallic_background),
-                contentDescription = null,
-                modifier = Modifier.fillMaxSize(),
-                contentScale = ContentScale.Crop // Ensures full-screen coverage
-            )
-        }
-
-        if (isGauge && currentSkin == UserPreferences.SKIN_NEON) {
-            Image(
-                painter = painterResource(id = R.drawable.neon_background),
-                contentDescription = null,
-                modifier = Modifier.fillMaxSize(),
-                contentScale = ContentScale.Crop
-            )
-        }
-
         Column(
             modifier = screenModifier,
             horizontalAlignment = Alignment.CenterHorizontally

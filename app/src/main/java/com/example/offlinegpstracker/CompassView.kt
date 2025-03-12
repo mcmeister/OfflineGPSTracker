@@ -82,8 +82,8 @@ fun CompassView(modifier: Modifier = Modifier) {
                 .fillMaxSize()
                 .graphicsLayer(
                     rotationZ = azimuth.roundToInt().toFloat(),
-                    rotationX = -pitch * 0.3f,
-                    rotationY = roll * 0.1f
+                    rotationX = -pitch * 0.5f,
+                    rotationY = roll * 0.3f
                 )
         )
     }

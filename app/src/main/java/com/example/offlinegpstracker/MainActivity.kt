@@ -8,6 +8,10 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.viewModels
 import androidx.appcompat.app.AppCompatActivity
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.material.icons.Icons
@@ -25,7 +29,11 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.unit.dp
 import androidx.core.app.ActivityCompat
+import androidx.core.view.WindowCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.compose.rememberNavController
 import com.example.offlinegpstracker.ui.theme.OfflineGPSTrackerTheme
@@ -38,11 +46,14 @@ class MainActivity : AppCompatActivity() {
     private val locationViewModel: LocationViewModel by viewModels {
         LocationViewModelFactory(application, (application as MyApplication).repository)
     }
-
     private val userPreferences by lazy { UserPreferences(application) }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // Enable edge-to-edge drawing and set system nav bar transparent.
+        WindowCompat.setDecorFitsSystemWindows(window, false)
+        @Suppress("DEPRECATION")
+        window.navigationBarColor = android.graphics.Color.TRANSPARENT
 
         setContent {
             OfflineGPSTrackerTheme {
@@ -53,20 +64,25 @@ class MainActivity : AppCompatActivity() {
                     val navController = rememberNavController()
                     val scope = rememberCoroutineScope()
 
-                    val currentSkin by userPreferences.compassSkin.collectAsStateWithLifecycle(initialValue = UserPreferences.SKIN_CLASSIC)
-                    val compassType by userPreferences.compassType.collectAsStateWithLifecycle(initialValue = 0) // Track Compass Type
+                    // Observe skin & compass type
+                    val currentSkin by userPreferences.compassSkin
+                        .collectAsStateWithLifecycle(initialValue = UserPreferences.SKIN_CLASSIC)
+                    val compassType by userPreferences.compassType
+                        .collectAsStateWithLifecycle(initialValue = 0)
 
-                    // Collecting locations in a Lifecycle-aware manner
-                    val locations by locationViewModel.locations.collectAsStateWithLifecycle(lifecycleOwner.lifecycle)
+                    // Observe locations
+                    val locations by locationViewModel.locations
+                        .collectAsStateWithLifecycle(lifecycleOwner.lifecycle)
 
-                    // Ensure pagerState has a valid page count
+                    // Create/remember pagerState (2 pages: GPSTrackerScreen + LocationsScreen)
                     val pagerState = rememberPagerState { 2 }
 
+                    // Handle Back
                     BackHandler {
                         if (locations.isNotEmpty()) {
                             when (navController.currentDestination?.route) {
                                 "main" -> when (pagerState.currentPage) {
-                                    0 -> finish() // Exit app when back pressed on GPS Tracker screen
+                                    0 -> finish()
                                     1 -> scope.launch {
                                         withContext(Dispatchers.Main.immediate) {
                                             pagerState.animateScrollToPage(0)
@@ -83,12 +99,14 @@ class MainActivity : AppCompatActivity() {
                         }
                     }
 
+                    // Scaffold with a transparent NavigationBar
                     Scaffold(
                         bottomBar = {
-                            // Apply color logic only when CompassViewGauge is selected
-                            val (navTextColor, navBackgroundColor, selectedItemColor) = getNavBarColors(currentSkin, compassType)
-
-                            NavigationBar(containerColor = navBackgroundColor) {
+                            val (unselectedColor, _, selectedItemColor) = getNavBarColors(currentSkin, compassType)
+                            NavigationBar(
+                                containerColor = Color.Transparent,
+                                tonalElevation = 0.dp
+                            ) {
                                 NavigationBarItem(
                                     selected = pagerState.currentPage == 0,
                                     onClick = {
@@ -109,8 +127,25 @@ class MainActivity : AppCompatActivity() {
                                             }
                                         }
                                     },
-                                    label = { Text("GPS Tracker", color = if (pagerState.currentPage == 0) selectedItemColor else navTextColor) },
-                                    icon = { Icon(Icons.Default.LocationOn, contentDescription = null, tint = if (pagerState.currentPage == 0) selectedItemColor else navTextColor) }
+                                    label = {
+                                        Text(
+                                            "GPS Tracker",
+                                            color = if (pagerState.currentPage == 0)
+                                                selectedItemColor
+                                            else
+                                                unselectedColor
+                                        )
+                                    },
+                                    icon = {
+                                        Icon(
+                                            imageVector = Icons.Default.LocationOn,
+                                            contentDescription = null,
+                                            tint = if (pagerState.currentPage == 0)
+                                                selectedItemColor
+                                            else
+                                                unselectedColor
+                                        )
+                                    }
                                 )
                                 NavigationBarItem(
                                     selected = pagerState.currentPage == 1,
@@ -132,19 +167,85 @@ class MainActivity : AppCompatActivity() {
                                             }
                                         }
                                     },
-                                    label = { Text("Locations", color = if (pagerState.currentPage == 1) selectedItemColor else navTextColor) },
-                                    icon = { Icon(Icons.AutoMirrored.Filled.List, contentDescription = null, tint = if (pagerState.currentPage == 1) selectedItemColor else navTextColor) }
+                                    label = {
+                                        Text(
+                                            "Locations",
+                                            color = if (pagerState.currentPage == 1)
+                                                selectedItemColor
+                                            else
+                                                unselectedColor
+                                        )
+                                    },
+                                    icon = {
+                                        Icon(
+                                            imageVector = Icons.AutoMirrored.Filled.List,
+                                            contentDescription = null,
+                                            tint = if (pagerState.currentPage == 1)
+                                                selectedItemColor
+                                            else
+                                                unselectedColor
+                                        )
+                                    }
                                 )
                             }
                         }
                     ) { innerPadding ->
-                        NavGraph(
-                            navController = navController,
-                            locationViewModel = locationViewModel,
-                            modifier = Modifier.padding(innerPadding),
-                            pagerState = pagerState,
-                            locations = locations
-                        )
+                        // The background is drawn based on the selected skin.
+                        Box(modifier = Modifier.fillMaxSize()) {
+                            if (compassType == 2) { // Only show a background image if Gauge view is active.
+                                when (currentSkin) {
+                                    UserPreferences.SKIN_CLASSIC -> {
+                                        Image(
+                                            painter = painterResource(id = R.drawable.metallic_background),
+                                            contentDescription = null,
+                                            modifier = Modifier.fillMaxSize(),
+                                            contentScale = ContentScale.Crop
+                                        )
+                                    }
+                                    UserPreferences.SKIN_NEON -> {
+                                        Image(
+                                            painter = painterResource(id = R.drawable.neon_background),
+                                            contentDescription = null,
+                                            modifier = Modifier.fillMaxSize(),
+                                            contentScale = ContentScale.Crop
+                                        )
+                                    }
+                                    UserPreferences.SKIN_MINIMAL -> {
+                                        Box(modifier = Modifier
+                                            .fillMaxSize()
+                                            .background(Color.Black)
+                                        )
+                                    }
+                                    else -> {
+                                        Box(modifier = Modifier
+                                            .fillMaxSize()
+                                            .background(MaterialTheme.colorScheme.background)
+                                        )
+                                    }
+                                }
+                            } else {
+                                // Not gauge mode: fallback to default background.
+                                Box(modifier = Modifier
+                                    .fillMaxSize()
+                                    .background(MaterialTheme.colorScheme.background)
+                                )
+                            }
+
+                            // Foreground content (NavGraph) with innerPadding so that it is above the nav bar.
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .padding(innerPadding)
+                            ) {
+                                NavGraph(
+                                    navController = navController,
+                                    locationViewModel = locationViewModel,
+                                    modifier = Modifier.fillMaxSize(),
+                                    pagerState = pagerState,
+                                    locations = locations
+                                )
+                            }
+                        }
                     }
                 }
             }
@@ -154,34 +255,66 @@ class MainActivity : AppCompatActivity() {
 
     @Composable
     fun getNavBarColors(currentSkin: Int, compassType: Int): Triple<Color, Color, Color> {
-        return if (compassType == 2) { // Only change color if CompassViewGauge is selected
+        return if (compassType == 2) {
             when (currentSkin) {
-                UserPreferences.SKIN_CLASSIC -> Triple(Color.Black, Color(0xFFB0BEC5), Color.DarkGray)
-                UserPreferences.SKIN_NEON -> Triple(Color.Cyan, Color.Black, Color(0xFF007799))
-                UserPreferences.SKIN_MINIMAL -> Triple(Color.Gray, Color.Black, Color.Gray)
-                else -> Triple(MaterialTheme.colorScheme.onBackground, MaterialTheme.colorScheme.background, MaterialTheme.colorScheme.primary)
+                UserPreferences.SKIN_CLASSIC ->
+                    //   first       second           third
+                    Triple(Color.Black, Color.Black, Color.DarkGray)
+                UserPreferences.SKIN_NEON ->
+                    //   first    second      third
+                    Triple(Color.White, Color.White, Color(0xFF007799))
+                UserPreferences.SKIN_MINIMAL ->
+                    //   first    second     third
+                    Triple(Color.White, Color.White, Color.Gray)
+                else ->
+                    Triple(Color.LightGray, MaterialTheme.colorScheme.onBackground, MaterialTheme.colorScheme.primary)
             }
         } else {
-            // Default colors when CompassViewGauge is NOT selected (Keep Material defaults)
-            Triple(MaterialTheme.colorScheme.onBackground, MaterialTheme.colorScheme.background, MaterialTheme.colorScheme.primary)
+            // NOT gauge mode
+            Triple(
+                MaterialTheme.colorScheme.primary,                          // ignored
+                MaterialTheme.colorScheme.onBackground,   // unselected
+                MaterialTheme.colorScheme.primary         // selected
+            )
         }
     }
 
     private fun requestLocationPermission() {
-        if (ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED &&
-            ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_COARSE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
-            ActivityCompat.requestPermissions(this, arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION), 1)
+        if (ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION)
+            != PackageManager.PERMISSION_GRANTED &&
+            ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_COARSE_LOCATION)
+            != PackageManager.PERMISSION_GRANTED
+        ) {
+            ActivityCompat.requestPermissions(
+                this,
+                arrayOf(
+                    Manifest.permission.ACCESS_FINE_LOCATION,
+                    Manifest.permission.ACCESS_COARSE_LOCATION
+                ),
+                1
+            )
         } else {
             locationViewModel.startLocationUpdates()
         }
     }
 
-    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
+    override fun onRequestPermissionsResult(
+        requestCode: Int,
+        permissions: Array<out String>,
+        grantResults: IntArray
+    ) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
-        if (requestCode == 1 && grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+        if (requestCode == 1 &&
+            grantResults.isNotEmpty() &&
+            grantResults[0] == PackageManager.PERMISSION_GRANTED
+        ) {
             locationViewModel.startLocationUpdates()
         } else {
-            Toast.makeText(this, "Location permissions are required to use this app", Toast.LENGTH_SHORT).show()
+            Toast.makeText(
+                this,
+                "Location permissions are required to use this app",
+                Toast.LENGTH_SHORT
+            ).show()
         }
     }
 
