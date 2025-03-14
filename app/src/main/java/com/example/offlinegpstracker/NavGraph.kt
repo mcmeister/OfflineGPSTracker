@@ -13,6 +13,7 @@ import androidx.navigation.compose.composable
 fun NavGraph(
     navController: NavHostController,
     locationViewModel: LocationViewModel,
+    userPreferences: UserPreferences,
     modifier: Modifier = Modifier,
     pagerState: PagerState, // PagerState should have been created with the correct page count
     locations: List<Location>
@@ -33,7 +34,8 @@ fun NavGraph(
                     1 -> LocationsScreen(
                         navController = navController,
                         locationViewModel = locationViewModel,
-                        locations = locations
+                        locations = locations,
+                        userPreferences = userPreferences
                     )
                 }
             }

@@ -242,7 +242,8 @@ class MainActivity : AppCompatActivity() {
                                     locationViewModel = locationViewModel,
                                     modifier = Modifier.fillMaxSize(),
                                     pagerState = pagerState,
-                                    locations = locations
+                                    locations = locations,
+                                    userPreferences = userPreferences
                                 )
                             }
                         }

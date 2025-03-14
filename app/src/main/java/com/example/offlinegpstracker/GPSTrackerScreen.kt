@@ -42,7 +42,6 @@ import androidx.compose.material3.OutlinedCard
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -66,6 +65,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -274,6 +274,8 @@ fun GPSTrackerScreen(locationViewModel: LocationViewModel = viewModel()) {
 
     // Track whether DataStore has finished retrieving stored state
     var isCompassTypeLoaded by remember { mutableStateOf(false) }
+    var isSkinLoaded by remember { mutableStateOf(false) }
+    val coroutineScope = rememberCoroutineScope()
 
     // Flow-backed state for persisted compass selection
     val storedCompassType by userPreferences.compassType.collectAsState(initial = -1)
@@ -281,10 +283,13 @@ fun GPSTrackerScreen(locationViewModel: LocationViewModel = viewModel()) {
 
     // Mutable state for UI tracking
     var compassViewType by remember { mutableIntStateOf(storedCompassType) }
+    var currentSkin by remember { mutableIntStateOf(storedCompassSkin) }
 
-    // Ensure stored value is applied only once after retrieval
+    // Ensure stored compass type is applied only once after retrieval
     LaunchedEffect(storedCompassType) {
         if (storedCompassType != -1 && !isCompassTypeLoaded) {
+            isCompassTypeLoaded = false
+            delay(300) // Small delay before applying stored value
             compassViewType = storedCompassType
             isCompassTypeLoaded = true
         }
@@ -293,14 +298,32 @@ fun GPSTrackerScreen(locationViewModel: LocationViewModel = viewModel()) {
     // Track compass selection changes and save asynchronously
     LaunchedEffect(compassViewType) {
         if (isCompassTypeLoaded) {
+            delay(300) // Ensure UI transition completes before saving
             userPreferences.saveCompassType(compassViewType)
         }
     }
 
-    val coroutineScope = rememberCoroutineScope()
+    // Ensure stored skin value is applied only once after retrieval
+    LaunchedEffect(storedCompassSkin) {
+        if (storedCompassSkin != -1 && !isSkinLoaded) {
+            isSkinLoaded = false
+            delay(300) // Small delay before applying stored skin
+            currentSkin = storedCompassSkin // ✅ Correctly applying stored skin
+            isSkinLoaded = true
+        }
+    }
 
+    // Track skin selection changes and save asynchronously
+    LaunchedEffect(currentSkin) {
+        if (isSkinLoaded && compassViewType == 2) { // Only save skin when in Gauge mode
+            delay(300) // Ensure UI transition completes before saving
+            userPreferences.saveCompassSkin(currentSkin)
+        }
+    }
+
+    // Correctly determine current skin only if gauge is enabled
     val isGauge = (compassViewType == 2)
-    val currentSkin = if (isGauge) storedCompassSkin else UserPreferences.NO_SKIN
+    currentSkin = if (isGauge) storedCompassSkin else UserPreferences.NO_SKIN
 
     val screenModifier = Modifier
         .fillMaxSize()
@@ -357,7 +380,6 @@ fun GPSTrackerScreen(locationViewModel: LocationViewModel = viewModel()) {
             }
             Spacer(modifier = Modifier.height(12.dp))
 
-            // Compass block (the tap logic remains unchanged)
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -365,13 +387,23 @@ fun GPSTrackerScreen(locationViewModel: LocationViewModel = viewModel()) {
                     .pointerInput(Unit) {
                         detectTapGestures(
                             onDoubleTap = {
-                                compassViewType = (compassViewType + 1) % 3
+                                coroutineScope.launch {
+                                    isCompassTypeLoaded = false
+                                    delay(300) // Small delay before changing type
+                                    compassViewType = (compassViewType + 1) % 3
+                                    isCompassTypeLoaded = true
+                                }
                             },
                             onTap = {
                                 if (compassViewType == 2) { // Only in Gauge view
-                                    val newSkin = (storedCompassSkin + 1) % 3
                                     coroutineScope.launch {
-                                        userPreferences.saveCompassSkin(newSkin)
+                                        isSkinLoaded = false
+                                        delay(300) // Small delay before switching skins
+
+                                        currentSkin = (currentSkin + 1) % 3 // ✅ Update the UI state variable
+                                        userPreferences.saveCompassSkin(currentSkin) // ✅ Save to DataStore
+
+                                        isSkinLoaded = true
                                     }
                                 }
                             }
@@ -390,7 +422,7 @@ fun GPSTrackerScreen(locationViewModel: LocationViewModel = viewModel()) {
                 } else {
                     Text(
                         "Loading compass...",
-                        color = if (isGauge) textColor else Color.Unspecified
+                        color = if (compassViewType == 2) textColor else Color.Unspecified
                     )
                 }
             }
@@ -436,7 +468,7 @@ fun GPSTrackerScreen(locationViewModel: LocationViewModel = viewModel()) {
                     .fillMaxWidth()
                     .then(
                         if (currentSkin == UserPreferences.SKIN_NEON) {
-                            Modifier.background(Color.Black.copy(alpha = 0.1f), RoundedCornerShape(4.dp))
+                            Modifier.background(Color.Black.copy(alpha = 0.3f), RoundedCornerShape(4.dp))
                         } else Modifier
                     )
             ) {
@@ -588,13 +620,17 @@ fun GPSTrackerScreen(locationViewModel: LocationViewModel = viewModel()) {
                         }
 
                         UserPreferences.SKIN_MINIMAL -> {
-                            TextButton(
+                            OutlinedButton(
                                 onClick = { shareLocation(context, latitude, longitude) },
-                                colors = ButtonDefaults.textButtonColors(contentColor = Color.White)
+                                border = BorderStroke(1.dp, Color.Transparent),
+                                colors = ButtonDefaults.outlinedButtonColors(
+                                    containerColor = Color.Transparent,
+                                    contentColor = Color.White
+                                )
                             ) {
                                 Text("Share")
                             }
-                            TextButton(
+                            OutlinedButton(
                                 onClick = {
                                     if (name.isEmpty()) {
                                         name = generateLocationName()
@@ -608,7 +644,11 @@ fun GPSTrackerScreen(locationViewModel: LocationViewModel = viewModel()) {
                                         locationViewModel
                                     )
                                 },
-                                colors = ButtonDefaults.textButtonColors(contentColor = Color.White)
+                                border = BorderStroke(1.dp, Color.Transparent),
+                                colors = ButtonDefaults.outlinedButtonColors(
+                                    containerColor = Color.Transparent,
+                                    contentColor = Color.White
+                                )
                             ) {
                                 Text("Save")
                             }

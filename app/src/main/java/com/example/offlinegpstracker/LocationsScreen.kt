@@ -18,8 +18,11 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavHostController
@@ -28,9 +31,20 @@ import androidx.navigation.NavHostController
 fun LocationsScreen(
     navController: NavHostController,
     locationViewModel: LocationViewModel = viewModel(),
-    locations: List<Location>
+    locations: List<Location>,
+    userPreferences: UserPreferences
 ) {
     val activeLocations = locations.filter { it.latitude != 0.0 && it.longitude != 0.0 && it.name.isNotEmpty() }
+
+    val compassType by userPreferences.compassType.collectAsState(initial = 0)
+    val compassSkin by userPreferences.compassSkin.collectAsState(initial = UserPreferences.SKIN_CLASSIC)
+
+    val textColor = when {
+        compassType == 2 && compassSkin == UserPreferences.SKIN_NEON -> Color.Cyan
+        compassType == 2 && compassSkin == UserPreferences.SKIN_CLASSIC -> Color.Black
+        compassType == 2 && compassSkin == UserPreferences.SKIN_MINIMAL -> Color.White
+        else -> Color.Black
+    }
 
     Column(
         modifier = Modifier
@@ -40,8 +54,9 @@ fun LocationsScreen(
         verticalArrangement = Arrangement.Top
     ) {
         Text(
-            "Amazon Jungle Locations (${activeLocations.size})",
+            "My Locations (${activeLocations.size})",
             style = MaterialTheme.typography.titleLarge,
+            color = textColor,
             modifier = Modifier.padding(bottom = 16.dp)
         )
 
