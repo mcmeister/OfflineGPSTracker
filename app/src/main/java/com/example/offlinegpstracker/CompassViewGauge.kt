@@ -70,7 +70,13 @@ fun getPreviousDirection(azimuth: Float): String {
 fun CompassViewGauge(modifier: Modifier = Modifier, azimuth: Float) {
     val context = LocalContext.current
     val userPrefs = remember { UserPreferences(context) }
-    val skinType by userPrefs.compassSkin.collectAsState(initial = UserPreferences.SKIN_CLASSIC)
+    val storedSkin by userPrefs.compassSkin.collectAsState(initial = UserPreferences.SKIN_CLASSIC_GAUGE)
+
+    // Ensure gauge compass does not use default/static skins
+    val skinType = when (storedSkin) {
+        UserPreferences.SKIN_SHIP, UserPreferences.SKIN_MINIMAL -> UserPreferences.SKIN_CLASSIC_GAUGE
+        else -> storedSkin
+    }
 
     var smoothedAzimuth by remember { mutableFloatStateOf(azimuth) }
     val alpha = 0.2f
@@ -110,13 +116,12 @@ fun CompassViewGauge(modifier: Modifier = Modifier, azimuth: Float) {
         label = "text_size_animation"
     )
 
-    // Removed inner pointerInput so that single taps are not consumed here.
     Box(
         modifier = modifier.fillMaxSize(),
         contentAlignment = Alignment.Center
     ) {
         when (skinType) {
-            UserPreferences.SKIN_CLASSIC ->
+            UserPreferences.SKIN_CLASSIC_GAUGE ->
                 ClassicCompass(
                     modifier = modifier,
                     currentDirection = currentDirection,
@@ -125,7 +130,7 @@ fun CompassViewGauge(modifier: Modifier = Modifier, azimuth: Float) {
                     animatedTextSize = animatedTextSize,
                     sideOffset = sideOffset
                 )
-            UserPreferences.SKIN_NEON ->
+            UserPreferences.SKIN_NEON_GAUGE ->
                 NeonCompass(
                     currentDirection = currentDirection,
                     nextDirection = nextDirection,
@@ -133,7 +138,7 @@ fun CompassViewGauge(modifier: Modifier = Modifier, azimuth: Float) {
                     animatedTextSize = animatedTextSize,
                     sideOffset = sideOffset
                 )
-            UserPreferences.SKIN_MINIMAL ->
+            UserPreferences.SKIN_MINIMAL_GAUGE ->
                 MinimalCompass(
                     currentDirection = currentDirection,
                     nextDirection = nextDirection,

@@ -30,7 +30,7 @@ import androidx.compose.ui.unit.sp
 import kotlin.math.roundToInt
 
 @Composable
-fun CompassViewStatic(modifier: Modifier = Modifier) {
+fun CompassViewStatic(modifier: Modifier = Modifier, skin: Int) {
     val context = LocalContext.current
     var azimuth by remember { mutableFloatStateOf(0f) }
     var pitch by remember { mutableFloatStateOf(0f) }
@@ -62,20 +62,30 @@ fun CompassViewStatic(modifier: Modifier = Modifier) {
         }
     }
 
+    val compassImage = when (skin) {
+        UserPreferences.SKIN_SHIP -> R.drawable.compass_ship
+        UserPreferences.SKIN_MINIMAL -> R.drawable.compass_minimal
+        else -> R.drawable.compass_ship
+    }
+
+    val imageModifier = if (skin == UserPreferences.SKIN_MINIMAL) {
+        Modifier.fillMaxSize(0.85f) // 15% smaller
+    } else {
+        Modifier.fillMaxSize()
+    }
+
     Box(
         modifier = modifier
             .size(250.dp)
             .padding(16.dp),
         contentAlignment = Alignment.Center
     ) {
-        // Rotating direction letters
         DirectionLettersStatic(azimuth)
 
-        // Fixed compass image
         Image(
-            painter = painterResource(id = R.drawable.compass_ship),
+            painter = painterResource(id = compassImage),
             contentDescription = "Compass",
-            modifier = Modifier.fillMaxSize()
+            modifier = imageModifier
         )
     }
 }

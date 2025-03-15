@@ -30,7 +30,7 @@ import androidx.compose.ui.unit.sp
 import kotlin.math.roundToInt
 
 @Composable
-fun CompassView(modifier: Modifier = Modifier) {
+fun CompassView(modifier: Modifier = Modifier, skin: Int) {
     val context = LocalContext.current
     var azimuth by remember { mutableFloatStateOf(0f) }
     var pitch by remember { mutableFloatStateOf(0f) }
@@ -47,7 +47,6 @@ fun CompassView(modifier: Modifier = Modifier) {
                     val orientation = FloatArray(3)
                     SensorManager.getOrientation(rotationMatrix, orientation)
 
-                    // Corrected azimuth calculation (removing extra inversion)
                     azimuth = Math.toDegrees(orientation[0].toDouble()).toFloat()
                     pitch = Math.toDegrees(orientation[1].toDouble()).toFloat()
                     roll = Math.toDegrees(orientation[2].toDouble()).toFloat()
@@ -65,26 +64,35 @@ fun CompassView(modifier: Modifier = Modifier) {
         }
     }
 
+    val compassImage = when (skin) {
+        UserPreferences.SKIN_SHIP -> R.drawable.compass_ship
+        UserPreferences.SKIN_MINIMAL -> R.drawable.compass_minimal
+        else -> R.drawable.compass_ship
+    }
+
+    val imageModifier = if (skin == UserPreferences.SKIN_MINIMAL) {
+        Modifier
+            .fillMaxSize(0.85f) // Scale down to 85% (15% smaller)
+    } else {
+        Modifier.fillMaxSize()
+    }
+
     Box(
         modifier = modifier
             .size(250.dp)
             .padding(16.dp),
         contentAlignment = Alignment.Center
     ) {
-        // Direction Letters with Highlighting
         DirectionLetters(azimuth)
 
-        // Rotating compass image
         Image(
-            painter = painterResource(id = R.drawable.compass_ship),
+            painter = painterResource(id = compassImage),
             contentDescription = "Compass",
-            modifier = Modifier
-                .fillMaxSize()
-                .graphicsLayer(
-                    rotationZ = azimuth.roundToInt().toFloat(),
-                    rotationX = -pitch * 0.5f,
-                    rotationY = roll * 0.3f
-                )
+            modifier = imageModifier.graphicsLayer(
+                rotationZ = azimuth.roundToInt().toFloat(),
+                rotationX = -pitch * 0.5f,
+                rotationY = roll * 0.3f
+            )
         )
     }
 }

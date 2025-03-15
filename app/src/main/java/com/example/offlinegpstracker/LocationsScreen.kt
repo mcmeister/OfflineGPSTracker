@@ -37,12 +37,12 @@ fun LocationsScreen(
     val activeLocations = locations.filter { it.latitude != 0.0 && it.longitude != 0.0 && it.name.isNotEmpty() }
 
     val compassType by userPreferences.compassType.collectAsState(initial = 0)
-    val compassSkin by userPreferences.compassSkin.collectAsState(initial = UserPreferences.SKIN_CLASSIC)
+    val compassSkin by userPreferences.compassSkin.collectAsState(initial = UserPreferences.SKIN_CLASSIC_GAUGE)
 
     val textColor = when {
-        compassType == 2 && compassSkin == UserPreferences.SKIN_NEON -> Color.Cyan
-        compassType == 2 && compassSkin == UserPreferences.SKIN_CLASSIC -> Color.Black
-        compassType == 2 && compassSkin == UserPreferences.SKIN_MINIMAL -> Color.White
+        compassType == 2 && compassSkin == UserPreferences.SKIN_NEON_GAUGE -> Color.Cyan
+        compassType == 2 && compassSkin == UserPreferences.SKIN_CLASSIC_GAUGE -> Color.Black
+        compassType == 2 && compassSkin == UserPreferences.SKIN_MINIMAL_GAUGE -> Color.White
         else -> Color.Black
     }
 

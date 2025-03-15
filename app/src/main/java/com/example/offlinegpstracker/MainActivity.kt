@@ -66,7 +66,7 @@ class MainActivity : AppCompatActivity() {
 
                     // Observe skin & compass type
                     val currentSkin by userPreferences.compassSkin
-                        .collectAsStateWithLifecycle(initialValue = UserPreferences.SKIN_CLASSIC)
+                        .collectAsStateWithLifecycle(initialValue = UserPreferences.SKIN_CLASSIC_GAUGE)
                     val compassType by userPreferences.compassType
                         .collectAsStateWithLifecycle(initialValue = 0)
 
@@ -194,7 +194,7 @@ class MainActivity : AppCompatActivity() {
                         Box(modifier = Modifier.fillMaxSize()) {
                             if (compassType == 2) { // Only show a background image if Gauge view is active.
                                 when (currentSkin) {
-                                    UserPreferences.SKIN_CLASSIC -> {
+                                    UserPreferences.SKIN_CLASSIC_GAUGE -> {
                                         Image(
                                             painter = painterResource(id = R.drawable.metallic_background),
                                             contentDescription = null,
@@ -202,7 +202,7 @@ class MainActivity : AppCompatActivity() {
                                             contentScale = ContentScale.Crop
                                         )
                                     }
-                                    UserPreferences.SKIN_NEON -> {
+                                    UserPreferences.SKIN_NEON_GAUGE -> {
                                         Image(
                                             painter = painterResource(id = R.drawable.neon_background),
                                             contentDescription = null,
@@ -210,7 +210,7 @@ class MainActivity : AppCompatActivity() {
                                             contentScale = ContentScale.Crop
                                         )
                                     }
-                                    UserPreferences.SKIN_MINIMAL -> {
+                                    UserPreferences.SKIN_MINIMAL_GAUGE -> {
                                         Box(modifier = Modifier
                                             .fillMaxSize()
                                             .background(Color.Black)
@@ -258,13 +258,13 @@ class MainActivity : AppCompatActivity() {
     fun getNavBarColors(currentSkin: Int, compassType: Int): Triple<Color, Color, Color> {
         return if (compassType == 2) {
             when (currentSkin) {
-                UserPreferences.SKIN_CLASSIC ->
+                UserPreferences.SKIN_CLASSIC_GAUGE ->
                     //   first       second           third
                     Triple(Color.Black, Color.Black, Color.DarkGray)
-                UserPreferences.SKIN_NEON ->
+                UserPreferences.SKIN_NEON_GAUGE ->
                     //   first    second      third
                     Triple(Color.White, Color.White, Color(0xFF007799))
-                UserPreferences.SKIN_MINIMAL ->
+                UserPreferences.SKIN_MINIMAL_GAUGE ->
                     //   first    second     third
                     Triple(Color.White, Color.White, Color.Gray)
                 else ->

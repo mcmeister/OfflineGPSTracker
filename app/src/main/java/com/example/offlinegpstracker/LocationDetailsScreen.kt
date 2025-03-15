@@ -78,7 +78,7 @@ fun LocationDetailsScreen(
     val skinPrefFlow = remember { userPreferences.compassSkin }
 
     val compassType by compassTypeFlow.collectAsState(initial = 0)
-    val skinPref by skinPrefFlow.collectAsState(initial = UserPreferences.SKIN_CLASSIC)
+    val skinPref by skinPrefFlow.collectAsState(initial = UserPreferences.SKIN_CLASSIC_GAUGE)
 
     val isGauge = (compassType == 2)
 
@@ -201,7 +201,7 @@ fun LocationDetailsScreen(
                     }
                 }
 
-// --- Buttons Always Displayed ---
+                // --- Buttons Always Displayed ---
                 Spacer(modifier = Modifier.height(16.dp))
 
                 Row(
@@ -250,7 +250,7 @@ fun LocationDetailsScreen(
                     )
                 }
 
-// --- Remaining Buttons ---
+                // --- Remaining Buttons ---
                 Spacer(modifier = Modifier.height(16.dp))
 
                 ThemedButton(
@@ -395,7 +395,7 @@ fun StyledOutlinedTextField(
         modifier = Modifier
             .fillMaxWidth()
             .then(
-                if (isGauge && skinPref == UserPreferences.SKIN_NEON) {
+                if (isGauge && skinPref == UserPreferences.SKIN_NEON_GAUGE) {
                     Modifier.background(Color.Black.copy(alpha = 0.3f), RoundedCornerShape(4.dp))
                 } else Modifier
             )
@@ -430,8 +430,8 @@ fun getLabelColor(skinPref: Int, isGauge: Boolean): Color {
         Color.Black // Always black if not gauge
     } else {
         when (skinPref) {
-            UserPreferences.SKIN_NEON -> Color.Cyan
-            UserPreferences.SKIN_MINIMAL -> Color.White
+            UserPreferences.SKIN_NEON_GAUGE -> Color.Cyan
+            UserPreferences.SKIN_MINIMAL_GAUGE -> Color.White
             else -> Color.Black // Classic or No skin
         }
     }
@@ -456,7 +456,7 @@ fun getTextFieldColors(skinPref: Int, isGauge: Boolean): TextFieldColors {
     } else {
         // Gauge: Apply skin-based styles
         when (skinPref) {
-            UserPreferences.SKIN_CLASSIC -> TextFieldDefaults.colors(
+            UserPreferences.SKIN_CLASSIC_GAUGE -> TextFieldDefaults.colors(
                 focusedContainerColor = Color.Transparent,
                 unfocusedContainerColor = Color.Transparent,
                 focusedTextColor = Color.Black,
@@ -468,7 +468,7 @@ fun getTextFieldColors(skinPref: Int, isGauge: Boolean): TextFieldColors {
                 unfocusedLabelColor = Color.Black
             )
 
-            UserPreferences.SKIN_NEON -> TextFieldDefaults.colors(
+            UserPreferences.SKIN_NEON_GAUGE -> TextFieldDefaults.colors(
                 focusedContainerColor = Color.Transparent,
                 unfocusedContainerColor = Color.Transparent,
                 focusedTextColor = Color.Cyan,
@@ -480,7 +480,7 @@ fun getTextFieldColors(skinPref: Int, isGauge: Boolean): TextFieldColors {
                 unfocusedLabelColor = Color.Cyan
             )
 
-            UserPreferences.SKIN_MINIMAL -> TextFieldDefaults.colors(
+            UserPreferences.SKIN_MINIMAL_GAUGE -> TextFieldDefaults.colors(
                 focusedContainerColor = Color.Transparent,
                 unfocusedContainerColor = Color.Transparent,
                 focusedTextColor = Color.White,
@@ -516,7 +516,7 @@ fun ThemedButton(
 ) {
     if (isGauge) {
         when (skinPref) {
-            UserPreferences.SKIN_CLASSIC -> {
+            UserPreferences.SKIN_CLASSIC_GAUGE -> {
                 Button(
                     onClick = onClick,
                     colors = ButtonDefaults.buttonColors(
@@ -529,7 +529,7 @@ fun ThemedButton(
                 }
             }
 
-            UserPreferences.SKIN_NEON -> {
+            UserPreferences.SKIN_NEON_GAUGE -> {
                 OutlinedButton(
                     onClick = onClick,
                     border = BorderStroke(1.dp, Color.Cyan),
@@ -542,7 +542,7 @@ fun ThemedButton(
                 }
             }
 
-            UserPreferences.SKIN_MINIMAL -> {
+            UserPreferences.SKIN_MINIMAL_GAUGE -> {
                 OutlinedButton(
                     onClick = onClick,
                     border = BorderStroke(1.dp, Color.Transparent),
