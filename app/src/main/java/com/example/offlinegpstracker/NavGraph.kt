@@ -1,34 +1,31 @@
 package com.example.offlinegpstracker
 
+import android.app.Application
+import android.os.Build
+import androidx.annotation.RequiresApi
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.PagerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 
+@RequiresApi(Build.VERSION_CODES.O)
 @Composable
 fun NavGraph(
     navController: NavHostController,
     locationViewModel: LocationViewModel,
     userPreferences: UserPreferences,
     modifier: Modifier = Modifier,
-    pagerState: PagerState, // PagerState should have been created with the correct page count
+    pagerState: PagerState,
     locations: List<Location>
 ) {
-    NavHost(
-        navController = navController,
-        startDestination = "main",
-        modifier = modifier
-    ) {
+    NavHost(navController = navController, startDestination = "main", modifier = modifier) {
         composable("main") {
-            // Remove the page count parameter since it's provided in pagerState
-            HorizontalPager(
-                state = pagerState,
-                modifier = Modifier
-            ) { page ->
+            HorizontalPager(state = pagerState) { page ->
                 when (page) {
                     0 -> GPSTrackerScreen(locationViewModel)
                     1 -> LocationsScreen(
@@ -36,6 +33,13 @@ fun NavGraph(
                         locationViewModel = locationViewModel,
                         locations = locations,
                         userPreferences = userPreferences
+                    )
+                    2 -> RouteTrackerScreen(
+                        viewModel = RouteTrackerViewModel(
+                            routeRepository = (LocalContext.current.applicationContext as MyApplication).routeRepository,
+                            application = LocalContext.current.applicationContext as Application,
+                            locationViewModel = locationViewModel
+                        )
                     )
                 }
             }

@@ -1,17 +1,27 @@
 package com.example.offlinegpstracker
 
 import android.content.Context
+import androidx.room.Dao
 import androidx.room.Database
+import androidx.room.Entity
+import androidx.room.ForeignKey
+import androidx.room.Index
+import androidx.room.Insert
+import androidx.room.PrimaryKey
+import androidx.room.Query
 import androidx.room.Room
 import androidx.room.RoomDatabase
 import androidx.room.TypeConverters
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
+import kotlinx.coroutines.flow.Flow
 
-@Database(entities = [Location::class], version = 4, exportSchema = false) // ✅ Incremented version
-@TypeConverters(Converters::class) // Register TypeConverters
+@Database(entities = [Location::class, Route::class, RoutePoint::class], version = 6, exportSchema = false) // Updated to version 6
+@TypeConverters(Converters::class)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun locationDao(): LocationDao
+    abstract fun routeDao(): RouteDao
+    abstract fun routePointDao(): RoutePointDao
 
     companion object {
         @Volatile
@@ -24,7 +34,7 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     "location_database"
                 )
-                    .addMigrations(MIGRATION_2_3, MIGRATION_3_4) // ✅ Added new migration
+                    .addMigrations(MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6) // Added MIGRATION_5_6
                     .build()
                 INSTANCE = instance
                 instance
@@ -33,17 +43,14 @@ abstract class AppDatabase : RoomDatabase() {
     }
 }
 
-// Define migration from version 2 to 3
 val MIGRATION_2_3 = object : Migration(2, 3) {
     override fun migrate(db: SupportSQLiteDatabase) {
-        // Add new column for photo paths as a TEXT type (JSON-encoded)
         db.execSQL("ALTER TABLE location ADD COLUMN photoPaths TEXT DEFAULT '[]'")
     }
 }
 
 val MIGRATION_3_4 = object : Migration(3, 4) {
     override fun migrate(db: SupportSQLiteDatabase) {
-        // Step 1: Create a new temporary table with the correct schema
         db.execSQL("""
             CREATE TABLE location_new (
                 id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
@@ -55,22 +62,106 @@ val MIGRATION_3_4 = object : Migration(3, 4) {
                 photoPaths TEXT NOT NULL DEFAULT '[]'
             )
         """)
-
-        // Step 2: Copy data from the old table to the new one
         db.execSQL("""
             INSERT INTO location_new (id, name, latitude, longitude, altitude, status, photoPaths)
             SELECT id, name, latitude, longitude, altitude, status, 
-                CASE 
-                    WHEN photoPath IS NOT NULL THEN json_array(photoPath)
-                    ELSE '[]' 
-                END
+                CASE WHEN photoPath IS NOT NULL THEN json_array(photoPath) ELSE '[]' END
             FROM location
         """)
-
-        // Step 3: Drop the old table
         db.execSQL("DROP TABLE location")
-
-        // Step 4: Rename new table to old table name
         db.execSQL("ALTER TABLE location_new RENAME TO location")
     }
+}
+
+val MIGRATION_4_5 = object : Migration(4, 5) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("""
+            CREATE TABLE Route (
+                id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                startTime INTEGER NOT NULL,
+                endTime INTEGER,
+                snapshotPath TEXT,
+                centerLat REAL NOT NULL,
+                centerLon REAL NOT NULL,
+                zoom INTEGER NOT NULL,
+                width INTEGER NOT NULL,
+                height INTEGER NOT NULL
+            )
+        """)
+        db.execSQL("""
+            CREATE TABLE RoutePoint (
+                id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                routeId INTEGER NOT NULL,
+                latitude REAL NOT NULL,
+                longitude REAL NOT NULL,
+                timestamp INTEGER NOT NULL,
+                FOREIGN KEY (routeId) REFERENCES Route(id) ON DELETE CASCADE
+            )
+        """)
+    }
+}
+
+val MIGRATION_5_6 = object : Migration(5, 6) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("CREATE INDEX index_RoutePoint_routeId ON RoutePoint(routeId)")
+    }
+}
+
+@Entity
+data class Route(
+    @PrimaryKey(autoGenerate = true) val id: Int = 0,
+    val startTime: Long,
+    val endTime: Long? = null,
+    val snapshotPath: String?,
+    val centerLat: Double,
+    val centerLon: Double,
+    val zoom: Int,
+    val width: Int,
+    val height: Int
+)
+
+@Entity(
+    foreignKeys = [
+        ForeignKey(
+            entity = Route::class,
+            parentColumns = ["id"],
+            childColumns = ["routeId"],
+            onDelete = ForeignKey.CASCADE
+        )
+    ],
+    indices = [Index(value = ["routeId"])]
+)
+data class RoutePoint(
+    @PrimaryKey(autoGenerate = true) val id: Int = 0,
+    val routeId: Int,
+    val latitude: Double,
+    val longitude: Double,
+    val timestamp: Long
+)
+
+@Dao
+interface RouteDao {
+    @Insert
+    suspend fun insert(route: Route): Long
+
+    @Query("SELECT * FROM route WHERE id = :routeId")
+    suspend fun getRoute(routeId: Int): Route?
+
+    @Query("UPDATE route SET endTime = :endTime WHERE id = :routeId")
+    suspend fun updateRouteEndTime(routeId: Int, endTime: Long)
+
+    @Query("UPDATE route SET endTime = :endTime, snapshotPath = :snapshotPath WHERE id = :routeId")
+    suspend fun updateRouteEndTimeAndSnapshot(routeId: Int, endTime: Long, snapshotPath: String?)
+
+    @Query("SELECT * FROM route ORDER BY startTime DESC")
+    fun getAllRoutes(): Flow<List<Route>> // Added for saved routes
+}
+
+@Dao
+interface RoutePointDao {
+    @Insert
+    suspend fun insert(point: RoutePoint)
+
+    @Query("SELECT * FROM routepoint WHERE routeId = :routeId ORDER BY timestamp")
+    fun getPointsForRoute(routeId: Int): Flow<List<RoutePoint>>
 }

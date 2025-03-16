@@ -2,11 +2,13 @@ package com.example.offlinegpstracker
 
 import android.Manifest
 import android.content.pm.PackageManager
+import android.os.Build
 import android.os.Bundle
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.viewModels
+import androidx.annotation.RequiresApi
 import androidx.appcompat.app.AppCompatActivity
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -15,6 +17,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.DirectionsWalk
 import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material3.Icon
@@ -48,6 +51,7 @@ class MainActivity : AppCompatActivity() {
     }
     private val userPreferences by lazy { UserPreferences(application) }
 
+    @RequiresApi(Build.VERSION_CODES.O)
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         // Enable edge-to-edge drawing and set system nav bar transparent.
@@ -75,7 +79,7 @@ class MainActivity : AppCompatActivity() {
                         .collectAsStateWithLifecycle(lifecycleOwner.lifecycle)
 
                     // Create/remember pagerState (2 pages: GPSTrackerScreen + LocationsScreen)
-                    val pagerState = rememberPagerState { 2 }
+                    val pagerState = rememberPagerState { 3 }
 
                     // Handle Back
                     BackHandler {
@@ -187,6 +191,12 @@ class MainActivity : AppCompatActivity() {
                                         )
                                     }
                                 )
+                                NavigationBarItem(
+                                    selected = pagerState.currentPage == 2,
+                                    onClick = { scope.launch { pagerState.animateScrollToPage(2) } },
+                                    label = { Text("Route Tracker", color = if (pagerState.currentPage == 2) selectedItemColor else unselectedColor) },
+                                    icon = { Icon(Icons.AutoMirrored.Filled.DirectionsWalk, null, tint = if (pagerState.currentPage == 2) selectedItemColor else unselectedColor) }
+                                )
                             }
                         }
                     ) { innerPadding ->
@@ -281,41 +291,26 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun requestLocationPermission() {
-        if (ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION)
-            != PackageManager.PERMISSION_GRANTED &&
-            ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_COARSE_LOCATION)
-            != PackageManager.PERMISSION_GRANTED
-        ) {
-            ActivityCompat.requestPermissions(
-                this,
-                arrayOf(
-                    Manifest.permission.ACCESS_FINE_LOCATION,
-                    Manifest.permission.ACCESS_COARSE_LOCATION
-                ),
-                1
-            )
+        val permissions = mutableListOf(
+            Manifest.permission.ACCESS_FINE_LOCATION,
+            Manifest.permission.ACCESS_COARSE_LOCATION
+        )
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            permissions.add(Manifest.permission.ACCESS_BACKGROUND_LOCATION)
+        }
+        if (permissions.any { ActivityCompat.checkSelfPermission(this, it) != PackageManager.PERMISSION_GRANTED }) {
+            ActivityCompat.requestPermissions(this, permissions.toTypedArray(), 1)
         } else {
             locationViewModel.startLocationUpdates()
         }
     }
 
-    override fun onRequestPermissionsResult(
-        requestCode: Int,
-        permissions: Array<out String>,
-        grantResults: IntArray
-    ) {
+    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
-        if (requestCode == 1 &&
-            grantResults.isNotEmpty() &&
-            grantResults[0] == PackageManager.PERMISSION_GRANTED
-        ) {
+        if (requestCode == 1 && grantResults.isNotEmpty() && grantResults.all { it == PackageManager.PERMISSION_GRANTED }) {
             locationViewModel.startLocationUpdates()
         } else {
-            Toast.makeText(
-                this,
-                "Location permissions are required to use this app",
-                Toast.LENGTH_SHORT
-            ).show()
+            Toast.makeText(this, "All location permissions are required", Toast.LENGTH_SHORT).show()
         }
     }
 
