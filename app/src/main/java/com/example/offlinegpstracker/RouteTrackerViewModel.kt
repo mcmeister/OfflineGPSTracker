@@ -8,7 +8,6 @@ import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
 import android.os.Build
-import android.util.Log
 import androidx.annotation.RequiresApi
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -92,7 +91,7 @@ class RouteTrackerViewModel(
                     putExtra("routeId", routeId)
                 }.also { application.startForegroundService(it) }
             } else {
-                Log.e("RouteTracker", "Location not available")
+                // No debug message here since UI handles it
             }
         }
     }
@@ -167,7 +166,6 @@ class RouteTrackerViewModel(
             }
             file.path
         } catch (e: Exception) {
-            Log.e("RouteTracker", "Error saving route snapshot", e)
             null
         }
     }
@@ -209,10 +207,9 @@ class RouteTrackerViewModel(
             val client = OkHttpClient()
             val request = Request.Builder().url(url).build()
             val response = client.newCall(request).execute()
-
             if (response.isSuccessful) {
                 val bitmap = BitmapFactory.decodeStream(response.body?.byteStream())
-                    ?: throw IllegalStateException("Failed to decode map snapshot")
+                    ?: throw IllegalStateException("Failed to decode map bitmap")
                 val file = File(application.filesDir, "snapshot_${System.currentTimeMillis()}.png")
                 FileOutputStream(file).use { out ->
                     bitmap.compress(Bitmap.CompressFormat.PNG, 100, out)
@@ -226,16 +223,14 @@ class RouteTrackerViewModel(
                         mapCenterLon,
                         zoom
                     )
-                } ?: Log.w("RouteTracker", "No current route ID to update snapshot")
+                } ?: throw IllegalStateException("No current route ID")
 
                 file
             } else {
-                Log.e("RouteTracker", "Map snapshot request failed: ${response.code}")
-                null
+                throw IllegalStateException("Mapbox request failed with code: ${response.code}")
             }
         } catch (e: Exception) {
-            Log.e("RouteTracker", "Error generating map snapshot", e)
-            null
+            null // Snapshot failure will be caught and displayed in UI
         }
     }
 
