@@ -60,6 +60,7 @@ fun RouteTrackerScreen(
     val selectedRoute by viewModel.selectedRoute.collectAsState()
     var showMap by remember { mutableStateOf(false) }
     var directionCalculated by remember { mutableStateOf(false) }
+    var debugMessage by remember { mutableStateOf("") }
 
     Scaffold { padding ->
         Box(modifier = modifier.padding(padding).fillMaxSize()) {
@@ -69,7 +70,6 @@ fun RouteTrackerScreen(
                         value = viewModel.routeRepository.getRoute(currentRouteId!!)
                     }
 
-                    // Show prompt until second coordinate is received
                     if (routePoints.size < 2) {
                         Box(
                             modifier = Modifier
@@ -78,95 +78,156 @@ fun RouteTrackerScreen(
                             contentAlignment = Alignment.Center
                         ) {
                             Text(
-                                text = "Please start walking in the desired direction",
+                                text = "Please start walking in the desired direction\nPoints: ${routePoints.size}",
                                 color = Color.White,
                                 fontSize = 20.sp,
                                 textAlign = androidx.compose.ui.text.style.TextAlign.Center,
                                 modifier = Modifier.padding(16.dp)
                             )
                         }
-                    }
-
-                    // Calculate direction and generate map when we have 2 points
-                    LaunchedEffect(routePoints.size) {
-                        if (routePoints.size == 2 && !directionCalculated) {
-                            val startPoint = routePoints[0]
-                            val secondPoint = routePoints[1]
-                            val bearing = calculateBearingRoute(
-                                startPoint.latitude,
-                                startPoint.longitude,
-                                secondPoint.latitude,
-                                secondPoint.longitude
-                            )
-                            // Generate elongated map: 1080x1920 (portrait) with start at bottom center
-                            viewModel.generateMapSnapshot(
-                                centerLat = startPoint.latitude,
-                                centerLon = startPoint.longitude,
-                                bearing = bearing,
-                                width = 1080,
-                                height = 1920,
-                                distanceKm = 10.0
-                            )
-                            showMap = true
-                            directionCalculated = true
-                        }
-                    }
-
-                    route?.let { r ->
-                        val bitmap = BitmapFactory.decodeFile(r.snapshotPath)?.asImageBitmap()
-                        if (bitmap != null && showMap) {
-                            Box(modifier = Modifier.fillMaxSize()) {
-                                Image(
-                                    bitmap = bitmap,
-                                    contentDescription = "Map Snapshot",
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(top = 80.dp, bottom = 100.dp),
-                                    contentScale = ContentScale.Fit
+                    } else {
+                        LaunchedEffect(routePoints.size) {
+                            if (routePoints.size == 2 && !directionCalculated) {
+                                val startPoint = routePoints[0]
+                                val secondPoint = routePoints[1]
+                                val bearing = calculateBearingRoute(
+                                    startPoint.latitude,
+                                    startPoint.longitude,
+                                    secondPoint.latitude,
+                                    secondPoint.longitude
                                 )
-                                Canvas(modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(top = 80.dp, bottom = 100.dp)) {
-                                    val path = Path()
-                                    routePoints.forEachIndexed { index, point ->
-                                        val (x, y) = latLonToPixel(
-                                            point.latitude, point.longitude,
-                                            r.centerLat, r.centerLon, r.zoom, r.width, r.height
-                                        )
-                                        val scaledX = x * (size.width / r.width)
-                                        val scaledY = y * (size.height / r.height)
-                                        if (index == 0) path.moveTo(scaledX, scaledY)
-                                        else path.lineTo(scaledX, scaledY)
-                                    }
-                                    drawPath(path, color = Color.Red, style = Stroke(width = 5f))
-                                }
-                                // Info block at top
-                                Column(
-                                    modifier = Modifier
-                                        .align(Alignment.TopCenter)
-                                        .background(Color.Black.copy(alpha = 0.7f))
-                                        .padding(8.dp)
-                                ) {
-                                    Text(
-                                        text = "Distance: %.2f km".format(calculateDistance(routePoints) / 1000),
-                                        color = Color.White,
-                                        fontSize = 16.sp
+                                try {
+                                    val snapshotFile = viewModel.generateMapSnapshot(
+                                        centerLat = startPoint.latitude,
+                                        centerLon = startPoint.longitude,
+                                        bearing = bearing,
+                                        width = 1080,
+                                        height = 1920,
+                                        distanceKm = 10.0
                                     )
+                                    debugMessage = if (snapshotFile != null) {
+                                        "Snapshot generated: ${snapshotFile.path}"
+                                    } else {
+                                        "Failed to generate snapshot"
+                                    }
+                                    showMap = true
+                                    directionCalculated = true
+                                } catch (e: Exception) {
+                                    debugMessage = "Snapshot error: ${e.message}"
+                                    showMap = false
                                 }
                             }
-                            // Buttons at bottom
-                            Row(modifier = Modifier.align(Alignment.BottomCenter).padding(16.dp)) {
-                                Button(onClick = {
-                                    if (isPaused) viewModel.resumeRecording() else viewModel.pauseRecording()
-                                }) {
-                                    Text(if (isPaused) "Resume" else "Pause")
+                        }
+
+                        if (route == null) {
+                            Box(
+                                modifier = Modifier.fillMaxSize(),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    text = "Debug: Route is null",
+                                    color = Color.Black,
+                                    fontSize = 20.sp
+                                )
+                            }
+                        } else {
+                            val r = route!!
+                            val bitmap = BitmapFactory.decodeFile(r.snapshotPath)?.asImageBitmap()
+                            if (bitmap != null && showMap) {
+                                Box(modifier = Modifier.fillMaxSize()) {
+                                    Image(
+                                        bitmap = bitmap,
+                                        contentDescription = "Map Snapshot",
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(top = 80.dp, bottom = 100.dp),
+                                        contentScale = ContentScale.Fit
+                                    )
+                                    Canvas(modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(top = 80.dp, bottom = 100.dp)) {
+                                        val path = Path()
+                                        routePoints.forEachIndexed { index, point ->
+                                            val (x, y) = latLonToPixel(
+                                                point.latitude, point.longitude,
+                                                r.centerLat, r.centerLon, r.zoom, r.width, r.height
+                                            )
+                                            val scaledX = x * (size.width / r.width)
+                                            val scaledY = y * (size.height / r.height)
+                                            if (index == 0) path.moveTo(scaledX, scaledY)
+                                            else path.lineTo(scaledX, scaledY)
+                                        }
+                                        drawPath(path, color = Color.Red, style = Stroke(width = 5f))
+                                    }
+                                    Column(
+                                        modifier = Modifier
+                                            .align(Alignment.TopCenter)
+                                            .background(Color.Black.copy(alpha = 0.7f))
+                                            .padding(8.dp)
+                                    ) {
+                                        Text(
+                                            text = "Distance: %.2f km".format(calculateDistance(routePoints) / 1000),
+                                            color = Color.White,
+                                            fontSize = 16.sp
+                                        )
+                                    }
                                 }
-                                Spacer(modifier = Modifier.width(8.dp))
-                                Button(
-                                    onClick = { viewModel.stopRecording() },
-                                    colors = ButtonDefaults.buttonColors(containerColor = Color.Red)
+                                Row(modifier = Modifier.align(Alignment.BottomCenter).padding(16.dp)) {
+                                    Button(onClick = {
+                                        if (isPaused) viewModel.resumeRecording() else viewModel.pauseRecording()
+                                    }) {
+                                        Text(if (isPaused) "Resume" else "Pause")
+                                    }
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Button(
+                                        onClick = { viewModel.stopRecording() },
+                                        colors = ButtonDefaults.buttonColors(containerColor = Color.Red)
+                                    ) {
+                                        Text("Stop")
+                                    }
+                                }
+                            } else {
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .background(Color.White),
+                                    contentAlignment = Alignment.Center
                                 ) {
-                                    Text("Stop")
+                                    Column(
+                                        horizontalAlignment = Alignment.CenterHorizontally
+                                    ) {
+                                        Text(
+                                            text = "Debug Info:",
+                                            color = Color.Black,
+                                            fontSize = 18.sp,
+                                            modifier = Modifier.padding(bottom = 8.dp)
+                                        )
+                                        Text(
+                                            text = "Snapshot Path: ${r.snapshotPath}",
+                                            color = Color.Black,
+                                            fontSize = 16.sp
+                                        )
+                                        Text(
+                                            text = "Bitmap: ${if (bitmap == null) "Null" else "Loaded"}",
+                                            color = Color.Black,
+                                            fontSize = 16.sp
+                                        )
+                                        Text(
+                                            text = "ShowMap: $showMap",
+                                            color = Color.Black,
+                                            fontSize = 16.sp
+                                        )
+                                        Text(
+                                            text = "Direction Calculated: $directionCalculated",
+                                            color = Color.Black,
+                                            fontSize = 16.sp
+                                        )
+                                        Text(
+                                            text = debugMessage,
+                                            color = Color.Red,
+                                            fontSize = 16.sp
+                                        )
+                                    }
                                 }
                             }
                         }
@@ -229,7 +290,6 @@ fun RouteTrackerScreen(
                 }
             }
 
-            // Saved Routes List - only when not recording
             if (!isRecording) {
                 LazyColumn(
                     modifier = Modifier
@@ -255,7 +315,7 @@ fun RouteTrackerScreen(
     }
 }
 
-// Helper function to calculate bearing between two points
+// Helper functions unchanged
 fun calculateBearingRoute(lat1: Double, lon1: Double, lat2: Double, lon2: Double): Double {
     val dLon = (lon2 - lon1).toRadians()
     val y = sin(dLon) * cos(lat2.toRadians())
@@ -267,7 +327,6 @@ fun calculateBearingRoute(lat1: Double, lon1: Double, lat2: Double, lon2: Double
 fun Double.toRadians() = this * PI / 180
 fun Double.toDegrees() = this * 180 / PI
 
-// Existing helper functions remain unchanged
 @SuppressLint("SimpleDateFormat")
 fun formatTime(timestamp: Long): String {
     val date = java.util.Date(timestamp)
