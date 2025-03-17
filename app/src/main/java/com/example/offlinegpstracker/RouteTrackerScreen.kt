@@ -3,7 +3,6 @@ package com.example.offlinegpstracker
 import android.annotation.SuppressLint
 import android.graphics.BitmapFactory
 import android.os.Build
-import android.util.Log
 import androidx.annotation.RequiresApi
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
@@ -14,6 +13,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
@@ -21,15 +21,16 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
-import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -39,11 +40,11 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
 import kotlin.math.PI
+import kotlin.math.atan2
 import kotlin.math.cos
 import kotlin.math.pow
+import kotlin.math.sin
 
 @RequiresApi(Build.VERSION_CODES.O)
 @Composable
@@ -57,54 +58,103 @@ fun RouteTrackerScreen(
     val currentRouteId by viewModel.currentRouteId.collectAsState()
     val savedRoutes by viewModel.savedRoutes.collectAsState()
     val selectedRoute by viewModel.selectedRoute.collectAsState()
-    val scope = rememberCoroutineScope()
+    var showMap by remember { mutableStateOf(false) }
+    var directionCalculated by remember { mutableStateOf(false) }
 
     Scaffold { padding ->
         Box(modifier = modifier.padding(padding).fillMaxSize()) {
-            // Main content based on state
             when {
                 isRecording && currentRouteId != null -> {
-                    // Recording mode: real-time updates
                     val route by produceState<Route?>(initialValue = null) {
                         value = viewModel.routeRepository.getRoute(currentRouteId!!)
                     }
+
+                    // Show prompt until second coordinate is received
+                    if (routePoints.size < 2) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .background(Color.Black.copy(alpha = 0.5f)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = "Please start walking in the desired direction",
+                                color = Color.White,
+                                fontSize = 20.sp,
+                                textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                                modifier = Modifier.padding(16.dp)
+                            )
+                        }
+                    }
+
+                    // Calculate direction and generate map when we have 2 points
+                    LaunchedEffect(routePoints.size) {
+                        if (routePoints.size == 2 && !directionCalculated) {
+                            val startPoint = routePoints[0]
+                            val secondPoint = routePoints[1]
+                            val bearing = calculateBearingRoute(
+                                startPoint.latitude,
+                                startPoint.longitude,
+                                secondPoint.latitude,
+                                secondPoint.longitude
+                            )
+                            // Generate elongated map: 1080x1920 (portrait) with start at bottom center
+                            viewModel.generateMapSnapshot(
+                                centerLat = startPoint.latitude,
+                                centerLon = startPoint.longitude,
+                                bearing = bearing,
+                                width = 1080,
+                                height = 1920,
+                                distanceKm = 10.0
+                            )
+                            showMap = true
+                            directionCalculated = true
+                        }
+                    }
+
                     route?.let { r ->
                         val bitmap = BitmapFactory.decodeFile(r.snapshotPath)?.asImageBitmap()
-                        if (bitmap != null) {
+                        if (bitmap != null && showMap) {
                             Box(modifier = Modifier.fillMaxSize()) {
                                 Image(
                                     bitmap = bitmap,
                                     contentDescription = "Map Snapshot",
-                                    modifier = Modifier.fillMaxSize(),
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(top = 80.dp, bottom = 100.dp),
                                     contentScale = ContentScale.Fit
                                 )
-                                Canvas(modifier = Modifier.fillMaxSize()) {
+                                Canvas(modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(top = 80.dp, bottom = 100.dp)) {
                                     val path = Path()
                                     routePoints.forEachIndexed { index, point ->
                                         val (x, y) = latLonToPixel(
                                             point.latitude, point.longitude,
                                             r.centerLat, r.centerLon, r.zoom, r.width, r.height
                                         )
-                                        if (index == 0) path.moveTo(x, y) else path.lineTo(x, y)
+                                        val scaledX = x * (size.width / r.width)
+                                        val scaledY = y * (size.height / r.height)
+                                        if (index == 0) path.moveTo(scaledX, scaledY)
+                                        else path.lineTo(scaledX, scaledY)
                                     }
                                     drawPath(path, color = Color.Red, style = Stroke(width = 5f))
                                 }
-                                val distance = calculateDistance(routePoints)
-                                Text(
-                                    text = "Distance: %.2f km".format(distance / 1000),
-                                    modifier = Modifier.align(Alignment.TopStart).padding(16.dp),
-                                    color = Color.White,
-                                    style = MaterialTheme.typography.bodyMedium
-                                )
-                                if (routePoints.size <= 1) {
-                                    LaunchedEffect(Unit) {
-                                        scope.launch {
-                                            delay(1000)
-                                            Log.i("RouteTracker", "Please start walking in the desired direction")
-                                        }
-                                    }
+                                // Info block at top
+                                Column(
+                                    modifier = Modifier
+                                        .align(Alignment.TopCenter)
+                                        .background(Color.Black.copy(alpha = 0.7f))
+                                        .padding(8.dp)
+                                ) {
+                                    Text(
+                                        text = "Distance: %.2f km".format(calculateDistance(routePoints) / 1000),
+                                        color = Color.White,
+                                        fontSize = 16.sp
+                                    )
                                 }
                             }
+                            // Buttons at bottom
                             Row(modifier = Modifier.align(Alignment.BottomCenter).padding(16.dp)) {
                                 Button(onClick = {
                                     if (isPaused) viewModel.resumeRecording() else viewModel.pauseRecording()
@@ -112,7 +162,10 @@ fun RouteTrackerScreen(
                                     Text(if (isPaused) "Resume" else "Pause")
                                 }
                                 Spacer(modifier = Modifier.width(8.dp))
-                                Button(onClick = { viewModel.stopRecording() }, colors = ButtonDefaults.buttonColors(containerColor = Color.Red)) {
+                                Button(
+                                    onClick = { viewModel.stopRecording() },
+                                    colors = ButtonDefaults.buttonColors(containerColor = Color.Red)
+                                ) {
                                     Text("Stop")
                                 }
                             }
@@ -120,7 +173,6 @@ fun RouteTrackerScreen(
                     }
                 }
                 !isRecording && selectedRoute != null -> {
-                    // Selected saved route mode
                     val route = selectedRoute!!
                     val bitmap = BitmapFactory.decodeFile(route.snapshotPath)?.asImageBitmap()
                     if (bitmap != null) {
@@ -144,8 +196,7 @@ fun RouteTrackerScreen(
                             }
                             Column(
                                 modifier = Modifier
-                                    .align(Alignment.TopStart)
-                                    .padding(16.dp)
+                                    .align(Alignment.TopCenter)
                                     .background(Color.Black.copy(alpha = 0.7f))
                                     .padding(8.dp)
                             ) {
@@ -169,7 +220,6 @@ fun RouteTrackerScreen(
                     }
                 }
                 else -> {
-                    // Idle mode: just the Record button
                     Button(
                         onClick = { viewModel.startRecording() },
                         modifier = Modifier.align(Alignment.Center)
@@ -179,32 +229,45 @@ fun RouteTrackerScreen(
                 }
             }
 
-            // Saved Routes List (always visible)
-            LazyColumn(
-                modifier = Modifier
-                    .align(Alignment.TopEnd)
-                    .padding(16.dp)
-                    .background(Color.Black.copy(alpha = 0.7f))
-                    .width(200.dp)
-                    .heightIn(max = 300.dp)
-            ) {
-                items(savedRoutes) { savedRoute ->
-                    Text(
-                        text = "Route ${savedRoute.id} (${formatTime(savedRoute.startTime)})",
-                        color = if (savedRoute == selectedRoute) Color.Yellow else Color.White,
-                        fontSize = 14.sp,
-                        modifier = Modifier
-                            .padding(4.dp)
-                            .clickable {
-                                if (!isRecording) viewModel.selectRoute(savedRoute.id)
-                            }
-                    )
+            // Saved Routes List - only when not recording
+            if (!isRecording) {
+                LazyColumn(
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(16.dp)
+                        .background(Color.Black.copy(alpha = 0.7f))
+                        .width(200.dp)
+                        .heightIn(max = 300.dp)
+                ) {
+                    items(savedRoutes) { savedRoute ->
+                        Text(
+                            text = "Route ${savedRoute.id} (${formatTime(savedRoute.startTime)})",
+                            color = if (savedRoute == selectedRoute) Color.Yellow else Color.White,
+                            fontSize = 14.sp,
+                            modifier = Modifier
+                                .padding(4.dp)
+                                .clickable { viewModel.selectRoute(savedRoute.id) }
+                        )
+                    }
                 }
             }
         }
     }
 }
 
+// Helper function to calculate bearing between two points
+fun calculateBearingRoute(lat1: Double, lon1: Double, lat2: Double, lon2: Double): Double {
+    val dLon = (lon2 - lon1).toRadians()
+    val y = sin(dLon) * cos(lat2.toRadians())
+    val x = cos(lat1.toRadians()) * sin(lat2.toRadians()) -
+            sin(lat1.toRadians()) * cos(lat2.toRadians()) * cos(dLon)
+    return atan2(y, x).toDegrees()
+}
+
+fun Double.toRadians() = this * PI / 180
+fun Double.toDegrees() = this * 180 / PI
+
+// Existing helper functions remain unchanged
 @SuppressLint("SimpleDateFormat")
 fun formatTime(timestamp: Long): String {
     val date = java.util.Date(timestamp)

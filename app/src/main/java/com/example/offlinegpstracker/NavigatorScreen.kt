@@ -70,7 +70,7 @@ fun NavigatorScreen(
                         savedLocation.latitude,
                         savedLocation.longitude
                     )
-                    direction = calculateBearing(
+                    direction = calculateBearingNav(
                         location.latitude,
                         location.longitude,
                         savedLocation.latitude,
@@ -202,7 +202,7 @@ fun calculateDistance(lat1: Double, lon1: Double, lat2: Double, lon2: Double): D
     return earthRadius * c
 }
 
-fun calculateBearing(lat1: Double, lon1: Double, lat2: Double, lon2: Double): Double {
+fun calculateBearingNav(lat1: Double, lon1: Double, lat2: Double, lon2: Double): Double {
     val dLon = Math.toRadians(lon2 - lon1)
     val y = sin(dLon) * cos(Math.toRadians(lat2))
     val x = cos(Math.toRadians(lat1)) * sin(Math.toRadians(lat2)) -

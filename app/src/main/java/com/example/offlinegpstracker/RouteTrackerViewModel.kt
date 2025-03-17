@@ -21,6 +21,11 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import java.io.File
 import java.io.FileOutputStream
+import kotlin.math.asin
+import kotlin.math.atan2
+import kotlin.math.cos
+import kotlin.math.ln
+import kotlin.math.sin
 
 class RouteTrackerViewModel(
     val routeRepository: RouteRepository,
@@ -42,7 +47,7 @@ class RouteTrackerViewModel(
     private val _savedRoutes = MutableStateFlow<List<Route>>(emptyList())
     val savedRoutes: StateFlow<List<Route>> = _savedRoutes
 
-    private val _selectedRoute = MutableStateFlow<Route?>(null) // New state for selected route
+    private val _selectedRoute = MutableStateFlow<Route?>(null)
     val selectedRoute: StateFlow<Route?> = _selectedRoute
 
     init {
@@ -67,35 +72,25 @@ class RouteTrackerViewModel(
     @RequiresApi(Build.VERSION_CODES.O)
     fun startRecording() {
         viewModelScope.launch {
-            _selectedRoute.value = null // Clear selected route when starting new recording
+            _selectedRoute.value = null
             val currentLocation = locationViewModel.locationFlow.value
             if (currentLocation != null) {
-                val centerLat = currentLocation.latitude
-                val centerLon = currentLocation.longitude
-                val zoom = 14
-                val width = 640
-                val height = 640
-                val snapshotFile = downloadMapSnapshot(centerLat, centerLon, zoom, width, height)
-                if (snapshotFile != null) {
-                    val route = Route(
-                        startTime = System.currentTimeMillis(),
-                        snapshotPath = snapshotFile.path,
-                        centerLat = centerLat,
-                        centerLon = centerLon,
-                        zoom = zoom,
-                        width = width,
-                        height = height
-                    )
-                    val routeId = routeRepository.insertRoute(route).toInt()
-                    _currentRouteId.value = routeId
-                    _isRecording.value = true
-                    _isPaused.value = false
-                    Intent(application, RouteRecordingService::class.java).apply {
-                        putExtra("routeId", routeId)
-                    }.also { application.startForegroundService(it) }
-                } else {
-                    Log.e("RouteTracker", "Failed to download map snapshot")
-                }
+                val route = Route(
+                    startTime = System.currentTimeMillis(),
+                    snapshotPath = "",
+                    centerLat = currentLocation.latitude,
+                    centerLon = currentLocation.longitude,
+                    zoom = 14,
+                    width = 1080,
+                    height = 1920
+                )
+                val routeId = routeRepository.insertRoute(route).toInt()
+                _currentRouteId.value = routeId
+                _isRecording.value = true
+                _isPaused.value = false
+                Intent(application, RouteRecordingService::class.java).apply {
+                    putExtra("routeId", routeId)
+                }.also { application.startForegroundService(it) }
             } else {
                 Log.e("RouteTracker", "Location not available")
             }
@@ -153,6 +148,7 @@ class RouteTrackerViewModel(
     private suspend fun saveRouteWithRedLine(route: Route, points: List<RoutePoint>): String? = withContext(Dispatchers.IO) {
         try {
             val baseBitmap = BitmapFactory.decodeFile(route.snapshotPath)
+                ?: throw IllegalStateException("Snapshot file not found at ${route.snapshotPath}")
             val mutableBitmap = baseBitmap.copy(Bitmap.Config.ARGB_8888, true)
             val canvas = Canvas(mutableBitmap)
             val paint = Paint().apply {
@@ -176,30 +172,76 @@ class RouteTrackerViewModel(
         }
     }
 
-    private suspend fun downloadMapSnapshot(
+    suspend fun generateMapSnapshot(
         centerLat: Double,
         centerLon: Double,
-        zoom: Int,
+        bearing: Double,
         width: Int,
-        height: Int
+        height: Int,
+        distanceKm: Double
     ): File? = withContext(Dispatchers.IO) {
-        val token = "pk.eyJ1IjoibWNtZWlzdGVyIiwiYSI6ImNtOGF3d3YzdjBtcjUyaW9yNmFidndlbWsifQ.nlbq1LxHYM1jBBZUcXM0zw"
-        val url = "https://api.mapbox.com/styles/v1/mapbox/streets-v11/static/$centerLon,$centerLat,$zoom,0/${width}x$height?access_token=$token"
         try {
+            val earthRadius = 6371.0 // km
+            val distance = distanceKm / 2 // Center is halfway up the 10km map
+            val bearingRad = Math.toRadians(bearing)
+
+            val latRad = Math.toRadians(centerLat)
+            val lonRad = Math.toRadians(centerLon)
+
+            val newLatRad = asin(
+                sin(latRad) * cos(distance / earthRadius) +
+                        cos(latRad) * sin(distance / earthRadius) * cos(bearingRad)
+            )
+            val newLonRad = lonRad + atan2(
+                sin(bearingRad) * sin(distance / earthRadius) * cos(latRad),
+                cos(distance / earthRadius) - sin(latRad) * sin(newLatRad)
+            )
+
+            val mapCenterLat = Math.toDegrees(newLatRad)
+            val mapCenterLon = Math.toDegrees(newLonRad)
+
+            val zoom = calculateZoomLevel(distanceKm, height)
+
+            val token = "pk.eyJ1IjoibWNtZWlzdGVyIiwiYSI6ImNtOGF3d3YzdjBtcjUyaW9yNmFidndlbWsifQ.nlbq1LxHYM1jBBZUcXM0zw"
+            val url = "https://api.mapbox.com/styles/v1/mapbox/streets-v11/static/" +
+                    "$mapCenterLon,$mapCenterLat,$zoom,$bearing/${width}x$height?access_token=$token"
+
             val client = OkHttpClient()
             val request = Request.Builder().url(url).build()
             val response = client.newCall(request).execute()
+
             if (response.isSuccessful) {
                 val bitmap = BitmapFactory.decodeStream(response.body?.byteStream())
+                    ?: throw IllegalStateException("Failed to decode map snapshot")
                 val file = File(application.filesDir, "snapshot_${System.currentTimeMillis()}.png")
                 FileOutputStream(file).use { out ->
                     bitmap.compress(Bitmap.CompressFormat.PNG, 100, out)
                 }
+
+                _currentRouteId.value?.let { routeId ->
+                    routeRepository.updateRouteSnapshot(
+                        routeId,
+                        file.path,
+                        mapCenterLat,
+                        mapCenterLon,
+                        zoom
+                    )
+                } ?: Log.w("RouteTracker", "No current route ID to update snapshot")
+
                 file
-            } else null
+            } else {
+                Log.e("RouteTracker", "Map snapshot request failed: ${response.code}")
+                null
+            }
         } catch (e: Exception) {
-            Log.e("RouteTracker", "Error downloading snapshot", e)
+            Log.e("RouteTracker", "Error generating map snapshot", e)
             null
         }
+    }
+
+    private fun calculateZoomLevel(distanceKm: Double, heightPx: Int): Int {
+        val meters = distanceKm * 1000
+        val zoom = (ln(156543.03392 * heightPx / meters) / ln(2.0)).toInt()
+        return zoom.coerceIn(0, 22) // Mapbox zoom levels range from 0 to 22
     }
 }
