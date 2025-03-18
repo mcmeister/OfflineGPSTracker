@@ -77,18 +77,6 @@ fun RouteTrackerScreen(
     val debugInfo = remember { mutableStateOf("Waiting for GPS data...") }
 
     Scaffold { padding ->
-
-        LaunchedEffect(routePoints, isRecording) {
-            while (isRecording) {  // Auto-zoom runs only when recording is active
-                delay(5000)  // Every 5 seconds
-
-                val timeSinceLastInteraction = System.currentTimeMillis() - lastInteractionTime.longValue
-                if (timeSinceLastInteraction >= 5000) {
-                    zoomLevel.floatValue = (zoomLevel.floatValue * 1.5f).coerceIn(1f, 20f) // Auto-zoom to 150%
-                }
-            }
-        }
-
         Box(modifier = modifier.padding(padding).fillMaxSize()) {
             when {
                 isRecording && currentRouteId != null -> {
@@ -297,6 +285,17 @@ fun RouteTrackerScreen(
                         )
                     }
                 }
+            }
+        }
+    }
+
+    LaunchedEffect(routePoints, isRecording) {
+        while (isRecording) {  // Auto-zoom runs only when recording is active
+            delay(5000)  // Every 5 seconds
+
+            val timeSinceLastInteraction = System.currentTimeMillis() - lastInteractionTime.longValue
+            if (timeSinceLastInteraction >= 5000) {
+                zoomLevel.floatValue = (zoomLevel.floatValue * 1.5f).coerceIn(1f, 20f) // Auto-zoom to 150%
             }
         }
     }
