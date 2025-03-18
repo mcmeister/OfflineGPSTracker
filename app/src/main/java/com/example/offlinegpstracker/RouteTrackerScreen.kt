@@ -9,6 +9,7 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -78,6 +79,12 @@ fun RouteTrackerScreen(
         }
     }
 
+    LaunchedEffect(selectedRoute) {
+        if (selectedRoute != null) {
+            zoomLevel.floatValue = 1.0f // ✅ Reset zoom to 100% (default zoom level)
+        }
+    }
+
     val debugInfo = remember { mutableStateOf("Waiting for GPS data...") }
 
     Scaffold { padding ->
@@ -87,8 +94,10 @@ fun RouteTrackerScreen(
                 delay(5000)  // Every 5 seconds
 
                 val timeSinceLastInteraction = System.currentTimeMillis() - lastInteractionTime.longValue
-                if (timeSinceLastInteraction >= 5000) {
-                    zoomLevel.floatValue = (0.5f * originalZoom.floatValue).coerceIn(0.5f * originalZoom.floatValue, 20f) // Auto-zoom to 50% of original
+                val targetZoom = 1.5f * originalZoom.floatValue  // ✅ Set 150% zoom as target
+
+                if (timeSinceLastInteraction >= 5000 && zoomLevel.floatValue != targetZoom) {
+                    zoomLevel.floatValue = targetZoom // ✅ Zoom in **only once** to 150% if needed
                 }
             }
         }
@@ -108,6 +117,13 @@ fun RouteTrackerScreen(
                                 modifier = Modifier
                                     .fillMaxSize()
                                     .pointerInput(Unit) {
+                                        detectTapGestures(
+                                            onDoubleTap = { // ✅ Double-tap resets zoom
+                                                zoomLevel.floatValue = 1.0f // ✅ Reset to default zoom
+                                            }
+                                        )
+                                    }
+                                    .pointerInput(Unit) {
                                         detectTransformGestures { _, _, zoom, _ ->
                                             zoomLevel.floatValue = (zoomLevel.floatValue * zoom).coerceIn(0.5f * originalZoom.floatValue, 20f)
                                             lastInteractionTime.longValue = System.currentTimeMillis()
@@ -126,15 +142,17 @@ fun RouteTrackerScreen(
 
                                 // ✅ Draw the red route line AFTER the snapshot (on top)
                                 Canvas(modifier = Modifier.fillMaxSize()) {
-                                    val path = Path()
-                                    routePoints.forEachIndexed { index, point ->
-                                        val (x, y) = latLonToPixel(
-                                            point.latitude, point.longitude,
-                                            r.centerLat, r.centerLon, zoomLevel.floatValue.toInt(), r.width, r.height
-                                        )
-                                        if (index == 0) path.moveTo(x, y) else path.lineTo(x, y)
+                                    if (routePoints.isNotEmpty()) { // ✅ Prevent empty draws
+                                        val path = Path()
+                                        routePoints.forEachIndexed { index, point ->
+                                            val (x, y) = latLonToPixel(
+                                                point.latitude, point.longitude,
+                                                r.centerLat, r.centerLon, zoomLevel.floatValue.toInt(), r.width, r.height
+                                            )
+                                            if (index == 0) path.moveTo(x, y) else path.lineTo(x, y)
+                                        }
+                                        drawPath(path, color = Color.Red, style = Stroke(width = 5f))
                                     }
-                                    drawPath(path, color = Color.Red, style = Stroke(width = 5f))
                                 }
 
                                 // **DEBUG INFO BLOCK**
@@ -164,6 +182,21 @@ fun RouteTrackerScreen(
                                         .padding(8.dp)
                                 ) {
                                     Text(text = debugInfo.value, color = Color.White, fontSize = 12.sp)
+
+                                    // ✅ Draw duplicate red-line in the debug info block
+                                    Canvas(modifier = Modifier.fillMaxSize()) {
+                                        if (routePoints.isNotEmpty()) { // ✅ Prevent empty draws
+                                            val path = Path()
+                                            routePoints.forEachIndexed { index, point ->
+                                                val (x, y) = latLonToPixel(
+                                                    point.latitude, point.longitude,
+                                                    r.centerLat, r.centerLon, zoomLevel.floatValue.toInt(), r.width, r.height
+                                                )
+                                                if (index == 0) path.moveTo(x, y) else path.lineTo(x, y)
+                                            }
+                                            drawPath(path, color = Color.Red, style = Stroke(width = 5f))
+                                        }
+                                    }
                                 }
 
                                 if (routePoints.size <= 1) {
@@ -217,12 +250,30 @@ fun RouteTrackerScreen(
                     if (bitmap != null) {
                         val distance = calculateDistance(routePoints)  // ✅ Use distance for saved routes too
 
-                        Box(modifier = Modifier.fillMaxSize()) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .pointerInput(Unit) {
+                                    detectTapGestures(
+                                        onDoubleTap = { // ✅ Double-tap resets zoom
+                                            zoomLevel.floatValue = 1.0f // ✅ Reset to default zoom
+                                        }
+                                    )
+                                }
+                                .pointerInput(Unit) {
+                                    detectTransformGestures { _, _, zoom, _ ->
+                                        zoomLevel.floatValue = (zoomLevel.floatValue * zoom).coerceIn(0.5f * originalZoom.floatValue, 20f)
+                                        lastInteractionTime.longValue = System.currentTimeMillis()
+                                    }
+                                }
+                        ) {
                             Image(
                                 bitmap = bitmap,
                                 contentDescription = "Saved Route Snapshot",
-                                modifier = Modifier.fillMaxSize(),
-                                contentScale = ContentScale.FillBounds
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .graphicsLayer(scaleX = zoomLevel.floatValue, scaleY = zoomLevel.floatValue), // ✅ Apply zoom
+                                contentScale = ContentScale.Fit
                             )
 
                             Canvas(modifier = Modifier.fillMaxSize()) {
