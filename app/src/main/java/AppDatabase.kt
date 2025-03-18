@@ -12,7 +12,6 @@ import androidx.room.Query
 import androidx.room.Room
 import androidx.room.RoomDatabase
 import androidx.room.TypeConverters
-import androidx.room.Update
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 import kotlinx.coroutines.flow.Flow
@@ -154,11 +153,8 @@ interface RouteDao {
     @Query("UPDATE route SET endTime = :endTime, snapshotPath = :snapshotPath WHERE id = :routeId")
     suspend fun updateRouteEndTimeAndSnapshot(routeId: Int, endTime: Long, snapshotPath: String?)
 
-    @Update
-    suspend fun update(route: Route)
-
     @Query("SELECT * FROM route ORDER BY startTime DESC")
-    fun getAllRoutes(): Flow<List<Route>>
+    fun getAllRoutes(): Flow<List<Route>> // Added for saved routes
 }
 
 @Dao
