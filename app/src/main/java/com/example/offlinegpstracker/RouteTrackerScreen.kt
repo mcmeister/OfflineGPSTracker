@@ -143,16 +143,49 @@ fun RouteTrackerScreen(
                                 // ✅ Draw the red route line AFTER the snapshot (on top)
                                 Canvas(modifier = Modifier.fillMaxSize()) {
                                     if (routePoints.isNotEmpty()) {
+                                        // 1. Calculate the bounding box center of the current route points
+                                        val minLat = routePoints.minOf { it.latitude }
+                                        val maxLat = routePoints.maxOf { it.latitude }
+                                        val minLon = routePoints.minOf { it.longitude }
+                                        val maxLon = routePoints.maxOf { it.longitude }
+                                        val dynamicCenterLat = (minLat + maxLat) / 2
+                                        val dynamicCenterLon = (minLon + maxLon) / 2
+
+                                        // 2. Get the pixel coordinate of the dynamic center on the snapshot’s grid.
+                                        // The grid is defined by the snapshot’s center (r.centerLat, r.centerLon),
+                                        // the current zoom level, and the snapshot dimensions (r.width, r.height).
+                                        val (dynamicCenterPx, dynamicCenterPy) = latLonToPixel(
+                                            dynamicCenterLat, dynamicCenterLon,
+                                            r.centerLat, r.centerLon,
+                                            zoomLevel.floatValue, r.width, r.height
+                                        )
+
+                                        // 3. Compute the offset needed to recenter the dynamic center.
+                                        // Here we assume the snapshot is drawn in a container of size r.width x r.height.
+                                        // If your Canvas size is different, you could use `size.width` and `size.height` instead.
+                                        val offsetX = (r.width / 2f) - dynamicCenterPx
+                                        val offsetY = (r.height / 2f) - dynamicCenterPy
+
+                                        // 4. Build the path for the route points, applying the computed offset.
                                         val path = Path()
                                         routePoints.forEachIndexed { index, point ->
-                                            val (x, y) = latLonToPixel(
+                                            // Convert the point using the original grid.
+                                            val (origX, origY) = latLonToPixel(
                                                 point.latitude, point.longitude,
                                                 r.centerLat, r.centerLon,
-                                                zoomLevel.floatValue, // ✅ Live zoom for real-time drawing
-                                                r.width, r.height
+                                                zoomLevel.floatValue, r.width, r.height
                                             )
-                                            if (index == 0) path.moveTo(x, y) else path.lineTo(x, y)
+                                            // Adjust by the offset so the dynamic center is centered in the Canvas.
+                                            val adjustedX = origX + offsetX
+                                            val adjustedY = origY + offsetY
+
+                                            if (index == 0) {
+                                                path.moveTo(adjustedX, adjustedY)
+                                            } else {
+                                                path.lineTo(adjustedX, adjustedY)
+                                            }
                                         }
+                                        // Draw the red-line over the snapshot
                                         drawPath(path, color = Color.Red, style = Stroke(width = 5f))
                                     }
                                 }
