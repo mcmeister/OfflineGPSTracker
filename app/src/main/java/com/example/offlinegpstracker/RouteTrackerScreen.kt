@@ -142,12 +142,14 @@ fun RouteTrackerScreen(
 
                                 // ✅ Draw the red route line AFTER the snapshot (on top)
                                 Canvas(modifier = Modifier.fillMaxSize()) {
-                                    if (routePoints.isNotEmpty()) { // ✅ Prevent empty draws
+                                    if (routePoints.isNotEmpty()) {
                                         val path = Path()
                                         routePoints.forEachIndexed { index, point ->
                                             val (x, y) = latLonToPixel(
                                                 point.latitude, point.longitude,
-                                                r.centerLat, r.centerLon, zoomLevel.floatValue.toInt(), r.width, r.height
+                                                r.centerLat, r.centerLon,
+                                                zoomLevel.floatValue, // ✅ Live zoom for real-time drawing
+                                                r.width, r.height
                                             )
                                             if (index == 0) path.moveTo(x, y) else path.lineTo(x, y)
                                         }
@@ -158,16 +160,17 @@ fun RouteTrackerScreen(
                                 // **DEBUG INFO BLOCK**
                                 LaunchedEffect(routePoints) {
                                     val lastPoint = routePoints.lastOrNull()
+                                    val distanceKm = calculateDistance(routePoints) / 1000.0
                                     if (lastPoint != null) {
                                         val (x, y) = latLonToPixel(
                                             lastPoint.latitude, lastPoint.longitude,
-                                            r.centerLat, r.centerLon, r.zoom, r.width, r.height
+                                            r.centerLat, r.centerLon, zoomLevel.floatValue, r.width, r.height
                                         )
                                         debugInfo.value = """
                                             Route Points: ${routePoints.size}
                                             Last Lat: ${"%.6f".format(lastPoint.latitude)}, Lon: ${"%.6f".format(lastPoint.longitude)}
                                             Mapped X: ${x.toInt()}, Y: ${y.toInt()}
-                                            Distance: %.2f km
+                                            Distance: ${"%.2f".format(distanceKm)} km
                                         """.trimIndent()
                                     } else {
                                         debugInfo.value = "No GPS points received."
@@ -182,21 +185,6 @@ fun RouteTrackerScreen(
                                         .padding(8.dp)
                                 ) {
                                     Text(text = debugInfo.value, color = Color.White, fontSize = 12.sp)
-
-                                    // ✅ Draw duplicate red-line in the debug info block
-                                    Canvas(modifier = Modifier.fillMaxSize()) {
-                                        if (routePoints.isNotEmpty()) { // ✅ Prevent empty draws
-                                            val path = Path()
-                                            routePoints.forEachIndexed { index, point ->
-                                                val (x, y) = latLonToPixel(
-                                                    point.latitude, point.longitude,
-                                                    r.centerLat, r.centerLon, zoomLevel.floatValue.toInt(), r.width, r.height
-                                                )
-                                                if (index == 0) path.moveTo(x, y) else path.lineTo(x, y)
-                                            }
-                                            drawPath(path, color = Color.Red, style = Stroke(width = 5f))
-                                        }
-                                    }
                                 }
 
                                 if (routePoints.size <= 1) {
@@ -281,7 +269,8 @@ fun RouteTrackerScreen(
                                 routePoints.forEachIndexed { index, point ->
                                     val (x, y) = latLonToPixel(
                                         point.latitude, point.longitude,
-                                        route.centerLat, route.centerLon, route.zoom, route.width, route.height
+                                        route.centerLat, route.centerLon,
+                                        route.zoom.toFloat(), route.width, route.height
                                     )
                                     if (index == 0) path.moveTo(x, y) else path.lineTo(x, y)
                                 }
@@ -384,7 +373,7 @@ fun calculateDistance(points: List<RoutePoint>): Float {
 fun latLonToPixel(
     lat: Double, lon: Double,
     centerLat: Double, centerLon: Double,
-    zoom: Int, width: Int, height: Int
+    zoom: Float, width: Int, height: Int
 ): Pair<Float, Float> {
     val metersPerPixel = 156543.03392 * cos(centerLat * PI / 180) / 2.0.pow(zoom.toDouble())
     val latSpan = height * metersPerPixel / 111000.0

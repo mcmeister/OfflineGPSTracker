@@ -161,8 +161,10 @@ class RouteTrackerViewModel(
                 style = Paint.Style.STROKE
             }
             for (i in 0 until points.size - 1) {
-                val (x1, y1) = latLonToPixel(points[i].latitude, points[i].longitude, route.centerLat, route.centerLon, route.zoom, route.width, route.height)
-                val (x2, y2) = latLonToPixel(points[i + 1].latitude, points[i + 1].longitude, route.centerLat, route.centerLon, route.zoom, route.width, route.height)
+                val (x1, y1) = latLonToPixel(points[i].latitude, points[i].longitude, route.centerLat, route.centerLon,
+                    route.zoom.toFloat(), route.width, route.height)
+                val (x2, y2) = latLonToPixel(points[i + 1].latitude, points[i + 1].longitude, route.centerLat, route.centerLon,
+                    route.zoom.toFloat(), route.width, route.height)
                 canvas.drawLine(x1, y1, x2, y2, paint)
             }
             val file = File(application.filesDir, "route_${route.id}_final.png")
