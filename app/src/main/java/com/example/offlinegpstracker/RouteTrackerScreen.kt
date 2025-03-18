@@ -66,17 +66,33 @@ fun RouteTrackerScreen(
     val savedRoutes by viewModel.savedRoutes.collectAsState()
     val selectedRoute by viewModel.selectedRoute.collectAsState()
     val scope = rememberCoroutineScope()
-    val zoomLevel = remember { mutableFloatStateOf(1f) } // Start at normal zoom
+    val originalZoom = remember { mutableFloatStateOf(1f) } // Store original snapshot zoom
+    val zoomLevel = remember { mutableFloatStateOf(1f) } // Current zoom level
     val lastInteractionTime = remember { mutableLongStateOf(System.currentTimeMillis()) }
 
-    // Ensure the zoom level initializes correctly when route updates
+    // Ensure zoom initializes correctly based on the selected route or recording
     LaunchedEffect(selectedRoute, currentRouteId) {
-        zoomLevel.floatValue = selectedRoute?.zoom?.toFloat() ?: 1f
+        if (selectedRoute != null) {
+            originalZoom.floatValue = selectedRoute!!.zoom.toFloat() // Store original zoom
+            zoomLevel.floatValue = selectedRoute!!.zoom.toFloat() // Start at normal zoom
+        }
     }
 
     val debugInfo = remember { mutableStateOf("Waiting for GPS data...") }
 
     Scaffold { padding ->
+
+        LaunchedEffect(routePoints, isRecording) {
+            while (isRecording) {  // Auto-zoom only when recording
+                delay(5000)  // Every 5 seconds
+
+                val timeSinceLastInteraction = System.currentTimeMillis() - lastInteractionTime.longValue
+                if (timeSinceLastInteraction >= 5000) {
+                    zoomLevel.floatValue = (0.5f * originalZoom.floatValue).coerceIn(0.5f * originalZoom.floatValue, 20f) // Auto-zoom to 50% of original
+                }
+            }
+        }
+
         Box(modifier = modifier.padding(padding).fillMaxSize()) {
             when {
                 isRecording && currentRouteId != null -> {
@@ -93,20 +109,22 @@ fun RouteTrackerScreen(
                                     .fillMaxSize()
                                     .pointerInput(Unit) {
                                         detectTransformGestures { _, _, zoom, _ ->
-                                            zoomLevel.floatValue = (zoomLevel.floatValue * zoom).coerceIn(1f, 20f) // Allow zoom between 1x-20x
-                                            lastInteractionTime.longValue = System.currentTimeMillis() // Reset auto-zoom timer
+                                            zoomLevel.floatValue = (zoomLevel.floatValue * zoom).coerceIn(0.5f * originalZoom.floatValue, 20f)
+                                            lastInteractionTime.longValue = System.currentTimeMillis()
                                         }
                                     }
                             ) {
+                                // ✅ Draw the map snapshot first (background)
                                 Image(
                                     bitmap = bitmap,
                                     contentDescription = "Map Snapshot",
                                     modifier = Modifier
                                         .fillMaxSize()
-                                        .graphicsLayer(scaleX = zoomLevel.floatValue, scaleY = zoomLevel.floatValue), // Apply zoom
-                                    contentScale = ContentScale.FillBounds
+                                        .graphicsLayer(scaleX = zoomLevel.floatValue, scaleY = zoomLevel.floatValue),
+                                    contentScale = ContentScale.Fit
                                 )
 
+                                // ✅ Draw the red route line AFTER the snapshot (on top)
                                 Canvas(modifier = Modifier.fillMaxSize()) {
                                     val path = Path()
                                     routePoints.forEachIndexed { index, point ->
@@ -285,17 +303,6 @@ fun RouteTrackerScreen(
                         )
                     }
                 }
-            }
-        }
-    }
-
-    LaunchedEffect(routePoints, isRecording) {
-        while (isRecording) {  // Auto-zoom runs only when recording is active
-            delay(5000)  // Every 5 seconds
-
-            val timeSinceLastInteraction = System.currentTimeMillis() - lastInteractionTime.longValue
-            if (timeSinceLastInteraction >= 5000) {
-                zoomLevel.floatValue = (zoomLevel.floatValue * 1.5f).coerceIn(1f, 20f) // Auto-zoom to 150%
             }
         }
     }

@@ -184,16 +184,19 @@ class RouteTrackerViewModel(
         height: Int
     ): File? = withContext(Dispatchers.IO) {
         val token = "pk.eyJ1IjoibWNtZWlzdGVyIiwiYSI6ImNtOGF3d3YzdjBtcjUyaW9yNmFidndlbWsifQ.nlbq1LxHYM1jBBZUcXM0zw"
-        val url = "https://api.mapbox.com/styles/v1/mapbox/streets-v11/static/$centerLon,$centerLat,$zoom,0/${width}x$height?access_token=$token"
+        val url = "https://api.mapbox.com/styles/v1/mapbox/streets-v11/static/$centerLon,$centerLat,$zoom/${width}x$height?access_token=$token"
         try {
             val client = OkHttpClient()
             val request = Request.Builder().url(url).build()
             val response = client.newCall(request).execute()
             if (response.isSuccessful) {
-                val bitmap = BitmapFactory.decodeStream(response.body?.byteStream())
+                val options = BitmapFactory.Options().apply { inScaled = false }
+                val bitmap = BitmapFactory.decodeStream(response.body?.byteStream(), null, options)
                 val file = File(application.filesDir, "snapshot_${System.currentTimeMillis()}.png")
-                FileOutputStream(file).use { out ->
-                    bitmap.compress(Bitmap.CompressFormat.PNG, 100, out)
+                if (bitmap != null) {
+                    FileOutputStream(file).use { out ->
+                        bitmap.compress(Bitmap.CompressFormat.PNG, 100, out)
+                    }
                 }
                 file
             } else null
