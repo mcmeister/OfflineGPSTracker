@@ -36,9 +36,9 @@ import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.asImageBitmap
@@ -65,7 +65,6 @@ fun RouteTrackerScreen(
     val currentRouteId by viewModel.currentRouteId.collectAsState()
     val savedRoutes by viewModel.savedRoutes.collectAsState()
     val selectedRoute by viewModel.selectedRoute.collectAsState()
-    val scope = rememberCoroutineScope()
     val originalZoom = remember { mutableFloatStateOf(1f) } // Store original snapshot zoom
     val zoomLevel = remember { mutableFloatStateOf(1f) } // Current zoom level
     val lastInteractionTime = remember { mutableLongStateOf(System.currentTimeMillis()) }
@@ -151,8 +150,6 @@ fun RouteTrackerScreen(
                                         val dynamicCenterLon = (minLon + maxLon) / 2
 
                                         // 2. Get the pixel coordinate of the dynamic center on the snapshot’s grid.
-                                        // The grid is defined by the snapshot’s center (r.centerLat, r.centerLon),
-                                        // the current zoom level, and the snapshot dimensions (r.width, r.height).
                                         val (dynamicCenterPx, dynamicCenterPy) = latLonToPixel(
                                             dynamicCenterLat, dynamicCenterLon,
                                             r.centerLat, r.centerLon,
@@ -160,21 +157,17 @@ fun RouteTrackerScreen(
                                         )
 
                                         // 3. Compute the offset needed to recenter the dynamic center.
-                                        // Here we assume the snapshot is drawn in a container of size r.width x r.height.
-                                        // If your Canvas size is different, you could use `size.width` and `size.height` instead.
                                         val offsetX = (r.width / 2f) - dynamicCenterPx
                                         val offsetY = (r.height / 2f) - dynamicCenterPy
 
                                         // 4. Build the path for the route points, applying the computed offset.
                                         val path = Path()
                                         routePoints.forEachIndexed { index, point ->
-                                            // Convert the point using the original grid.
                                             val (origX, origY) = latLonToPixel(
                                                 point.latitude, point.longitude,
                                                 r.centerLat, r.centerLon,
                                                 zoomLevel.floatValue, r.width, r.height
                                             )
-                                            // Adjust by the offset so the dynamic center is centered in the Canvas.
                                             val adjustedX = origX + offsetX
                                             val adjustedY = origY + offsetY
 
@@ -184,7 +177,16 @@ fun RouteTrackerScreen(
                                                 path.lineTo(adjustedX, adjustedY)
                                             }
                                         }
-                                        // Draw the red-line over the snapshot
+
+                                        // **DRAW DEBUG LINE AT (319,320)**
+                                        drawLine(
+                                            color = Color.Red,
+                                            start = Offset(319f, 320f),
+                                            end = Offset(325f, 325f),
+                                            strokeWidth = 5f
+                                        )
+
+                                        // **Draw the red route line**
                                         drawPath(path, color = Color.Red, style = Stroke(width = 5f))
                                     }
                                 }
