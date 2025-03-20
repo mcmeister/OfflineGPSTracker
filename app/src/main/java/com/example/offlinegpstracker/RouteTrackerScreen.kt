@@ -158,18 +158,18 @@ fun RouteTrackerScreen(
                                         val dynamicCenterLat = (minLat + maxLat) / 2
                                         val dynamicCenterLon = (minLon + maxLon) / 2
 
-                                        // 1️⃣ Get pixel position of the dynamic center
+                                        // **1️⃣ Get pixel position of the dynamic center**
                                         val (dynamicCenterPx, dynamicCenterPy) = latLonToPixel(
                                             dynamicCenterLat, dynamicCenterLon,
                                             r.centerLat, r.centerLon,
                                             zoomLevel.floatValue, r.width, r.height
                                         )
 
-                                        // 2️⃣ Compute the offset needed to shift the route to center
+                                        // **2️⃣ Compute the offset needed to shift the route to center**
                                         val offsetX = (size.width / 2f) - dynamicCenterPx
                                         val offsetY = (size.height / 2f) - dynamicCenterPy
 
-                                        // 3️⃣ Build and draw the path using corrected offsets
+                                        // **3️⃣ Build and draw the path using corrected offsets**
                                         val path = Path()
                                         routePoints.forEachIndexed { index, point ->
                                             val (origX, origY) = latLonToPixel(
@@ -178,8 +178,8 @@ fun RouteTrackerScreen(
                                                 zoomLevel.floatValue, r.width, r.height
                                             )
 
-                                            val adjustedX = (origX + offsetX) * zoomLevel.floatValue
-                                            val adjustedY = (origY + offsetY) * zoomLevel.floatValue
+                                            val adjustedX = origX + offsetX
+                                            val adjustedY = origY + offsetY
 
                                             if (index == 0) {
                                                 path.moveTo(adjustedX, adjustedY)
@@ -188,17 +188,8 @@ fun RouteTrackerScreen(
                                             }
                                         }
 
-                                        // 4️⃣ Improve Red-Line Route Visual Quality
-                                        drawPath(
-                                            path,
-                                            color = Color.Red,
-                                            style = Stroke(
-                                                width = (5f / zoomLevel.floatValue).coerceIn(
-                                                    2f,
-                                                    10f
-                                                )
-                                            )
-                                        )
+                                        // **Draw the corrected red-line route**
+                                        drawPath(path, color = Color.Red, style = Stroke(width = 5f))
                                     }
                                 }
 
