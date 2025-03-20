@@ -121,7 +121,6 @@ fun RouteTrackerScreen(
                         val bitmap = BitmapFactory.decodeFile(r.snapshotPath)?.asImageBitmap()
                         if (bitmap != null) {
                             // Render the snapshot
-                            ZoomableImage(imageBitmap = bitmap, zoomLevel = zoomLevel)
                             val distance = calculateDistance(routePoints)
 
                             Box(
@@ -267,7 +266,6 @@ fun RouteTrackerScreen(
                     val route = selectedRoute!!
                     val bitmap = BitmapFactory.decodeFile(route.snapshotPath)?.asImageBitmap()
                     if (bitmap != null) {
-                        ZoomableImage(imageBitmap = bitmap, zoomLevel = zoomLevel)
                         val distance = calculateDistance(routePoints)
 
                         Box(
