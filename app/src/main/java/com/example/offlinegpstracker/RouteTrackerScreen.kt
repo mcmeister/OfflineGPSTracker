@@ -11,6 +11,8 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectTransformGestures
+import androidx.compose.foundation.gestures.rememberTransformableState
+import androidx.compose.foundation.gestures.transformable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -29,6 +31,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
@@ -36,9 +39,13 @@ import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.Stroke
@@ -47,11 +54,13 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import kotlinx.coroutines.delay
+import kotlinx.coroutines.FlowPreview
+import kotlinx.coroutines.flow.debounce
 import kotlin.math.PI
 import kotlin.math.cos
 import kotlin.math.pow
 
+@OptIn(FlowPreview::class)
 @RequiresApi(Build.VERSION_CODES.O)
 @Composable
 fun RouteTrackerScreen(
@@ -64,8 +73,10 @@ fun RouteTrackerScreen(
     val currentRouteId by viewModel.currentRouteId.collectAsState()
     val savedRoutes by viewModel.savedRoutes.collectAsState()
     val selectedRoute by viewModel.selectedRoute.collectAsState()
-    val originalZoom = remember { mutableFloatStateOf(1f) } // Store original snapshot zoom
-    val zoomLevel = remember { mutableFloatStateOf(1f) } // Current zoom level
+    // Global zoom states
+    val originalZoom = remember { mutableFloatStateOf(1f) }
+    val zoomLevel = remember { mutableFloatStateOf(1f) }
+    val autoZoomApplied = remember { mutableStateOf(false) }
     val lastInteractionTime = remember { mutableLongStateOf(System.currentTimeMillis()) }
 
     // Ensure zoom initializes correctly based on the selected route or recording
@@ -78,25 +89,26 @@ fun RouteTrackerScreen(
 
     LaunchedEffect(selectedRoute) {
         if (selectedRoute != null) {
-            zoomLevel.floatValue = 1.0f // ✅ Reset zoom to 100% (default zoom level)
+            zoomLevel.floatValue = 1.0f
+            originalZoom.floatValue = 1.0f
+            autoZoomApplied.value = false
+            lastInteractionTime.longValue = System.currentTimeMillis()
         }
     }
 
     val debugInfo = remember { mutableStateOf("Waiting for GPS data...") }
 
     Scaffold { padding ->
-
-        LaunchedEffect(routePoints, isRecording) {
-            while (isRecording) {  // Auto-zoom only when recording
-                delay(5000)  // Every 5 seconds
-
-                val timeSinceLastInteraction = System.currentTimeMillis() - lastInteractionTime.longValue
-                val targetZoom = 1.5f * originalZoom.floatValue  // ✅ Set 150% zoom as target
-
-                if (timeSinceLastInteraction >= 5000 && zoomLevel.floatValue != targetZoom) {
-                    zoomLevel.floatValue = targetZoom // ✅ Zoom in **only once** to 150% if needed
+        // Auto-zoom effect: every time the user interacts, lastInteractionTime is updated.
+        // When 5 seconds pass with no interaction and we're recording, auto-zoom is applied.
+        LaunchedEffect(isRecording) {
+            snapshotFlow { lastInteractionTime.longValue }
+                .debounce(5000)
+                .collect {
+                    if (isRecording) {
+                        zoomLevel.floatValue = (1.5f * originalZoom.floatValue).coerceIn(1f, 5f)
+                    }
                 }
-            }
         }
 
         Box(modifier = modifier.padding(padding).fillMaxSize()) {
@@ -108,36 +120,35 @@ fun RouteTrackerScreen(
                     route?.let { r ->
                         val bitmap = BitmapFactory.decodeFile(r.snapshotPath)?.asImageBitmap()
                         if (bitmap != null) {
-                            val distance = calculateDistance(routePoints)  // ✅ Use distance properly
+                            // Render the snapshot
+                            ZoomableImage(imageBitmap = bitmap, zoomLevel = zoomLevel)
+                            val distance = calculateDistance(routePoints)
 
                             Box(
                                 modifier = Modifier
                                     .fillMaxSize()
                                     .pointerInput(Unit) {
                                         detectTapGestures(
-                                            onDoubleTap = { // ✅ Double-tap resets zoom
-                                                zoomLevel.floatValue = 1.0f // ✅ Reset to default zoom
+                                            onDoubleTap = { // Double-tap resets zoom
+                                                zoomLevel.floatValue = 1.0f // Reset to default zoom
+                                                lastInteractionTime.longValue =
+                                                    System.currentTimeMillis()
                                             }
                                         )
                                     }
                                     .pointerInput(Unit) {
                                         detectTransformGestures { _, _, zoom, _ ->
-                                            zoomLevel.floatValue = (zoomLevel.floatValue * zoom).coerceIn(0.5f * originalZoom.floatValue, 20f)
-                                            lastInteractionTime.longValue = System.currentTimeMillis()
+                                            zoomLevel.floatValue = (zoomLevel.floatValue * zoom)
+                                                .coerceIn(0.5f * originalZoom.floatValue, 20f)
+                                            lastInteractionTime.longValue =
+                                                System.currentTimeMillis()
                                         }
                                     }
                             ) {
-                                // ✅ Draw the map snapshot first (background)
-                                Image(
-                                    bitmap = bitmap,
-                                    contentDescription = "Map Snapshot",
-                                    modifier = Modifier
-                                        .fillMaxSize()
-                                        .graphicsLayer(scaleX = zoomLevel.floatValue, scaleY = zoomLevel.floatValue),
-                                    contentScale = ContentScale.Fit
-                                )
+                                // Draw the map snapshot first (background)
+                                ZoomableImage(imageBitmap = bitmap, zoomLevel = zoomLevel)
 
-                                // ✅ Draw the red route line AFTER the snapshot (on top)
+                                // Draw the red route line AFTER the snapshot (on top)
                                 Canvas(modifier = Modifier.fillMaxSize()) {
                                     if (routePoints.isNotEmpty()) {
                                         val minLat = routePoints.minOf { it.latitude }
@@ -147,18 +158,18 @@ fun RouteTrackerScreen(
                                         val dynamicCenterLat = (minLat + maxLat) / 2
                                         val dynamicCenterLon = (minLon + maxLon) / 2
 
-                                        // **1️⃣ Get pixel position of the dynamic center**
+                                        // 1️⃣ Get pixel position of the dynamic center
                                         val (dynamicCenterPx, dynamicCenterPy) = latLonToPixel(
                                             dynamicCenterLat, dynamicCenterLon,
                                             r.centerLat, r.centerLon,
                                             zoomLevel.floatValue, r.width, r.height
                                         )
 
-                                        // **2️⃣ Compute the offset needed to shift the route to center**
+                                        // 2️⃣ Compute the offset needed to shift the route to center
                                         val offsetX = (size.width / 2f) - dynamicCenterPx
                                         val offsetY = (size.height / 2f) - dynamicCenterPy
 
-                                        // **3️⃣ Build and draw the path using corrected offsets**
+                                        // 3️⃣ Build and draw the path using corrected offsets
                                         val path = Path()
                                         routePoints.forEachIndexed { index, point ->
                                             val (origX, origY) = latLonToPixel(
@@ -167,8 +178,8 @@ fun RouteTrackerScreen(
                                                 zoomLevel.floatValue, r.width, r.height
                                             )
 
-                                            val adjustedX = origX + offsetX
-                                            val adjustedY = origY + offsetY
+                                            val adjustedX = (origX + offsetX) * zoomLevel.floatValue
+                                            val adjustedY = (origY + offsetY) * zoomLevel.floatValue
 
                                             if (index == 0) {
                                                 path.moveTo(adjustedX, adjustedY)
@@ -177,57 +188,32 @@ fun RouteTrackerScreen(
                                             }
                                         }
 
-                                        // **Draw the corrected red-line route**
-                                        drawPath(path, color = Color.Red, style = Stroke(width = 5f))
+                                        // 4️⃣ Improve Red-Line Route Visual Quality
+                                        drawPath(
+                                            path,
+                                            color = Color.Red,
+                                            style = Stroke(
+                                                width = (5f / zoomLevel.floatValue).coerceIn(
+                                                    2f,
+                                                    10f
+                                                )
+                                            )
+                                        )
                                     }
                                 }
 
-                                // **DEBUG INFO BLOCK**
+                                // DEBUG INFO BLOCK
                                 LaunchedEffect(routePoints) {
                                     val lastPoint = routePoints.lastOrNull()
                                     val distanceKm = calculateDistance(routePoints) / 1000.0
-
                                     if (lastPoint != null) {
-                                        val (x, y) = latLonToPixel(
+                                        val (_, _) = latLonToPixel(
                                             lastPoint.latitude, lastPoint.longitude,
-                                            r.centerLat, r.centerLon, zoomLevel.floatValue, r.width, r.height
+                                            r.centerLat, r.centerLon,
+                                            zoomLevel.floatValue, r.width, r.height
                                         )
-
-                                        // Debug information for real-time visualization
-                                        val minLat = routePoints.minOfOrNull { it.latitude } ?: 0.0
-                                        val maxLat = routePoints.maxOfOrNull { it.latitude } ?: 0.0
-                                        val minLon = routePoints.minOfOrNull { it.longitude } ?: 0.0
-                                        val maxLon = routePoints.maxOfOrNull { it.longitude } ?: 0.0
-
-                                        val dynamicCenterLat = (minLat + maxLat) / 2
-                                        val dynamicCenterLon = (minLon + maxLon) / 2
-
-                                        val (dynamicCenterPx, dynamicCenterPy) = latLonToPixel(
-                                            dynamicCenterLat, dynamicCenterLon,
-                                            r.centerLat, r.centerLon, zoomLevel.floatValue, r.width, r.height
-                                        )
-
-                                        val offsetX = (r.width / 2f) - dynamicCenterPx
-                                        val offsetY = (r.height / 2f) - dynamicCenterPy
-
                                         debugInfo.value = """
                                         Route Points: ${routePoints.size}
-                                        Last Point: 
-                                          Lat: ${"%.6f".format(lastPoint.latitude)}, Lon: ${"%.6f".format(lastPoint.longitude)}
-                                          Mapped X: ${x.toInt()}, Y: ${y.toInt()}
-                                        -----
-                                        Bounding Box:
-                                          Min Lat: ${"%.6f".format(minLat)}, Max Lat: ${"%.6f".format(maxLat)}
-                                          Min Lon: ${"%.6f".format(minLon)}, Max Lon: ${"%.6f".format(maxLon)}
-                                        -----
-                                        Center Calculation:
-                                          Dynamic Center Lat: ${"%.6f".format(dynamicCenterLat)}
-                                          Dynamic Center Lon: ${"%.6f".format(dynamicCenterLon)}
-                                          Mapped Center X: ${dynamicCenterPx.toInt()}, Y: ${dynamicCenterPy.toInt()}
-                                        -----
-                                        Offsets:
-                                          OffsetX: ${offsetX.toInt()}, OffsetY: ${offsetY.toInt()}
-                                        -----
                                         Zoom Level: ${"%.2f".format(zoomLevel.floatValue)}
                                         Distance: ${"%.2f".format(distanceKm)} km
                                     """.trimIndent()
@@ -243,18 +229,22 @@ fun RouteTrackerScreen(
                                         .background(Color.Black.copy(alpha = 0.7f))
                                         .padding(8.dp)
                                 ) {
-                                    Text(text = debugInfo.value, color = Color.White, fontSize = 12.sp)
+                                    Text(
+                                        text = debugInfo.value,
+                                        color = Color.White,
+                                        fontSize = 12.sp
+                                    )
                                 }
                             }
 
                             Column(
                                 modifier = Modifier
                                     .align(Alignment.BottomCenter)
-                                    .padding(bottom = 16.dp), // Keeps proper spacing from the bottom
+                                    .padding(bottom = 16.dp),
                                 horizontalAlignment = Alignment.CenterHorizontally
                             ) {
                                 Text(
-                                    text = "Total Distance: %.2f km".format(distance / 1000),  // ✅ Moved above buttons
+                                    text = "Total Distance: %.2f km".format(distance / 1000),
                                     modifier = Modifier
                                         .background(Color.Black.copy(alpha = 0.7f))
                                         .padding(8.dp),
@@ -262,7 +252,7 @@ fun RouteTrackerScreen(
                                     fontSize = 14.sp
                                 )
 
-                                Spacer(modifier = Modifier.height(12.dp)) // ✅ Adds space between distance text and buttons
+                                Spacer(modifier = Modifier.height(12.dp))
 
                                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                     Button(onClick = {
@@ -286,33 +276,30 @@ fun RouteTrackerScreen(
                     val route = selectedRoute!!
                     val bitmap = BitmapFactory.decodeFile(route.snapshotPath)?.asImageBitmap()
                     if (bitmap != null) {
-                        val distance = calculateDistance(routePoints)  // ✅ Use distance for saved routes too
+                        ZoomableImage(imageBitmap = bitmap, zoomLevel = zoomLevel)
+                        val distance = calculateDistance(routePoints)
 
                         Box(
                             modifier = Modifier
                                 .fillMaxSize()
                                 .pointerInput(Unit) {
                                     detectTapGestures(
-                                        onDoubleTap = { // ✅ Double-tap resets zoom
-                                            zoomLevel.floatValue = 1.0f // ✅ Reset to default zoom
+                                        onDoubleTap = {
+                                            zoomLevel.floatValue = 1.0f
+                                            lastInteractionTime.longValue =
+                                                System.currentTimeMillis()
                                         }
                                     )
                                 }
                                 .pointerInput(Unit) {
                                     detectTransformGestures { _, _, zoom, _ ->
-                                        zoomLevel.floatValue = (zoomLevel.floatValue * zoom).coerceIn(0.5f * originalZoom.floatValue, 20f)
+                                        zoomLevel.floatValue = (zoomLevel.floatValue * zoom)
+                                            .coerceIn(0.5f * originalZoom.floatValue, 20f)
                                         lastInteractionTime.longValue = System.currentTimeMillis()
                                     }
                                 }
                         ) {
-                            Image(
-                                bitmap = bitmap,
-                                contentDescription = "Saved Route Snapshot",
-                                modifier = Modifier
-                                    .fillMaxSize()
-                                    .graphicsLayer(scaleX = zoomLevel.floatValue, scaleY = zoomLevel.floatValue), // ✅ Apply zoom
-                                contentScale = ContentScale.Fit
-                            )
+                            ZoomableImage(imageBitmap = bitmap, zoomLevel = zoomLevel)
 
                             Canvas(modifier = Modifier.fillMaxSize()) {
                                 val path = Path()
@@ -320,11 +307,20 @@ fun RouteTrackerScreen(
                                     val (x, y) = latLonToPixel(
                                         point.latitude, point.longitude,
                                         route.centerLat, route.centerLon,
-                                        route.zoom.toFloat(), route.width, route.height
+                                        zoomLevel.floatValue, route.width, route.height
                                     )
                                     if (index == 0) path.moveTo(x, y) else path.lineTo(x, y)
                                 }
-                                drawPath(path, color = Color.Red, style = Stroke(width = 5f))
+                                drawPath(
+                                    path,
+                                    color = Color.Red,
+                                    style = Stroke(
+                                        width = (5f / zoomLevel.floatValue).coerceIn(
+                                            2f,
+                                            10f
+                                        )
+                                    )
+                                )
                             }
 
                             Column(
@@ -345,7 +341,7 @@ fun RouteTrackerScreen(
                                     fontSize = 14.sp
                                 )
                                 Text(
-                                    text = "Total Distance: %.2f km".format(distance / 1000),  // ✅ Fixed this
+                                    text = "Total Distance: %.2f km".format(distance / 1000),
                                     color = Color.White,
                                     fontSize = 14.sp
                                 )
@@ -364,12 +360,12 @@ fun RouteTrackerScreen(
                 }
             }
 
-            // **Debug Log to check if isRecording updates correctly**
+            // Debug Log to check if isRecording updates correctly
             LaunchedEffect(isRecording) {
                 Log.d("RouteTracker", "isRecording state changed: $isRecording")
             }
 
-            // **Only show saved routes when NOT recording**
+            // Only show saved routes when NOT recording
             if (!isRecording) {
                 LazyColumn(
                     modifier = Modifier
@@ -389,12 +385,53 @@ fun RouteTrackerScreen(
                                 .clickable {
                                     viewModel.selectRoute(savedRoute.id)
                                 }
-
                         )
                     }
                 }
             }
         }
+    }
+}
+
+@Composable
+fun ZoomableImage(
+    imageBitmap: ImageBitmap,
+    zoomLevel: MutableState<Float>, // External control of zoom
+    modifier: Modifier = Modifier
+) {
+    // Remove local scale state; use the external zoomLevel directly.
+    var offset by remember { mutableStateOf(Offset.Zero) }
+    val state = rememberTransformableState { zoomChange, offsetChange, _ ->
+        zoomLevel.value = (zoomLevel.value * zoomChange).coerceIn(0.5f, 20f)
+        offset += offsetChange
+    }
+
+    Box(
+        modifier = modifier
+            .fillMaxSize()
+            .pointerInput(Unit) {
+                detectTapGestures(
+                    onDoubleTap = {
+                        // Reset zoom and offset on double-tap.
+                        zoomLevel.value = 1.0f
+                        offset = Offset.Zero
+                    }
+                )
+            }
+            .transformable(state = state)
+            .graphicsLayer(
+                scaleX = zoomLevel.value,
+                scaleY = zoomLevel.value,
+                translationX = offset.x,
+                translationY = offset.y
+            )
+    ) {
+        Image(
+            bitmap = imageBitmap,
+            contentDescription = "Zoomable Map Snapshot",
+            modifier = Modifier.fillMaxSize(),
+            contentScale = ContentScale.Fit
+        )
     }
 }
 
