@@ -49,7 +49,6 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
 import kotlin.math.PI
 import kotlin.math.cos
 import kotlin.math.pow
@@ -194,17 +193,51 @@ fun RouteTrackerScreen(
                                 LaunchedEffect(routePoints) {
                                     val lastPoint = routePoints.lastOrNull()
                                     val distanceKm = calculateDistance(routePoints) / 1000.0
+
                                     if (lastPoint != null) {
                                         val (x, y) = latLonToPixel(
                                             lastPoint.latitude, lastPoint.longitude,
                                             r.centerLat, r.centerLon, zoomLevel.floatValue, r.width, r.height
                                         )
+
+                                        // Debug information for real-time visualization
+                                        val minLat = routePoints.minOfOrNull { it.latitude } ?: 0.0
+                                        val maxLat = routePoints.maxOfOrNull { it.latitude } ?: 0.0
+                                        val minLon = routePoints.minOfOrNull { it.longitude } ?: 0.0
+                                        val maxLon = routePoints.maxOfOrNull { it.longitude } ?: 0.0
+
+                                        val dynamicCenterLat = (minLat + maxLat) / 2
+                                        val dynamicCenterLon = (minLon + maxLon) / 2
+
+                                        val (dynamicCenterPx, dynamicCenterPy) = latLonToPixel(
+                                            dynamicCenterLat, dynamicCenterLon,
+                                            r.centerLat, r.centerLon, zoomLevel.floatValue, r.width, r.height
+                                        )
+
+                                        val offsetX = (r.width / 2f) - dynamicCenterPx
+                                        val offsetY = (r.height / 2f) - dynamicCenterPy
+
                                         debugInfo.value = """
-                                            Route Points: ${routePoints.size}
-                                            Last Lat: ${"%.6f".format(lastPoint.latitude)}, Lon: ${"%.6f".format(lastPoint.longitude)}
-                                            Mapped X: ${x.toInt()}, Y: ${y.toInt()}
-                                            Distance: ${"%.2f".format(distanceKm)} km
-                                        """.trimIndent()
+                                        Route Points: ${routePoints.size}
+                                        Last Point: 
+                                          Lat: ${"%.6f".format(lastPoint.latitude)}, Lon: ${"%.6f".format(lastPoint.longitude)}
+                                          Mapped X: ${x.toInt()}, Y: ${y.toInt()}
+                                        -----
+                                        Bounding Box:
+                                          Min Lat: ${"%.6f".format(minLat)}, Max Lat: ${"%.6f".format(maxLat)}
+                                          Min Lon: ${"%.6f".format(minLon)}, Max Lon: ${"%.6f".format(maxLon)}
+                                        -----
+                                        Center Calculation:
+                                          Dynamic Center Lat: ${"%.6f".format(dynamicCenterLat)}
+                                          Dynamic Center Lon: ${"%.6f".format(dynamicCenterLon)}
+                                          Mapped Center X: ${dynamicCenterPx.toInt()}, Y: ${dynamicCenterPy.toInt()}
+                                        -----
+                                        Offsets:
+                                          OffsetX: ${offsetX.toInt()}, OffsetY: ${offsetY.toInt()}
+                                        -----
+                                        Zoom Level: ${"%.2f".format(zoomLevel.floatValue)}
+                                        Distance: ${"%.2f".format(distanceKm)} km
+                                    """.trimIndent()
                                     } else {
                                         debugInfo.value = "No GPS points received."
                                     }
@@ -218,15 +251,6 @@ fun RouteTrackerScreen(
                                         .padding(8.dp)
                                 ) {
                                     Text(text = debugInfo.value, color = Color.White, fontSize = 12.sp)
-                                }
-
-                                if (routePoints.size <= 1) {
-                                    LaunchedEffect(Unit) {
-                                        scope.launch {
-                                            delay(1000)
-                                            Log.i("RouteTracker", "Please start walking in the desired direction")
-                                        }
-                                    }
                                 }
                             }
 
