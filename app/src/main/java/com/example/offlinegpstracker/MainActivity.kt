@@ -1,18 +1,11 @@
 package com.example.offlinegpstracker
 
-import android.Manifest
-import android.content.Intent
-import android.content.pm.PackageManager
-import android.net.Uri
 import android.os.Build
 import android.os.Bundle
-import android.provider.Settings
-import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.viewModels
 import androidx.annotation.RequiresApi
-import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -32,6 +25,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
@@ -39,11 +33,14 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
-import androidx.core.app.ActivityCompat
 import androidx.core.view.WindowCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.compose.rememberNavController
 import com.example.offlinegpstracker.ui.theme.OfflineGPSTrackerTheme
+import com.google.accompanist.permissions.ExperimentalPermissionsApi
+import com.google.accompanist.permissions.PermissionStatus
+import com.google.accompanist.permissions.isGranted
+import com.google.accompanist.permissions.rememberPermissionState
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -84,6 +81,10 @@ class MainActivity : AppCompatActivity() {
 
                     // Create/remember pagerState (2 pages: GPSTrackerScreen + LocationsScreen)
                     val pagerState = rememberPagerState { 3 }
+
+                    RequestLocationPermission {
+                        locationViewModel.startLocationUpdates()
+                    }
 
                     // Handle Back
                     BackHandler {
@@ -265,7 +266,6 @@ class MainActivity : AppCompatActivity() {
                 }
             }
         }
-        requestPermissions()
     }
 
     @Composable
@@ -294,94 +294,29 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun requestPermissions() {
-        val permissions = mutableListOf(
-            Manifest.permission.ACCESS_FINE_LOCATION,
-            Manifest.permission.ACCESS_COARSE_LOCATION,
-            Manifest.permission.CAMERA
-        )
+    @OptIn(ExperimentalPermissionsApi::class)
+    @Composable
+    fun RequestLocationPermission(onPermissionGranted: () -> Unit) {
+        val fineLocationPermission = rememberPermissionState(android.Manifest.permission.ACCESS_FINE_LOCATION)
 
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            permissions.add(Manifest.permission.ACCESS_BACKGROUND_LOCATION)
-        }
-
-        if (Build.VERSION.SDK_INT <= Build.VERSION_CODES.S) { // Only request storage permissions on older versions
-            permissions.add(Manifest.permission.READ_EXTERNAL_STORAGE)
-            permissions.add(Manifest.permission.WRITE_EXTERNAL_STORAGE)
-        }
-
-        val deniedPermissions = permissions.filter {
-            ActivityCompat.checkSelfPermission(this, it) != PackageManager.PERMISSION_GRANTED
-        }
-
-        if (deniedPermissions.isNotEmpty()) {
-            if (shouldShowRationale(deniedPermissions)) {
-                showRationaleDialog(deniedPermissions)
+        LaunchedEffect(Unit) {
+            if (!fineLocationPermission.status.isGranted) {
+                fineLocationPermission.launchPermissionRequest()
             } else {
-                ActivityCompat.requestPermissions(this, deniedPermissions.toTypedArray(), 1)
+                onPermissionGranted()
             }
-        } else {
-            onPermissionsGranted()
         }
-    }
 
-    private fun shouldShowRationale(permissions: List<String>): Boolean {
-        return permissions.any { ActivityCompat.shouldShowRequestPermissionRationale(this, it) }
-    }
-
-    private fun showRationaleDialog(permissions: List<String>) {
-        AlertDialog.Builder(this)
-            .setTitle("Permissions Required")
-            .setMessage("This app needs location, camera, and storage permissions to function correctly. Please grant them.")
-            .setPositiveButton("OK") { _, _ ->
-                ActivityCompat.requestPermissions(this, permissions.toTypedArray(), 1)
+        when (fineLocationPermission.status) {
+            is PermissionStatus.Granted -> {
+                onPermissionGranted()
             }
-            .setNegativeButton("Cancel") { dialog, _ ->
-                dialog.dismiss()
-                Toast.makeText(this, "Permissions are required for full functionality.", Toast.LENGTH_LONG).show()
-            }
-            .show()
-    }
-
-    private fun onPermissionsGranted() {
-        locationViewModel.startLocationUpdates()
-    }
-
-    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
-        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
-
-        if (requestCode == 1) {
-            val allGranted = grantResults.all { it == PackageManager.PERMISSION_GRANTED }
-
-            if (allGranted) {
-                onPermissionsGranted()
-            } else {
-                val permanentlyDenied = permissions.any { permission ->
-                    ActivityCompat.checkSelfPermission(this, permission) != PackageManager.PERMISSION_GRANTED &&
-                            !ActivityCompat.shouldShowRequestPermissionRationale(this, permission)
-                }
-
-                if (permanentlyDenied) {
-                    showSettingsDialog()
-                } else {
-                    Toast.makeText(this, "Permissions are required for full functionality.", Toast.LENGTH_SHORT).show()
+            is PermissionStatus.Denied -> {
+                Box(modifier = Modifier.fillMaxSize()) {
+                    Text("Location permission is required for GPS tracking.", color = Color.Red)
                 }
             }
         }
-    }
-
-    private fun showSettingsDialog() {
-        AlertDialog.Builder(this)
-            .setTitle("Permissions Denied")
-            .setMessage("Some permissions are permanently denied. Open app settings to grant them manually.")
-            .setPositiveButton("Go to Settings") { _, _ ->
-                val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS)
-                val uri = Uri.fromParts("package", packageName, null)
-                intent.data = uri
-                startActivity(intent)
-            }
-            .setNegativeButton("Cancel") { dialog, _ -> dialog.dismiss() }
-            .show()
     }
 
     override fun onDestroy() {

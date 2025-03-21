@@ -54,10 +54,6 @@ class LocationViewModel(application: Application, private val repository: Locati
     private var fusedLocationClient: FusedLocationProviderClient = LocationServices.getFusedLocationProviderClient(application)
     private var locationCallback: LocationCallback? = null
 
-    init {
-        startLocationUpdates()
-    }
-
     fun saveLocation(location: Location) {
         viewModelScope.launch {
             repository.insertLocation(location)
@@ -94,9 +90,7 @@ class LocationViewModel(application: Application, private val repository: Locati
 
     @SuppressLint("MissingPermission")
     fun startLocationUpdates() {
-        if (ActivityCompat.checkSelfPermission(getApplication(), android.Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED &&
-            ActivityCompat.checkSelfPermission(getApplication(), android.Manifest.permission.ACCESS_COARSE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
-            // Request permissions if not granted
+        if (ActivityCompat.checkSelfPermission(getApplication(), android.Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
             return
         }
 
@@ -109,7 +103,6 @@ class LocationViewModel(application: Application, private val repository: Locati
                 for (location in locationResult.locations) {
                     _latitude.value = location.latitude.toString()
                     _longitude.value = location.longitude.toString()
-                    // Format altitude to two decimal places
                     _altitude.value = "%.2f".format(location.altitude)
                     _locationFlow.value = location
                 }

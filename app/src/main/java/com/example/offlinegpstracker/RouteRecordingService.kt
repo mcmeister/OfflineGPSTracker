@@ -5,9 +5,11 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.Service
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.content.pm.ServiceInfo
 import android.os.Build
 import android.os.IBinder
+import androidx.core.app.ActivityCompat
 import androidx.core.app.NotificationCompat
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -25,6 +27,9 @@ class RouteRecordingService : Service() {
         super.onCreate()
         val app = application as MyApplication
         locationViewModel = LocationViewModel(app, app.locationRepository)
+        if (ActivityCompat.checkSelfPermission(this, android.Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED) {
+            locationViewModel.startLocationUpdates()
+        }
         scope.launch {
             locationViewModel.locationFlow.collect { location ->
                 if (location != null && !isPaused && routeId != -1) {

@@ -1,6 +1,7 @@
 package com.example.offlinegpstracker
 
 import android.content.Context
+import android.content.pm.PackageManager
 import android.hardware.Sensor
 import android.hardware.SensorEvent
 import android.hardware.SensorEventListener
@@ -33,6 +34,7 @@ import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.core.app.ActivityCompat
 import androidx.navigation.NavHostController
 import kotlinx.coroutines.launch
 import kotlin.math.atan2
@@ -58,7 +60,9 @@ fun NavigatorScreen(
     var direction by remember { mutableDoubleStateOf(0.0) }
 
     LaunchedEffect(Unit) {
-        locationViewModel.startLocationUpdates()
+        if (ActivityCompat.checkSelfPermission(context, android.Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED) {
+            locationViewModel.startLocationUpdates()
+        }
         launch {
             locationViewModel.locationFlow.collect { location ->
                 if (location != null) {

@@ -18,7 +18,9 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
@@ -73,6 +75,7 @@ fun RouteTrackerScreen(
     val currentRouteId by viewModel.currentRouteId.collectAsState()
     val savedRoutes by viewModel.savedRoutes.collectAsState()
     val selectedRoute by viewModel.selectedRoute.collectAsState()
+
     // Global zoom states
     val originalZoom = remember { mutableFloatStateOf(1f) }
     val zoomLevel = remember { mutableFloatStateOf(1f) }
@@ -126,10 +129,9 @@ fun RouteTrackerScreen(
                                     .fillMaxSize()
                                     .pointerInput(Unit) {
                                         detectTapGestures(
-                                            onDoubleTap = { // Double-tap resets zoom
-                                                zoomLevel.floatValue = 1.0f // Reset to default zoom
-                                                lastInteractionTime.longValue =
-                                                    System.currentTimeMillis()
+                                            onDoubleTap = {
+                                                zoomLevel.floatValue = 1.0f // Reset zoom
+                                                lastInteractionTime.longValue = System.currentTimeMillis()
                                             }
                                         )
                                     }
@@ -137,61 +139,63 @@ fun RouteTrackerScreen(
                                         detectTransformGestures { _, _, zoom, _ ->
                                             zoomLevel.floatValue = (zoomLevel.floatValue * zoom)
                                                 .coerceIn(0.5f * originalZoom.floatValue, 20f)
-                                            lastInteractionTime.longValue =
-                                                System.currentTimeMillis()
+                                            lastInteractionTime.longValue = System.currentTimeMillis()
                                         }
                                     }
                             ) {
-                                // Draw the map snapshot first (background)
-                                ZoomableImage(imageBitmap = bitmap, zoomLevel = zoomLevel)
+                                // 🔹 Parent Box to keep the map in the absolute center
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxSize(),
+                                    contentAlignment = Alignment.Center // 🔹 Ensure both vertical & horizontal centering
+                                ) {
+                                    Canvas(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .aspectRatio(bitmap.width.toFloat() / bitmap.height.toFloat()) // Keep aspect ratio
+                                            .align(Alignment.Center)
+                                            .graphicsLayer(
+                                                scaleX = zoomLevel.floatValue,
+                                                scaleY = zoomLevel.floatValue
+                                            )
+                                    ) {
+                                        // Calculate the correct offset to center the image in the Canvas
+                                        val imageCenterX = (size.width - bitmap.width) / 2f
+                                        val imageCenterY = (size.height - bitmap.height) / 2f
 
-                                // Draw the red route line AFTER the snapshot (on top)
-                                Canvas(modifier = Modifier.fillMaxSize()) {
-                                    if (routePoints.isNotEmpty()) {
-                                        val minLat = routePoints.minOf { it.latitude }
-                                        val maxLat = routePoints.maxOf { it.latitude }
-                                        val minLon = routePoints.minOf { it.longitude }
-                                        val maxLon = routePoints.maxOf { it.longitude }
-                                        val dynamicCenterLat = (minLat + maxLat) / 2
-                                        val dynamicCenterLon = (minLon + maxLon) / 2
-
-                                        // **1️⃣ Get pixel position of the dynamic center**
-                                        val (dynamicCenterPx, dynamicCenterPy) = latLonToPixel(
-                                            dynamicCenterLat, dynamicCenterLon,
-                                            r.centerLat, r.centerLon,
-                                            zoomLevel.floatValue, r.width, r.height
+                                        // 🟢 Corrected: Place the image center in the Canvas center
+                                        drawImage(
+                                            image = bitmap,
+                                            topLeft = Offset(imageCenterX, imageCenterY) // Center the image correctly
                                         )
 
-                                        // **2️⃣ Compute the offset needed to shift the route to center**
-                                        val offsetX = (size.width / 2f) - dynamicCenterPx
-                                        val offsetY = (size.height / 2f) - dynamicCenterPy
+                                        // Draw the red route line
+                                        if (routePoints.isNotEmpty()) {
+                                            val path = Path()
 
-                                        // **3️⃣ Build and draw the path using corrected offsets**
-                                        val path = Path()
-                                        routePoints.forEachIndexed { index, point ->
-                                            val (origX, origY) = latLonToPixel(
-                                                point.latitude, point.longitude,
-                                                r.centerLat, r.centerLon,
-                                                zoomLevel.floatValue, r.width, r.height
-                                            )
+                                            routePoints.forEachIndexed { index, point ->
+                                                val (x, y) = latLonToPixel(
+                                                    point.latitude, point.longitude,
+                                                    r.centerLat, r.centerLon,
+                                                    1f, // No manual zoom here; graphicsLayer applies it
+                                                    r.width, r.height
+                                                )
 
-                                            val adjustedX = origX + offsetX
-                                            val adjustedY = origY + offsetY
-
-                                            if (index == 0) {
-                                                path.moveTo(adjustedX, adjustedY)
-                                            } else {
-                                                path.lineTo(adjustedX, adjustedY)
+                                                if (index == 0) {
+                                                    path.moveTo(x, y)
+                                                } else {
+                                                    path.lineTo(x, y)
+                                                }
                                             }
-                                        }
 
-                                        drawPath(
-                                            path,
-                                            color = Color.Red,
-                                            style = Stroke(
-                                                width = (5f / zoomLevel.floatValue).coerceIn(2f, 10f)
+                                            drawPath(
+                                                path,
+                                                color = Color.Red,
+                                                style = Stroke(
+                                                    width = (5f / zoomLevel.floatValue).coerceIn(2f, 10f)
+                                                )
                                             )
-                                        )
+                                        }
                                     }
                                 }
 
