@@ -96,21 +96,19 @@ fun RouteTrackerScreen(
         }
     }
 
+    LaunchedEffect(isRecording) {
+        snapshotFlow { lastInteractionTime.longValue }
+            .debounce(5000)
+            .collect {
+                if (isRecording) {
+                    zoomLevel.floatValue = (1.5f * originalZoom.floatValue).coerceIn(1f, 5f)
+                }
+            }
+    }
+
     val debugInfo = remember { mutableStateOf("Waiting for GPS data...") }
 
     Scaffold { padding ->
-        // Auto-zoom effect: every time the user interacts, lastInteractionTime is updated.
-        // When 5 seconds pass with no interaction and we're recording, auto-zoom is applied.
-        LaunchedEffect(isRecording) {
-            snapshotFlow { lastInteractionTime.longValue }
-                .debounce(5000)
-                .collect {
-                    if (isRecording) {
-                        zoomLevel.floatValue = (1.5f * originalZoom.floatValue).coerceIn(1f, 5f)
-                    }
-                }
-        }
-
         Box(modifier = modifier.padding(padding).fillMaxSize()) {
             when {
                 isRecording && currentRouteId != null -> {
@@ -187,8 +185,13 @@ fun RouteTrackerScreen(
                                             }
                                         }
 
-                                        // **Draw the corrected red-line route**
-                                        drawPath(path, color = Color.Red, style = Stroke(width = 5f))
+                                        drawPath(
+                                            path,
+                                            color = Color.Red,
+                                            style = Stroke(
+                                                width = (5f / zoomLevel.floatValue).coerceIn(2f, 10f)
+                                            )
+                                        )
                                     }
                                 }
 
