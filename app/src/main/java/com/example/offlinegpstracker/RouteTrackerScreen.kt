@@ -10,7 +10,6 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
-import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.gestures.rememberTransformableState
 import androidx.compose.foundation.gestures.transformable
 import androidx.compose.foundation.layout.Arrangement
@@ -33,7 +32,6 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
@@ -47,7 +45,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.Stroke
@@ -121,8 +118,16 @@ fun RouteTrackerScreen(
                     route?.let { r ->
                         val bitmap = BitmapFactory.decodeFile(r.snapshotPath)?.asImageBitmap()
                         if (bitmap != null) {
-                            // Render the snapshot
                             val distance = calculateDistance(routePoints)
+
+                            // Shared transform state (zoom + offset)
+                            var offset by remember { mutableStateOf(Offset.Zero) }
+                            val transformState = rememberTransformableState { zoomChange, offsetChange, _ ->
+                                zoomLevel.floatValue = (zoomLevel.floatValue * zoomChange)
+                                    .coerceIn(0.5f * originalZoom.floatValue, 20f)
+                                offset += offsetChange
+                                lastInteractionTime.longValue = System.currentTimeMillis()
+                            }
 
                             Box(
                                 modifier = Modifier
@@ -130,69 +135,54 @@ fun RouteTrackerScreen(
                                     .pointerInput(Unit) {
                                         detectTapGestures(
                                             onDoubleTap = {
-                                                zoomLevel.floatValue = 1.0f // Reset zoom
+                                                zoomLevel.floatValue = 1.0f
+                                                offset = Offset.Zero
                                                 lastInteractionTime.longValue = System.currentTimeMillis()
                                             }
                                         )
                                     }
-                                    .pointerInput(Unit) {
-                                        detectTransformGestures { _, _, zoom, _ ->
-                                            zoomLevel.floatValue = (zoomLevel.floatValue * zoom)
-                                                .coerceIn(0.5f * originalZoom.floatValue, 20f)
-                                            lastInteractionTime.longValue = System.currentTimeMillis()
-                                        }
-                                    }
+                                    .transformable(transformState)
                             ) {
-                                // 🔹 Parent Box to keep the map in the absolute center
+                                // Centered container preserving aspect ratio
                                 Box(
                                     modifier = Modifier
-                                        .fillMaxSize(),
-                                    contentAlignment = Alignment.Center // 🔹 Ensure both vertical & horizontal centering
-                                ) {
-                                    Canvas(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .aspectRatio(bitmap.width.toFloat() / bitmap.height.toFloat()) // Keep aspect ratio
-                                            .align(Alignment.Center)
-                                            .graphicsLayer(
-                                                scaleX = zoomLevel.floatValue,
-                                                scaleY = zoomLevel.floatValue
-                                            )
-                                    ) {
-                                        // Calculate the correct offset to center the image in the Canvas
-                                        val imageCenterX = (size.width - bitmap.width) / 2f
-                                        val imageCenterY = (size.height - bitmap.height) / 2f
-
-                                        // 🟢 Corrected: Place the image center in the Canvas center
-                                        drawImage(
-                                            image = bitmap,
-                                            topLeft = Offset(imageCenterX, imageCenterY) // Center the image correctly
+                                        .fillMaxWidth()
+                                        .aspectRatio(bitmap.width.toFloat() / bitmap.height.toFloat())
+                                        .align(Alignment.Center)
+                                        .graphicsLayer(
+                                            scaleX = zoomLevel.floatValue,
+                                            scaleY = zoomLevel.floatValue,
+                                            translationX = offset.x,
+                                            translationY = offset.y
                                         )
+                                ) {
+                                    // Snapshot background
+                                    Image(
+                                        bitmap = bitmap,
+                                        contentDescription = "Map Snapshot",
+                                        modifier = Modifier.fillMaxSize(),
+                                        contentScale = ContentScale.Fit
+                                    )
 
-                                        // Draw the red route line
+                                    // Red route line
+                                    Canvas(modifier = Modifier.fillMaxSize()) {
                                         if (routePoints.isNotEmpty()) {
                                             val path = Path()
-
                                             routePoints.forEachIndexed { index, point ->
                                                 val (x, y) = latLonToPixel(
                                                     point.latitude, point.longitude,
                                                     r.centerLat, r.centerLon,
-                                                    1f, // No manual zoom here; graphicsLayer applies it
+                                                    r.zoom.toFloat(),  // 🔹 Match snapshot's zoom
                                                     r.width, r.height
                                                 )
-
-                                                if (index == 0) {
-                                                    path.moveTo(x, y)
-                                                } else {
-                                                    path.lineTo(x, y)
-                                                }
+                                                if (index == 0) path.moveTo(x, y) else path.lineTo(x, y)
                                             }
 
                                             drawPath(
                                                 path,
                                                 color = Color.Red,
                                                 style = Stroke(
-                                                    width = (5f / zoomLevel.floatValue).coerceIn(2f, 10f)
+                                                    width = (5f / zoomLevel.floatValue).coerceIn(2f, 10f) // 🔹 Constant visual width
                                                 )
                                             )
                                         }
@@ -275,6 +265,15 @@ fun RouteTrackerScreen(
                     if (bitmap != null) {
                         val distance = calculateDistance(routePoints)
 
+                        // Shared zoom & pan state
+                        var offset by remember { mutableStateOf(Offset.Zero) }
+                        val transformState = rememberTransformableState { zoomChange, offsetChange, _ ->
+                            zoomLevel.floatValue = (zoomLevel.floatValue * zoomChange)
+                                .coerceIn(0.5f * originalZoom.floatValue, 20f)
+                            offset += offsetChange
+                            lastInteractionTime.longValue = System.currentTimeMillis()
+                        }
+
                         Box(
                             modifier = Modifier
                                 .fillMaxSize()
@@ -282,43 +281,54 @@ fun RouteTrackerScreen(
                                     detectTapGestures(
                                         onDoubleTap = {
                                             zoomLevel.floatValue = 1.0f
-                                            lastInteractionTime.longValue =
-                                                System.currentTimeMillis()
+                                            offset = Offset.Zero
+                                            lastInteractionTime.longValue = System.currentTimeMillis()
                                         }
                                     )
                                 }
-                                .pointerInput(Unit) {
-                                    detectTransformGestures { _, _, zoom, _ ->
-                                        zoomLevel.floatValue = (zoomLevel.floatValue * zoom)
-                                            .coerceIn(0.5f * originalZoom.floatValue, 20f)
-                                        lastInteractionTime.longValue = System.currentTimeMillis()
-                                    }
-                                }
+                                .transformable(transformState)
                         ) {
-                            ZoomableImage(imageBitmap = bitmap, zoomLevel = zoomLevel)
-
-                            Canvas(modifier = Modifier.fillMaxSize()) {
-                                val path = Path()
-                                routePoints.forEachIndexed { index, point ->
-                                    val (x, y) = latLonToPixel(
-                                        point.latitude, point.longitude,
-                                        route.centerLat, route.centerLon,
-                                        zoomLevel.floatValue, route.width, route.height
+                            // Centered and transformed container (image + canvas)
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .aspectRatio(bitmap.width.toFloat() / bitmap.height.toFloat())
+                                    .align(Alignment.Center)
+                                    .graphicsLayer(
+                                        scaleX = zoomLevel.floatValue,
+                                        scaleY = zoomLevel.floatValue,
+                                        translationX = offset.x,
+                                        translationY = offset.y
                                     )
-                                    if (index == 0) path.moveTo(x, y) else path.lineTo(x, y)
-                                }
-                                drawPath(
-                                    path,
-                                    color = Color.Red,
-                                    style = Stroke(
-                                        width = (5f / zoomLevel.floatValue).coerceIn(
-                                            2f,
-                                            10f
+                            ) {
+                                Image(
+                                    bitmap = bitmap,
+                                    contentDescription = "Saved Route Snapshot",
+                                    modifier = Modifier.fillMaxSize(),
+                                    contentScale = ContentScale.Fit
+                                )
+
+                                Canvas(modifier = Modifier.fillMaxSize()) {
+                                    val path = Path()
+                                    routePoints.forEachIndexed { index, point ->
+                                        val (x, y) = latLonToPixel(
+                                            point.latitude, point.longitude,
+                                            route.centerLat, route.centerLon,
+                                            route.zoom.toFloat(), route.width, route.height
+                                        )
+                                        if (index == 0) path.moveTo(x, y) else path.lineTo(x, y)
+                                    }
+                                    drawPath(
+                                        path,
+                                        color = Color.Red,
+                                        style = Stroke(
+                                            width = (5f / zoomLevel.floatValue).coerceIn(2f, 10f)
                                         )
                                     )
-                                )
+                                }
                             }
 
+                            // Route details overlay
                             Column(
                                 modifier = Modifier
                                     .align(Alignment.TopStart)
@@ -386,48 +396,6 @@ fun RouteTrackerScreen(
                 }
             }
         }
-    }
-}
-
-@Composable
-fun ZoomableImage(
-    imageBitmap: ImageBitmap,
-    zoomLevel: MutableState<Float>, // External control of zoom
-    modifier: Modifier = Modifier
-) {
-    // Remove local scale state; use the external zoomLevel directly.
-    var offset by remember { mutableStateOf(Offset.Zero) }
-    val state = rememberTransformableState { zoomChange, offsetChange, _ ->
-        zoomLevel.value = (zoomLevel.value * zoomChange).coerceIn(0.5f, 20f)
-        offset += offsetChange
-    }
-
-    Box(
-        modifier = modifier
-            .fillMaxSize()
-            .pointerInput(Unit) {
-                detectTapGestures(
-                    onDoubleTap = {
-                        // Reset zoom and offset on double-tap.
-                        zoomLevel.value = 1.0f
-                        offset = Offset.Zero
-                    }
-                )
-            }
-            .transformable(state = state)
-            .graphicsLayer(
-                scaleX = zoomLevel.value,
-                scaleY = zoomLevel.value,
-                translationX = offset.x,
-                translationY = offset.y
-            )
-    ) {
-        Image(
-            bitmap = imageBitmap,
-            contentDescription = "Zoomable Map Snapshot",
-            modifier = Modifier.fillMaxSize(),
-            contentScale = ContentScale.Fit
-        )
     }
 }
 

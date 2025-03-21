@@ -75,7 +75,7 @@ class RouteTrackerViewModel(
                 val zoom = 14
                 val width = 640
                 val height = 640
-                val snapshotFile = downloadMapSnapshot(centerLat, centerLon, zoom, width, height)
+                val snapshotFile = downloadMapSnapshot(centerLat, centerLon, zoom)
                 if (snapshotFile != null) {
                     val route = Route(
                         startTime = System.currentTimeMillis(),
@@ -181,12 +181,12 @@ class RouteTrackerViewModel(
     private suspend fun downloadMapSnapshot(
         centerLat: Double,
         centerLon: Double,
-        zoom: Int,
-        width: Int,
-        height: Int
+        zoom: Int
     ): File? = withContext(Dispatchers.IO) {
         val token = "pk.eyJ1IjoibWNtZWlzdGVyIiwiYSI6ImNtOGF3d3YzdjBtcjUyaW9yNmFidndlbWsifQ.nlbq1LxHYM1jBBZUcXM0zw"
-        val url = "https://api.mapbox.com/styles/v1/mapbox/streets-v11/static/$centerLon,$centerLat,$zoom/${width}x$height?access_token=$token"
+        val snapshotWidth = 640
+        val snapshotHeight = 640
+        val url = "https://api.mapbox.com/styles/v1/mapbox/streets-v11/static/$centerLon,$centerLat,$zoom/${snapshotWidth}x${snapshotHeight}@2x?access_token=$token"
         try {
             val client = OkHttpClient()
             val request = Request.Builder().url(url).build()
