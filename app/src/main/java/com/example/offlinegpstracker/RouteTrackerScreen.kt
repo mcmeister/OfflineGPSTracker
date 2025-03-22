@@ -361,11 +361,17 @@ fun RouteTrackerScreen(
                 }
 
                 else -> {
-                    Button(
-                        onClick = { viewModel.startRecording() },
-                        modifier = Modifier.align(Alignment.Center)
+                    Column(
+                        modifier = Modifier
+                            .align(Alignment.BottomCenter)
+                            .padding(bottom = 16.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
                     ) {
-                        Text("Record")
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Button(onClick = { viewModel.startRecording() }) {
+                                Text("Record")
+                            }
+                        }
                     }
                 }
             }
