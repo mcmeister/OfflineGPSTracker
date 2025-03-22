@@ -10,10 +10,6 @@ class RouteRepository(
     suspend fun getRoute(routeId: Int): Route? = routeDao.getRoute(routeId)
     suspend fun updateRouteEndTime(routeId: Int, endTime: Long) = routeDao.updateRouteEndTime(routeId, endTime)
 
-    // Added missing method that updates both end time and snapshot
-    suspend fun updateRouteEndTimeAndSnapshot(routeId: Int, endTime: Long, snapshotPath: String?) =
-        routeDao.updateRouteEndTimeAndSnapshot(routeId, endTime, snapshotPath)
-
     suspend fun insertPoint(point: RoutePoint) = routePointDao.insert(point)
 
     fun getPointsForRoute(routeId: Int): Flow<List<RoutePoint>> = routePointDao.getPointsForRoute(routeId)

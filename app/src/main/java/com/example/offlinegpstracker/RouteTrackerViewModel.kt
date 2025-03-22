@@ -4,9 +4,6 @@ import android.app.Application
 import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
-import android.graphics.Canvas
-import android.graphics.Color
-import android.graphics.Paint
 import android.os.Build
 import android.util.Log
 import androidx.annotation.RequiresApi
@@ -118,21 +115,12 @@ class RouteTrackerViewModel(
 
     fun stopRecording() {
         Intent(application, RouteRecordingService::class.java).also { application.stopService(it) }
+
         viewModelScope.launch {
             _currentRouteId.value?.let { routeId ->
-                val route = routeRepository.getRoute(routeId)
-                val points = routePoints.value
-                if (route != null && points.isNotEmpty()) {
-                    val finalSnapshotPath = saveRouteWithRedLine(route, points)
-                    routeRepository.updateRouteEndTimeAndSnapshot(
-                        routeId,
-                        System.currentTimeMillis(),
-                        finalSnapshotPath
-                    )
-                } else {
-                    routeRepository.updateRouteEndTime(routeId, System.currentTimeMillis())
-                }
+                routeRepository.updateRouteEndTime(routeId, System.currentTimeMillis())
             }
+
             _isRecording.value = false
             _currentRouteId.value = null
         }
@@ -147,34 +135,6 @@ class RouteTrackerViewModel(
                     _routePoints.value = points
                 }
             }
-        }
-    }
-
-    private suspend fun saveRouteWithRedLine(route: Route, points: List<RoutePoint>): String? = withContext(Dispatchers.IO) {
-        try {
-            val baseBitmap = BitmapFactory.decodeFile(route.snapshotPath)
-            val mutableBitmap = baseBitmap.copy(Bitmap.Config.ARGB_8888, true)
-            val canvas = Canvas(mutableBitmap)
-            val paint = Paint().apply {
-                color = Color.RED
-                strokeWidth = 5f
-                style = Paint.Style.STROKE
-            }
-            for (i in 0 until points.size - 1) {
-                val (x1, y1) = latLonToPixel(points[i].latitude, points[i].longitude, route.centerLat, route.centerLon,
-                    route.zoom.toFloat(), route.width, route.height)
-                val (x2, y2) = latLonToPixel(points[i + 1].latitude, points[i + 1].longitude, route.centerLat, route.centerLon,
-                    route.zoom.toFloat(), route.width, route.height)
-                canvas.drawLine(x1, y1, x2, y2, paint)
-            }
-            val file = File(application.filesDir, "route_${route.id}_final.png")
-            FileOutputStream(file).use { out ->
-                mutableBitmap.compress(Bitmap.CompressFormat.PNG, 100, out)
-            }
-            file.path
-        } catch (e: Exception) {
-            Log.e("RouteTracker", "Error saving route snapshot", e)
-            null
         }
     }
 
