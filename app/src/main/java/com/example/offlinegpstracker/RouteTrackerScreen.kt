@@ -3,7 +3,6 @@ package com.example.offlinegpstracker
 import android.annotation.SuppressLint
 import android.graphics.BitmapFactory
 import android.os.Build
-import android.util.Log
 import androidx.annotation.RequiresApi
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
@@ -39,11 +38,9 @@ import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.asImageBitmap
@@ -121,11 +118,9 @@ fun RouteTrackerScreen(
                             val distance = calculateDistance(routePoints)
 
                             // Shared transform state (zoom + offset)
-                            var offset by remember { mutableStateOf(Offset.Zero) }
-                            val transformState = rememberTransformableState { zoomChange, offsetChange, _ ->
+                            val transformState = rememberTransformableState { zoomChange, _, _ ->
                                 zoomLevel.floatValue = (zoomLevel.floatValue * zoomChange)
                                     .coerceIn(0.5f * originalZoom.floatValue, 20f)
-                                offset += offsetChange
                                 lastInteractionTime.longValue = System.currentTimeMillis()
                             }
 
@@ -136,14 +131,15 @@ fun RouteTrackerScreen(
                                         detectTapGestures(
                                             onDoubleTap = {
                                                 zoomLevel.floatValue = 1.0f
-                                                offset = Offset.Zero
-                                                lastInteractionTime.longValue = System.currentTimeMillis()
+                                                // offset reset removed because we no longer update it
+                                                lastInteractionTime.longValue =
+                                                    System.currentTimeMillis()
                                             }
                                         )
                                     }
                                     .transformable(transformState)
                             ) {
-                                // Centered container preserving aspect ratio
+                                // Centered container; note that we removed translationX/Y so the image always stays centered.
                                 Box(
                                     modifier = Modifier
                                         .fillMaxWidth()
@@ -151,12 +147,10 @@ fun RouteTrackerScreen(
                                         .align(Alignment.Center)
                                         .graphicsLayer(
                                             scaleX = zoomLevel.floatValue,
-                                            scaleY = zoomLevel.floatValue,
-                                            translationX = offset.x,
-                                            translationY = offset.y
+                                            scaleY = zoomLevel.floatValue
+                                            // translationX and translationY have been removed
                                         )
                                 ) {
-                                    // Snapshot background
                                     Image(
                                         bitmap = bitmap,
                                         contentDescription = "Map Snapshot",
@@ -170,19 +164,30 @@ fun RouteTrackerScreen(
                                             val path = Path()
                                             routePoints.forEachIndexed { index, point ->
                                                 val (x, y) = latLonToPixel(
-                                                    point.latitude, point.longitude,
-                                                    r.centerLat, r.centerLon,
-                                                    r.zoom.toFloat(),  // 🔹 Match snapshot's zoom
-                                                    r.width, r.height
+                                                    point.latitude,  // ✅ fixed
+                                                    point.longitude, // ✅ fixed
+                                                    r.centerLat,
+                                                    r.centerLon,
+                                                    r.zoom.toFloat(),
+                                                    size.width.toInt(),   // ✅ use Canvas size, not r.width
+                                                    size.height.toInt()
                                                 )
-                                                if (index == 0) path.moveTo(x, y) else path.lineTo(x, y)
+
+                                                if (index == 0) {
+                                                    path.moveTo(x, y)
+                                                } else {
+                                                    path.lineTo(x, y)
+                                                }
                                             }
 
                                             drawPath(
                                                 path,
                                                 color = Color.Red,
                                                 style = Stroke(
-                                                    width = (5f / zoomLevel.floatValue).coerceIn(2f, 10f) // 🔹 Constant visual width
+                                                    width = (5f / zoomLevel.floatValue).coerceIn(
+                                                        2f,
+                                                        10f
+                                                    )
                                                 )
                                             )
                                         }
@@ -265,12 +270,10 @@ fun RouteTrackerScreen(
                     if (bitmap != null) {
                         val distance = calculateDistance(routePoints)
 
-                        // Shared zoom & pan state
-                        var offset by remember { mutableStateOf(Offset.Zero) }
-                        val transformState = rememberTransformableState { zoomChange, offsetChange, _ ->
+                        // Removed offset: only using zoom adjustments now.
+                        val transformState = rememberTransformableState { zoomChange, _, _ ->
                             zoomLevel.floatValue = (zoomLevel.floatValue * zoomChange)
                                 .coerceIn(0.5f * originalZoom.floatValue, 20f)
-                            offset += offsetChange
                             lastInteractionTime.longValue = System.currentTimeMillis()
                         }
 
@@ -281,8 +284,8 @@ fun RouteTrackerScreen(
                                     detectTapGestures(
                                         onDoubleTap = {
                                             zoomLevel.floatValue = 1.0f
-                                            offset = Offset.Zero
-                                            lastInteractionTime.longValue = System.currentTimeMillis()
+                                            lastInteractionTime.longValue =
+                                                System.currentTimeMillis()
                                         }
                                     )
                                 }
@@ -296,9 +299,8 @@ fun RouteTrackerScreen(
                                     .align(Alignment.Center)
                                     .graphicsLayer(
                                         scaleX = zoomLevel.floatValue,
-                                        scaleY = zoomLevel.floatValue,
-                                        translationX = offset.x,
-                                        translationY = offset.y
+                                        scaleY = zoomLevel.floatValue
+                                        // Removed translationX and translationY to keep the image centered
                                     )
                             ) {
                                 Image(
@@ -314,7 +316,9 @@ fun RouteTrackerScreen(
                                         val (x, y) = latLonToPixel(
                                             point.latitude, point.longitude,
                                             route.centerLat, route.centerLon,
-                                            route.zoom.toFloat(), route.width, route.height
+                                            route.zoom.toFloat(),
+                                            size.width.toInt(),
+                                            size.height.toInt()
                                         )
                                         if (index == 0) path.moveTo(x, y) else path.lineTo(x, y)
                                     }
@@ -364,11 +368,6 @@ fun RouteTrackerScreen(
                         Text("Record")
                     }
                 }
-            }
-
-            // Debug Log to check if isRecording updates correctly
-            LaunchedEffect(isRecording) {
-                Log.d("RouteTracker", "isRecording state changed: $isRecording")
             }
 
             // Only show saved routes when NOT recording

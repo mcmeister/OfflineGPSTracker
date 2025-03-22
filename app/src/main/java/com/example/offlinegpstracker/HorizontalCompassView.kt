@@ -157,15 +157,6 @@ fun HorizontalCompassView(
     // 1) Convert your real adjustedAzimuth into a 0–360 float
     val az = scaledAzimuth
 
-    // Debug logging for each mark (unchanged)
-    for (i in extendedMarks.indices) {
-        val rawAngle = extendedMarks[i].extendedAngle
-        val label = extendedMarks[i].label
-        val angle360 = ((rawAngle % 360) + 360) % 360
-        val diff = kotlin.math.abs(angle360 - az)
-        // Debug log commented out
-    }
-
     // 3) Pick the item with the smallest diff
     val targetIndex = extendedMarks.indices.minByOrNull { i ->
         val angle360 = ((extendedMarks[i].extendedAngle % 360) + 360) % 360
