@@ -304,7 +304,7 @@ fun NeonCompass(
         Box(
             modifier = Modifier
                 .size(300.dp, 120.dp)
-                .background(Color.Black.copy(alpha = 0.5f),
+                .background(Color.Black.copy(alpha = 0.3f),
                     RoundedCornerShape(50.dp)
                 )
                 .border(2.dp, Color.Cyan, RoundedCornerShape(50.dp))

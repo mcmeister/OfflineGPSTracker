@@ -219,7 +219,7 @@ class MainActivity : AppCompatActivity() {
                                     }
                                     UserPreferences.SKIN_NEON_GAUGE -> {
                                         Image(
-                                            painter = painterResource(id = R.drawable.neon_background),
+                                            painter = painterResource(id = R.drawable.neon_background2),
                                             contentDescription = null,
                                             modifier = Modifier.fillMaxSize(),
                                             contentScale = ContentScale.Crop
