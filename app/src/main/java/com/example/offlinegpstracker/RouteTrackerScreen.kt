@@ -48,6 +48,7 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.FlowPreview
@@ -75,6 +76,9 @@ fun RouteTrackerScreen(
     val zoomLevel = remember { mutableFloatStateOf(1f) }
     val autoZoomApplied = remember { mutableStateOf(false) }
     val lastInteractionTime = remember { mutableLongStateOf(System.currentTimeMillis()) }
+    val density = LocalDensity.current
+    val baseWidthDp = 0.5.dp
+    val strokeWidthPx = with(density) { baseWidthDp.toPx() } / zoomLevel.floatValue
 
     // Ensure zoom initializes correctly based on the selected route or recording
     LaunchedEffect(selectedRoute, currentRouteId) {
@@ -184,9 +188,9 @@ fun RouteTrackerScreen(
                                                 path,
                                                 color = Color.Red,
                                                 style = Stroke(
-                                                    width = (15f / zoomLevel.floatValue).coerceIn(
-                                                        0.05f,
-                                                        1.5f
+                                                    width = strokeWidthPx.coerceIn(
+                                                        0.1f,
+                                                        1f
                                                     )
                                                 )
                                             )
@@ -325,9 +329,7 @@ fun RouteTrackerScreen(
                                     drawPath(
                                         path,
                                         color = Color.Red,
-                                        style = Stroke(
-                                            width = (15f / zoomLevel.floatValue).coerceIn(0.05f, 1.5f)
-                                        )
+                                        style = Stroke(width = strokeWidthPx.coerceIn(0.1f, 1f))
                                     )
                                 }
                             }
