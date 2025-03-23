@@ -383,11 +383,11 @@ fun RouteTrackerScreen(
                                         "%.2f km".format(distance / 1000.0)
 
                                     val durationMinutes = ((route.endTime ?: route.startTime) - route.startTime) / (1000.0 * 60)
-                                    val paceMinPerKm = if (distance >= 100) durationMinutes / (distance / 1000.0) else 0.0
+                                    val paceMinPerKm = if (distance >= 50) durationMinutes / (distance / 1000.0) else 0.0
                                     val paceDisplay = if (paceMinPerKm > 0)
                                         "${paceMinPerKm.toInt()}:${((paceMinPerKm % 1) * 60).toInt().toString().padStart(2, '0')} min/km"
                                     else
-                                        "N/A"
+                                        "Walk at least 50m to see pace"
 
                                     Text("Start: ${formatTime(route.startTime)}", color = Color.White, fontSize = 14.sp)
                                     Text("End: ${route.endTime?.let { formatTime(it) } ?: "N/A"}", color = Color.White, fontSize = 14.sp)
