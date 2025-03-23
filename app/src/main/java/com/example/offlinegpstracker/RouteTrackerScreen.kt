@@ -54,6 +54,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.flow.debounce
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlin.math.PI
 import kotlin.math.cos
 import kotlin.math.pow
@@ -201,36 +202,48 @@ fun RouteTrackerScreen(
                                 }
 
                                 // DEBUG INFO BLOCK
-                                LaunchedEffect(routePoints) {
-                                    if (routePoints.size >= 2) {
-                                        val lastPoint = routePoints.last()
-                                        val firstPoint = routePoints.first()
-                                        val distanceMeters = calculateDistance(routePoints)
-                                        val durationMs = lastPoint.timestamp - firstPoint.timestamp
-                                        val durationHours = durationMs / (1000.0 * 60 * 60)
-                                        val avgSpeed = if (durationHours > 0) (distanceMeters / 1000.0) / durationHours else 0.0
-                                        val durationMinutes = durationMs / (1000.0 * 60)
-                                        val paceMinPerKm = if (distanceMeters >= 100) durationMinutes / (distanceMeters / 1000.0) else 0.0
-                                        val paceDisplay = if (paceMinPerKm > 0)
-                                            "${paceMinPerKm.toInt()}:${((paceMinPerKm % 1) * 60).toInt().toString().padStart(2, '0')} min/km"
-                                        else
-                                            "N/A"
+                                LaunchedEffect(Unit) {
+                                    snapshotFlow { routePoints }
+                                        .distinctUntilChanged()
+                                        .collect { points ->
+                                            if (points.size >= 2) {
+                                                val lastPoint = points.last()
+                                                val firstPoint = points.first()
+                                                val distanceMeters = calculateDistance(points)
+                                                val durationMs =
+                                                    lastPoint.timestamp - firstPoint.timestamp
+                                                val durationHours = durationMs / (1000.0 * 60 * 60)
+                                                val avgSpeed =
+                                                    if (durationHours > 0) (distanceMeters / 1000.0) / durationHours else 0.0
+                                                val durationMinutes = durationMs / (1000.0 * 60)
+                                                val paceMinPerKm = if (distanceMeters >= 100)
+                                                    durationMinutes / (distanceMeters / 1000.0)
+                                                else 0.0
 
-                                        val distanceDisplay = if (distanceMeters < 1000)
-                                            "${distanceMeters.toInt()} m"
-                                        else
-                                            "%.2f km".format(distanceMeters / 1000.0)
+                                                val paceDisplay = if (paceMinPerKm > 0)
+                                                    "${paceMinPerKm.toInt()}:${
+                                                        ((paceMinPerKm % 1) * 60).toInt().toString()
+                                                            .padStart(2, '0')
+                                                    } min/km"
+                                                else
+                                                    "N/A"
 
-                                        debugInfo.value = """
-                                            Route Points: ${routePoints.size}
-                                            Zoom Level: ${"%.2f".format(zoomLevel.floatValue)}
-                                            Distance: $distanceDisplay
-                                            Avg Speed: ${"%.2f".format(avgSpeed)} km/h
-                                            Pace: $paceDisplay
-                                        """.trimIndent()
-                                    } else {
-                                        debugInfo.value = "No GPS points received."
-                                    }
+                                                val distanceDisplay = if (distanceMeters < 1000)
+                                                    "${distanceMeters.toInt()} m"
+                                                else
+                                                    "%.2f km".format(distanceMeters / 1000.0)
+
+                                                debugInfo.value = """
+                                                    Route Points: ${points.size}
+                                                    Zoom Level: ${"%.2f".format(zoomLevel.floatValue)}
+                                                    Distance: $distanceDisplay
+                                                    Avg Speed: ${"%.2f".format(avgSpeed)} km/h
+                                                    Pace: $paceDisplay
+                                                """.trimIndent()
+                                            } else {
+                                                debugInfo.value = "No GPS points received."
+                                            }
+                                        }
                                 }
 
                                 Column(
