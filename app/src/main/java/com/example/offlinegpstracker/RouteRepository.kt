@@ -3,7 +3,7 @@ package com.example.offlinegpstracker
 import kotlinx.coroutines.flow.Flow
 
 class RouteRepository(
-    private val routeDao: RouteDao,
+    val routeDao: RouteDao,
     private val routePointDao: RoutePointDao
 ) {
     suspend fun insertRoute(route: Route): Long = routeDao.insert(route)

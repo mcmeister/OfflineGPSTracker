@@ -38,6 +38,7 @@ import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -70,6 +71,7 @@ fun RouteTrackerScreen(
     val currentRouteId by viewModel.currentRouteId.collectAsState()
     val savedRoutes by viewModel.savedRoutes.collectAsState()
     val selectedRoute by viewModel.selectedRoute.collectAsState()
+    var isDropdownExpanded by remember { mutableStateOf(false) }
 
     // Global zoom states
     val originalZoom = remember { mutableFloatStateOf(1f) }
@@ -200,19 +202,32 @@ fun RouteTrackerScreen(
 
                                 // DEBUG INFO BLOCK
                                 LaunchedEffect(routePoints) {
-                                    val lastPoint = routePoints.lastOrNull()
-                                    val distanceKm = calculateDistance(routePoints) / 1000.0
-                                    if (lastPoint != null) {
-                                        val (_, _) = latLonToPixel(
-                                            lastPoint.latitude, lastPoint.longitude,
-                                            r.centerLat, r.centerLon,
-                                            zoomLevel.floatValue, r.width, r.height
-                                        )
+                                    if (routePoints.size >= 2) {
+                                        val lastPoint = routePoints.last()
+                                        val firstPoint = routePoints.first()
+                                        val distanceMeters = calculateDistance(routePoints)
+                                        val durationMs = lastPoint.timestamp - firstPoint.timestamp
+                                        val durationHours = durationMs / (1000.0 * 60 * 60)
+                                        val avgSpeed = if (durationHours > 0) (distanceMeters / 1000.0) / durationHours else 0.0
+                                        val durationMinutes = durationMs / (1000.0 * 60)
+                                        val paceMinPerKm = if (distanceMeters >= 100) durationMinutes / (distanceMeters / 1000.0) else 0.0
+                                        val paceDisplay = if (paceMinPerKm > 0)
+                                            "${paceMinPerKm.toInt()}:${((paceMinPerKm % 1) * 60).toInt().toString().padStart(2, '0')} min/km"
+                                        else
+                                            "N/A"
+
+                                        val distanceDisplay = if (distanceMeters < 1000)
+                                            "${distanceMeters.toInt()} m"
+                                        else
+                                            "%.2f km".format(distanceMeters / 1000.0)
+
                                         debugInfo.value = """
-                                        Route Points: ${routePoints.size}
-                                        Zoom Level: ${"%.2f".format(zoomLevel.floatValue)}
-                                        Distance: ${"%.2f".format(distanceKm)} km
-                                    """.trimIndent()
+                                            Route Points: ${routePoints.size}
+                                            Zoom Level: ${"%.2f".format(zoomLevel.floatValue)}
+                                            Distance: $distanceDisplay
+                                            Avg Speed: ${"%.2f".format(avgSpeed)} km/h
+                                            Pace: $paceDisplay
+                                        """.trimIndent()
                                     } else {
                                         debugInfo.value = "No GPS points received."
                                     }
@@ -233,6 +248,11 @@ fun RouteTrackerScreen(
                                 }
                             }
 
+                            val distanceDisplay = if (distance < 1000)
+                                "${distance.toInt()} m"
+                            else
+                                "%.2f km".format(distance / 1000.0)
+
                             Column(
                                 modifier = Modifier
                                     .align(Alignment.BottomCenter)
@@ -240,7 +260,7 @@ fun RouteTrackerScreen(
                                 horizontalAlignment = Alignment.CenterHorizontally
                             ) {
                                 Text(
-                                    text = "Total Distance: %.2f km".format(distance / 1000),
+                                    text = "Total Distance: $distanceDisplay",
                                     modifier = Modifier
                                         .background(Color.Black.copy(alpha = 0.7f))
                                         .padding(8.dp),
@@ -288,91 +308,99 @@ fun RouteTrackerScreen(
                                     detectTapGestures(
                                         onDoubleTap = {
                                             zoomLevel.floatValue = 1.0f
-                                            lastInteractionTime.longValue =
-                                                System.currentTimeMillis()
+                                            lastInteractionTime.longValue = System.currentTimeMillis()
                                         }
                                     )
                                 }
                                 .transformable(transformState)
                         ) {
-                            // Centered and transformed container (image + canvas)
+                            // Map snapshot and route (zoomed)
                             Box(
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .aspectRatio(bitmap.width.toFloat() / bitmap.height.toFloat())
                                     .align(Alignment.Center)
-                                    .graphicsLayer(
-                                        scaleX = zoomLevel.floatValue,
-                                        scaleY = zoomLevel.floatValue
-                                        // Removed translationX and translationY to keep the image centered
-                                    )
                             ) {
-                                Image(
-                                    bitmap = bitmap,
-                                    contentDescription = "Saved Route Snapshot",
-                                    modifier = Modifier.fillMaxSize(),
-                                    contentScale = ContentScale.Fit
-                                )
-
-                                Canvas(modifier = Modifier.fillMaxSize()) {
-                                    val path = Path()
-                                    routePoints.forEachIndexed { index, point ->
-                                        val (x, y) = latLonToPixel(
-                                            point.latitude, point.longitude,
-                                            route.centerLat, route.centerLon,
-                                            route.zoom.toFloat(),
-                                            size.width.toInt(),
-                                            size.height.toInt()
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .graphicsLayer(
+                                            scaleX = zoomLevel.floatValue,
+                                            scaleY = zoomLevel.floatValue
                                         )
-                                        if (index == 0) path.moveTo(x, y) else path.lineTo(x, y)
-                                    }
-                                    drawPath(
-                                        path,
-                                        color = Color.Red,
-                                        style = Stroke(width = strokeWidthPx.coerceIn(0.1f, 1f))
+                                ) {
+                                    Image(
+                                        bitmap = bitmap,
+                                        contentDescription = "Saved Route Snapshot",
+                                        modifier = Modifier.fillMaxSize(),
+                                        contentScale = ContentScale.Fit
                                     )
-                                }
-                            }
 
-                            // Route details overlay
-                            Column(
-                                modifier = Modifier
-                                    .align(Alignment.TopStart)
-                                    .padding(16.dp)
-                                    .background(Color.Black.copy(alpha = 0.7f))
-                                    .padding(8.dp)
-                            ) {
-                                Text(
-                                    text = "Start: ${formatTime(route.startTime)}",
-                                    color = Color.White,
-                                    fontSize = 14.sp
-                                )
-                                Text(
-                                    text = "End: ${route.endTime?.let { formatTime(it) } ?: "N/A"}",
-                                    color = Color.White,
-                                    fontSize = 14.sp
-                                )
-                                Text(
-                                    text = "Total Distance: %.2f km".format(distance / 1000),
-                                    color = Color.White,
-                                    fontSize = 14.sp
-                                )
+                                    Canvas(modifier = Modifier.fillMaxSize()) {
+                                        val path = Path()
+                                        routePoints.forEachIndexed { index, point ->
+                                            val (x, y) = latLonToPixel(
+                                                point.latitude, point.longitude,
+                                                route.centerLat, route.centerLon,
+                                                route.zoom.toFloat(),
+                                                size.width.toInt(),
+                                                size.height.toInt()
+                                            )
+                                            if (index == 0) path.moveTo(x, y) else path.lineTo(x, y)
+                                        }
+                                        drawPath(
+                                            path,
+                                            color = Color.Red,
+                                            style = Stroke(width = strokeWidthPx.coerceIn(0.1f, 1f))
+                                        )
+                                    }
+                                }
+
+                                // Overlay inside map area (NOT zoomed)
+                                Column(
+                                    modifier = Modifier
+                                        .align(Alignment.BottomStart)
+                                        .padding(16.dp)
+                                        .background(Color.Black.copy(alpha = 0.7f))
+                                        .padding(8.dp)
+                                ) {
+                                    val distanceDisplay = if (distance < 1000)
+                                        "${distance.toInt()} m"
+                                    else
+                                        "%.2f km".format(distance / 1000.0)
+
+                                    val durationMinutes = ((route.endTime ?: route.startTime) - route.startTime) / (1000.0 * 60)
+                                    val paceMinPerKm = if (distance >= 100) durationMinutes / (distance / 1000.0) else 0.0
+                                    val paceDisplay = if (paceMinPerKm > 0)
+                                        "${paceMinPerKm.toInt()}:${((paceMinPerKm % 1) * 60).toInt().toString().padStart(2, '0')} min/km"
+                                    else
+                                        "N/A"
+
+                                    Text("Start: ${formatTime(route.startTime)}", color = Color.White, fontSize = 14.sp)
+                                    Text("End: ${route.endTime?.let { formatTime(it) } ?: "N/A"}", color = Color.White, fontSize = 14.sp)
+                                    Text("Total Distance: $distanceDisplay", color = Color.White, fontSize = 14.sp)
+                                    route.averageSpeed?.let {
+                                        Text("Avg Speed: %.2f km/h".format(it), color = Color.White, fontSize = 14.sp)
+                                        Text("Pace: $paceDisplay", color = Color.White, fontSize = 14.sp)
+                                    }
+                                }
                             }
                         }
                     }
                 }
+            }
 
-                else -> {
-                    Column(
-                        modifier = Modifier
-                            .align(Alignment.BottomCenter)
-                            .padding(bottom = 16.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally
-                    ) {
-                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            Button(onClick = { viewModel.startRecording() }) {
-                                Text("Record")
-                            }
+            if (!isRecording) {
+                Column(
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .padding(bottom = 16.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Button(onClick = { viewModel.startRecording() },
+                            colors = ButtonDefaults.buttonColors(containerColor = Color.Red)) {
+                            Text("Record")
                         }
                     }
                 }
@@ -380,25 +408,46 @@ fun RouteTrackerScreen(
 
             // Only show saved routes when NOT recording
             if (!isRecording) {
-                LazyColumn(
+                Column(
                     modifier = Modifier
                         .align(Alignment.TopEnd)
                         .padding(16.dp)
                         .background(Color.Black.copy(alpha = 0.7f))
                         .width(200.dp)
-                        .heightIn(max = 300.dp)
                 ) {
-                    items(savedRoutes) { savedRoute ->
-                        Text(
-                            text = "Route ${savedRoute.id} (${formatTime(savedRoute.startTime)})",
-                            color = if (savedRoute == selectedRoute) Color.Yellow else Color.White,
-                            fontSize = 14.sp,
+                    // Dropdown toggle button
+                    Text(
+                        text = "Saved Routes",
+                        color = Color.White,
+                        fontSize = 16.sp,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(8.dp)
+                            .clickable {
+                                isDropdownExpanded = !isDropdownExpanded
+                            }
+                    )
+
+                    // Expandable list
+                    if (isDropdownExpanded) {
+                        LazyColumn(
                             modifier = Modifier
-                                .padding(4.dp)
-                                .clickable {
-                                    viewModel.selectRoute(savedRoute.id)
-                                }
-                        )
+                                .heightIn(max = 300.dp)
+                        ) {
+                            items(savedRoutes) { savedRoute ->
+                                Text(
+                                    text = "Route ${savedRoute.id} (${formatTime(savedRoute.startTime)})",
+                                    color = if (savedRoute == selectedRoute) Color.Yellow else Color.White,
+                                    fontSize = 14.sp,
+                                    modifier = Modifier
+                                        .padding(4.dp)
+                                        .clickable {
+                                            viewModel.selectRoute(savedRoute.id)
+                                            isDropdownExpanded = false // collapse dropdown
+                                        }
+                                )
+                            }
+                        }
                     }
                 }
             }

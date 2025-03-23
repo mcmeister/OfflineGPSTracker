@@ -118,7 +118,25 @@ class RouteTrackerViewModel(
 
         viewModelScope.launch {
             _currentRouteId.value?.let { routeId ->
-                routeRepository.updateRouteEndTime(routeId, System.currentTimeMillis())
+                val route = routeRepository.getRoute(routeId)
+                val points = routePoints.value
+
+                if (route != null && points.size >= 2) {
+                    val start = points.first().timestamp
+                    val end = points.last().timestamp
+                    val durationHours = (end - start) / (1000.0 * 60 * 60)
+                    val distanceKm = calculateDistance(points) / 1000.0
+                    val avgSpeed = if (durationHours > 0) distanceKm / durationHours else 0.0
+
+                    routeRepository.routeDao.updateRouteWithSpeed(
+                        routeId = routeId,
+                        endTime = end,
+                        snapshotPath = route.snapshotPath,
+                        averageSpeed = avgSpeed
+                    )
+                } else {
+                    routeRepository.updateRouteEndTime(routeId, System.currentTimeMillis())
+                }
             }
 
             _isRecording.value = false
