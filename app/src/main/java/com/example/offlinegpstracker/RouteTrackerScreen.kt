@@ -184,9 +184,9 @@ fun RouteTrackerScreen(
                                                 path,
                                                 color = Color.Red,
                                                 style = Stroke(
-                                                    width = (2f / zoomLevel.floatValue).coerceIn(
-                                                        2f,
-                                                        10f
+                                                    width = (10f / zoomLevel.floatValue).coerceIn(
+                                                        0.5f,
+                                                        5f
                                                     )
                                                 )
                                             )
@@ -326,7 +326,7 @@ fun RouteTrackerScreen(
                                         path,
                                         color = Color.Red,
                                         style = Stroke(
-                                            width = (2f / zoomLevel.floatValue).coerceIn(2f, 10f)
+                                            width = (10f / zoomLevel.floatValue).coerceIn(0.5f, 5f)
                                         )
                                     )
                                 }
