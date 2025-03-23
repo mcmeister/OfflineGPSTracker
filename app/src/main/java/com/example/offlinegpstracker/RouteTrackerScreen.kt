@@ -216,7 +216,7 @@ fun RouteTrackerScreen(
                                                 val avgSpeed =
                                                     if (durationHours > 0) (distanceMeters / 1000.0) / durationHours else 0.0
                                                 val durationMinutes = durationMs / (1000.0 * 60)
-                                                val paceMinPerKm = if (distanceMeters >= 100)
+                                                val paceMinPerKm = if (distanceMeters >= 50)
                                                     durationMinutes / (distanceMeters / 1000.0)
                                                 else 0.0
 
@@ -226,7 +226,7 @@ fun RouteTrackerScreen(
                                                             .padStart(2, '0')
                                                     } min/km"
                                                 else
-                                                    "N/A"
+                                                    "Walk at least 50m to see pace"
 
                                                 val distanceDisplay = if (distanceMeters < 1000)
                                                     "${distanceMeters.toInt()} m"
@@ -241,7 +241,7 @@ fun RouteTrackerScreen(
                                                     Pace: $paceDisplay
                                                 """.trimIndent()
                                             } else {
-                                                debugInfo.value = "No GPS points received."
+                                                debugInfo.value = "Loading..."
                                             }
                                         }
                                 }
