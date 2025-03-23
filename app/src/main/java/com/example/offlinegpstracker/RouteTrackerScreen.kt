@@ -95,7 +95,7 @@ fun RouteTrackerScreen(
 
     LaunchedEffect(isRecording) {
         snapshotFlow { lastInteractionTime.longValue }
-            .debounce(5000)
+            .debounce(10000)
             .collect {
                 if (isRecording) {
                     zoomLevel.floatValue = (1.5f * originalZoom.floatValue).coerceIn(1f, 5f)
@@ -184,7 +184,7 @@ fun RouteTrackerScreen(
                                                 path,
                                                 color = Color.Red,
                                                 style = Stroke(
-                                                    width = (5f / zoomLevel.floatValue).coerceIn(
+                                                    width = (2f / zoomLevel.floatValue).coerceIn(
                                                         2f,
                                                         10f
                                                     )
@@ -326,7 +326,7 @@ fun RouteTrackerScreen(
                                         path,
                                         color = Color.Red,
                                         style = Stroke(
-                                            width = (5f / zoomLevel.floatValue).coerceIn(2f, 10f)
+                                            width = (2f / zoomLevel.floatValue).coerceIn(2f, 10f)
                                         )
                                     )
                                 }
