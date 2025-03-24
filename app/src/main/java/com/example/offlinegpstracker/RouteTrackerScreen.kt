@@ -57,7 +57,9 @@ import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlin.math.PI
 import kotlin.math.cos
+import kotlin.math.ln
 import kotlin.math.pow
+import kotlin.math.sin
 
 @OptIn(FlowPreview::class)
 @RequiresApi(Build.VERSION_CODES.O)
@@ -81,7 +83,20 @@ fun RouteTrackerScreen(
     val lastInteractionTime = remember { mutableLongStateOf(System.currentTimeMillis()) }
     val density = LocalDensity.current
     val baseWidthDp = 0.5.dp
-    val strokeWidthPx = with(density) { baseWidthDp.toPx() } / zoomLevel.floatValue
+    val baseStrokeWidth = with(density) { baseWidthDp.toPx() }  // original base
+    val zoom = zoomLevel.floatValue
+
+    val thicknessMultiplier = when {
+        zoom <= 1.5f -> 5f
+        zoom in 1.5f..20f -> {
+            // Linearly interpolate between 5 and 1
+            val t = (zoom - 1.5f) / (20f - 1.5f)
+            5f - (4f * t) // From 5 → 1
+        }
+        else -> 1f
+    }
+
+    val strokeWidthPx = (baseStrokeWidth * thicknessMultiplier).coerceIn(0.1f, 10f)
 
     // Ensure zoom initializes correctly based on the selected route or recording
     LaunchedEffect(selectedRoute, currentRouteId) {
@@ -170,7 +185,7 @@ fun RouteTrackerScreen(
                                         if (routePoints.isNotEmpty()) {
                                             val path = Path()
                                             routePoints.forEachIndexed { index, point ->
-                                                val (x, y) = latLonToPixel(
+                                                val (x, y) = latLonToWebMercatorPixel(
                                                     point.latitude,  // ✅ fixed
                                                     point.longitude, // ✅ fixed
                                                     r.centerLat,
@@ -190,12 +205,7 @@ fun RouteTrackerScreen(
                                             drawPath(
                                                 path,
                                                 color = Color.Red,
-                                                style = Stroke(
-                                                    width = strokeWidthPx.coerceIn(
-                                                        0.1f,
-                                                        1f
-                                                    )
-                                                )
+                                                style = Stroke(width = strokeWidthPx)
                                             )
                                         }
                                     }
@@ -206,7 +216,7 @@ fun RouteTrackerScreen(
                                     snapshotFlow { routePoints }
                                         .distinctUntilChanged()
                                         .collect { points ->
-                                            if (points.size >= 2) {
+                                            if (points.isNotEmpty()) {
                                                 val lastPoint = points.last()
                                                 val firstPoint = points.first()
                                                 val distanceMeters = calculateDistance(points)
@@ -352,7 +362,7 @@ fun RouteTrackerScreen(
                                     Canvas(modifier = Modifier.fillMaxSize()) {
                                         val path = Path()
                                         routePoints.forEachIndexed { index, point ->
-                                            val (x, y) = latLonToPixel(
+                                            val (x, y) = latLonToWebMercatorPixel(
                                                 point.latitude, point.longitude,
                                                 route.centerLat, route.centerLon,
                                                 route.zoom.toFloat(),
@@ -364,7 +374,7 @@ fun RouteTrackerScreen(
                                         drawPath(
                                             path,
                                             color = Color.Red,
-                                            style = Stroke(width = strokeWidthPx.coerceIn(0.1f, 1f))
+                                            style = Stroke(width = strokeWidthPx)
                                         )
                                     }
                                 }
@@ -387,7 +397,7 @@ fun RouteTrackerScreen(
                                     val paceDisplay = if (paceMinPerKm > 0)
                                         "${paceMinPerKm.toInt()}:${((paceMinPerKm % 1) * 60).toInt().toString().padStart(2, '0')} min/km"
                                     else
-                                        "Walk at least 50m to see pace"
+                                        "Less than 50m walked"
 
                                     Text("Start: ${formatTime(route.startTime)}", color = Color.White, fontSize = 14.sp)
                                     Text("End: ${route.endTime?.let { formatTime(it) } ?: "N/A"}", color = Color.White, fontSize = 14.sp)
@@ -488,6 +498,37 @@ fun calculateDistance(points: List<RoutePoint>): Float {
         distance += start.distanceTo(end)
     }
     return distance
+}
+
+fun latLonToWebMercatorPixel(
+    lat: Double,
+    lon: Double,
+    centerLat: Double,
+    centerLon: Double,
+    zoom: Float,
+    width: Int,
+    height: Int
+): Pair<Float, Float> {
+    val tileSize = 512  // Because you're using @2x in snapshot URL
+    val scale = 2.0.pow(zoom.toDouble()) * tileSize
+
+    fun project(lat: Double, lon: Double): Pair<Double, Double> {
+        val x = (lon + 180.0) / 360.0 * scale
+        val siny = sin(lat * PI / 180.0).coerceIn(-0.9999, 0.9999)
+        val y = (0.5 - ln((1.0 + siny) / (1.0 - siny)) / (4.0 * PI)) * scale
+        return Pair(x, y)
+    }
+
+    val (centerX, centerY) = project(centerLat, centerLon)
+    val (pointX, pointY) = project(lat, lon)
+
+    val dx = pointX - centerX
+    val dy = pointY - centerY
+
+    val pixelX = width / 2f + dx.toFloat()
+    val pixelY = height / 2f + dy.toFloat()
+
+    return pixelX to pixelY
 }
 
 fun latLonToPixel(
