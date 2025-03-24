@@ -165,6 +165,9 @@ interface RouteDao {
 
     @Query("UPDATE route SET endTime = :endTime, snapshotPath = :snapshotPath, averageSpeed = :averageSpeed WHERE id = :routeId")
     suspend fun updateRouteWithSpeed(routeId: Int, endTime: Long, snapshotPath: String?, averageSpeed: Double)
+
+    @Query("UPDATE route SET snapshotPath = :snapshotPath WHERE id = :routeId")
+    suspend fun updateRouteSnapshot(routeId: Int, snapshotPath: String)
 }
 
 @Dao

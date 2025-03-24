@@ -16,4 +16,8 @@ class RouteRepository(
 
     // Added missing method to retrieve all routes for saved routes
     fun getAllRoutes(): Flow<List<Route>> = routeDao.getAllRoutes()
+
+    suspend fun updateRouteSnapshot(routeId: Int, snapshotPath: String) {
+        routeDao.updateRouteSnapshot(routeId, snapshotPath)
+    }
 }

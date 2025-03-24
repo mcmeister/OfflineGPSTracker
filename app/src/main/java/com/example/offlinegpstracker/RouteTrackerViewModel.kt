@@ -73,26 +73,22 @@ class RouteTrackerViewModel(
                 val width = 640
                 val height = 640
                 val snapshotFile = downloadMapSnapshot(centerLat, centerLon, zoom)
-                if (snapshotFile != null) {
-                    val route = Route(
-                        startTime = System.currentTimeMillis(),
-                        snapshotPath = snapshotFile.path,
-                        centerLat = centerLat,
-                        centerLon = centerLon,
-                        zoom = zoom,
-                        width = width,
-                        height = height
-                    )
-                    val routeId = routeRepository.insertRoute(route).toInt()
-                    _currentRouteId.value = routeId
-                    _isRecording.value = true
-                    _isPaused.value = false
-                    Intent(application, RouteRecordingService::class.java).apply {
-                        putExtra("routeId", routeId)
-                    }.also { application.startForegroundService(it) }
-                } else {
-                    Log.e("RouteTracker", "Failed to download map snapshot")
-                }
+                val route = Route(
+                    startTime = System.currentTimeMillis(),
+                    snapshotPath = snapshotFile.path,
+                    centerLat = centerLat,
+                    centerLon = centerLon,
+                    zoom = zoom,
+                    width = width,
+                    height = height
+                )
+                val routeId = routeRepository.insertRoute(route).toInt()
+                _currentRouteId.value = routeId
+                _isRecording.value = true
+                _isPaused.value = false
+                Intent(application, RouteRecordingService::class.java).apply {
+                    putExtra("routeId", routeId)
+                }.also { application.startForegroundService(it) }
             } else {
                 Log.e("RouteTracker", "Location not available")
             }
@@ -110,15 +106,30 @@ class RouteTrackerViewModel(
         Intent(application, RouteRecordingService::class.java).apply {
             action = "RESUME"
         }.also { application.startService(it) }
+
         _isPaused.value = false
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            val routeId = _currentRouteId.value
+            viewModelScope.launch {
+                routeId?.let { id ->
+                    val route = routeRepository.getRoute(id)
+                    route?.let { routeToUpdate ->
+                        tryUpdateSnapshotForRoute(routeToUpdate)
+                    }
+                }
+            }
+        }
     }
 
     fun stopRecording() {
         Intent(application, RouteRecordingService::class.java).also { application.stopService(it) }
 
         viewModelScope.launch {
-            _currentRouteId.value?.let { routeId ->
-                val route = routeRepository.getRoute(routeId)
+            val routeId = _currentRouteId.value
+
+            routeId?.let { id ->
+                val route = routeRepository.getRoute(id)
                 val points = routePoints.value
 
                 if (route != null && points.size >= 2) {
@@ -129,13 +140,20 @@ class RouteTrackerViewModel(
                     val avgSpeed = if (durationHours > 0) distanceKm / durationHours else 0.0
 
                     routeRepository.routeDao.updateRouteWithSpeed(
-                        routeId = routeId,
+                        routeId = id,
                         endTime = end,
                         snapshotPath = route.snapshotPath,
                         averageSpeed = avgSpeed
                     )
                 } else {
-                    routeRepository.updateRouteEndTime(routeId, System.currentTimeMillis())
+                    routeRepository.updateRouteEndTime(id, System.currentTimeMillis())
+                }
+
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                    val latestRoute = routeRepository.getRoute(id)
+                    latestRoute?.let { routeToUpdate ->
+                        tryUpdateSnapshotForRoute(routeToUpdate)
+                    }
                 }
             }
 
@@ -148,6 +166,9 @@ class RouteTrackerViewModel(
         viewModelScope.launch {
             val route = routeRepository.getRoute(routeId)
             _selectedRoute.value = route
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && route != null) {
+                tryUpdateSnapshotForRoute(route)
+            }
             route?.let {
                 routeRepository.getPointsForRoute(routeId).collect { points ->
                     _routePoints.value = points
@@ -156,15 +177,66 @@ class RouteTrackerViewModel(
         }
     }
 
+    @RequiresApi(Build.VERSION_CODES.M)
+    fun tryUpdateSnapshotForRoute(route: Route) {
+        viewModelScope.launch {
+            if (isInternetAvailable() && route.snapshotPath!!.contains("default_map_placeholder")) {
+                val newSnapshot = downloadMapSnapshot(route.centerLat, route.centerLon, route.zoom)
+                routeRepository.updateRouteSnapshot(route.id, newSnapshot.path)
+                if (route.id == currentRouteId.value) {
+                    _selectedRoute.value = route.copy(snapshotPath = newSnapshot.path)
+                }
+            }
+        }
+    }
+
+    @RequiresApi(Build.VERSION_CODES.M)
+    fun tryUpdateSnapshotsForAllRoutes() {
+        viewModelScope.launch {
+            if (!isInternetAvailable()) return@launch
+            savedRoutes.value.forEach { route ->
+                if (route.snapshotPath!!.contains("default_map_placeholder")) {
+                    tryUpdateSnapshotForRoute(route)
+                }
+            }
+        }
+    }
+
+    @RequiresApi(Build.VERSION_CODES.M)
+    fun isInternetAvailable(): Boolean {
+        val connectivityManager = application.getSystemService(android.net.ConnectivityManager::class.java)
+        val network = connectivityManager.activeNetwork ?: return false
+        val capabilities = connectivityManager.getNetworkCapabilities(network) ?: return false
+        return capabilities.hasCapability(android.net.NetworkCapabilities.NET_CAPABILITY_INTERNET)
+    }
+
+    @RequiresApi(Build.VERSION_CODES.M)
     private suspend fun downloadMapSnapshot(
         centerLat: Double,
         centerLon: Double,
         zoom: Int
-    ): File? = withContext(Dispatchers.IO) {
+    ): File = withContext(Dispatchers.IO) {
+        val snapshotFile = File(application.filesDir, "snapshot_${System.currentTimeMillis()}.png")
+        val placeholderFile = File(application.filesDir, "default_map_placeholder.png")
+
+        // Check network
+        if (!isInternetAvailable()) {
+            // Copy bundled placeholder drawable to file if not yet done
+            if (!placeholderFile.exists()) {
+                val inputStream = application.assets.open("default_map_placeholder.png")
+                FileOutputStream(placeholderFile).use { outputStream ->
+                    inputStream.copyTo(outputStream)
+                }
+            }
+            return@withContext placeholderFile
+        }
+
         val token = "pk.eyJ1IjoibWNtZWlzdGVyIiwiYSI6ImNtOGF3d3YzdjBtcjUyaW9yNmFidndlbWsifQ.nlbq1LxHYM1jBBZUcXM0zw"
         val snapshotWidth = 640
         val snapshotHeight = 640
-        val url = "https://api.mapbox.com/styles/v1/mapbox/streets-v11/static/$centerLon,$centerLat,$zoom/${snapshotWidth}x${snapshotHeight}@2x?access_token=$token"
+        val url =
+            "https://api.mapbox.com/styles/v1/mapbox/streets-v11/static/$centerLon,$centerLat,$zoom/${snapshotWidth}x${snapshotHeight}@2x?access_token=$token"
+
         try {
             val client = OkHttpClient()
             val request = Request.Builder().url(url).build()
@@ -172,17 +244,18 @@ class RouteTrackerViewModel(
             if (response.isSuccessful) {
                 val options = BitmapFactory.Options().apply { inScaled = false }
                 val bitmap = BitmapFactory.decodeStream(response.body?.byteStream(), null, options)
-                val file = File(application.filesDir, "snapshot_${System.currentTimeMillis()}.png")
                 if (bitmap != null) {
-                    FileOutputStream(file).use { out ->
+                    FileOutputStream(snapshotFile).use { out ->
                         bitmap.compress(Bitmap.CompressFormat.PNG, 100, out)
                     }
+                    return@withContext snapshotFile
                 }
-                file
-            } else null
+            }
+            Log.e("RouteTracker", "Download failed, using placeholder.")
+            return@withContext placeholderFile
         } catch (e: Exception) {
             Log.e("RouteTracker", "Error downloading snapshot", e)
-            null
+            return@withContext placeholderFile
         }
     }
 }

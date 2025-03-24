@@ -56,7 +56,6 @@ import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlin.math.PI
-import kotlin.math.cos
 import kotlin.math.ln
 import kotlin.math.pow
 import kotlin.math.sin
@@ -82,7 +81,7 @@ fun RouteTrackerScreen(
     val autoZoomApplied = remember { mutableStateOf(false) }
     val lastInteractionTime = remember { mutableLongStateOf(System.currentTimeMillis()) }
     val density = LocalDensity.current
-    val baseWidthDp = 0.5.dp
+    val baseWidthDp = 0.5.dp / 3
     val baseStrokeWidth = with(density) { baseWidthDp.toPx() }  // original base
     val zoom = zoomLevel.floatValue
 
@@ -531,22 +530,3 @@ fun latLonToWebMercatorPixel(
     return pixelX to pixelY
 }
 
-fun latLonToPixel(
-    lat: Double, lon: Double,
-    centerLat: Double, centerLon: Double,
-    zoom: Float, width: Int, height: Int
-): Pair<Float, Float> {
-    val metersPerPixel = 156543.03392 * cos(centerLat * PI / 180) / 2.0.pow(zoom.toDouble())
-    val latSpan = height * metersPerPixel / 111000.0
-    val lonSpan = width * metersPerPixel / (111000.0 * cos(centerLat * PI / 180))
-
-    val north = centerLat + latSpan / 2
-    val south = centerLat - latSpan / 2
-    val west = centerLon - lonSpan / 2
-    val east = centerLon + lonSpan / 2
-
-    val x = ((lon - west) / (east - west) * width).toFloat()
-    val y = ((north - lat) / (north - south) * height).toFloat()
-
-    return Pair(x, y)
-}

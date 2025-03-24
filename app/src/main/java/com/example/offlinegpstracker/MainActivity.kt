@@ -50,6 +50,13 @@ class MainActivity : AppCompatActivity() {
     private val locationViewModel: LocationViewModel by viewModels {
         LocationViewModelFactory(application, (application as MyApplication).repository)
     }
+    private val routeTrackerViewModel: RouteTrackerViewModel by viewModels {
+        RouteTrackerViewModelFactory(
+            (application as MyApplication).routeRepository,
+            application,
+            locationViewModel
+        )
+    }
     private val userPreferences by lazy { UserPreferences(application) }
 
     @RequiresApi(Build.VERSION_CODES.O)
@@ -84,6 +91,12 @@ class MainActivity : AppCompatActivity() {
 
                     RequestLocationPermission {
                         locationViewModel.startLocationUpdates()
+                    }
+
+                    LaunchedEffect(Unit) {
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                            routeTrackerViewModel.tryUpdateSnapshotsForAllRoutes()
+                        }
                     }
 
                     // Handle Back
