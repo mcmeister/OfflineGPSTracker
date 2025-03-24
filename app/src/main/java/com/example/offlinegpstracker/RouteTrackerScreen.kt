@@ -25,6 +25,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Scaffold
@@ -54,7 +55,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.flow.debounce
-import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlin.math.PI
 import kotlin.math.ln
 import kotlin.math.pow
@@ -74,6 +74,7 @@ fun RouteTrackerScreen(
     val savedRoutes by viewModel.savedRoutes.collectAsState()
     val selectedRoute by viewModel.selectedRoute.collectAsState()
     var isDropdownExpanded by remember { mutableStateOf(false) }
+    val showRecordingChoiceDialog = remember { mutableStateOf(false) }
 
     // Global zoom states
     val originalZoom = remember { mutableFloatStateOf(1f) }
@@ -98,15 +99,15 @@ fun RouteTrackerScreen(
     val strokeWidthPx = (baseStrokeWidth * thicknessMultiplier).coerceIn(0.1f, 10f)
 
     // Ensure zoom initializes correctly based on the selected route or recording
-    LaunchedEffect(selectedRoute, currentRouteId) {
-        if (selectedRoute != null) {
-            originalZoom.floatValue = selectedRoute!!.zoom.toFloat() // Store original zoom
-            zoomLevel.floatValue = selectedRoute!!.zoom.toFloat() // Start at normal zoom
+    LaunchedEffect(selectedRoute, currentRouteId, isRecording) {
+        if (!isRecording && selectedRoute != null) {
+            originalZoom.floatValue = selectedRoute!!.zoom.toFloat()
+            zoomLevel.floatValue = selectedRoute!!.zoom.toFloat()
         }
     }
 
-    LaunchedEffect(selectedRoute) {
-        if (selectedRoute != null) {
+    LaunchedEffect(selectedRoute, isRecording) {
+        if (selectedRoute != null && !isRecording) {
             zoomLevel.floatValue = 1.0f
             originalZoom.floatValue = 1.0f
             autoZoomApplied.value = false
@@ -124,7 +125,15 @@ fun RouteTrackerScreen(
             }
     }
 
-    val debugInfo = remember { mutableStateOf("Waiting for GPS data...") }
+    LaunchedEffect(isRecording) {
+        if (!isRecording) {
+            zoomLevel.floatValue = 1.0f
+            originalZoom.floatValue = 1.0f
+            autoZoomApplied.value = false
+        }
+    }
+
+    val debugInfo = viewModel.debugInfoText.value
 
     Scaffold { padding ->
         Box(modifier = modifier.padding(padding).fillMaxSize()) {
@@ -211,48 +220,39 @@ fun RouteTrackerScreen(
                                 }
 
                                 // DEBUG INFO BLOCK
-                                LaunchedEffect(Unit) {
-                                    snapshotFlow { routePoints }
-                                        .distinctUntilChanged()
-                                        .collect { points ->
-                                            if (points.isNotEmpty()) {
-                                                val lastPoint = points.last()
-                                                val firstPoint = points.first()
-                                                val distanceMeters = calculateDistance(points)
-                                                val durationMs =
-                                                    lastPoint.timestamp - firstPoint.timestamp
-                                                val durationHours = durationMs / (1000.0 * 60 * 60)
-                                                val avgSpeed =
-                                                    if (durationHours > 0) (distanceMeters / 1000.0) / durationHours else 0.0
-                                                val durationMinutes = durationMs / (1000.0 * 60)
-                                                val paceMinPerKm = if (distanceMeters >= 50)
-                                                    durationMinutes / (distanceMeters / 1000.0)
-                                                else 0.0
+                                LaunchedEffect(routePoints, zoomLevel.floatValue) {
+                                    if (routePoints.isNotEmpty()) {
+                                        val lastPoint = routePoints.last()
+                                        val firstPoint = routePoints.first()
+                                        val distanceMeters = calculateDistance(routePoints)
+                                        val durationMs = lastPoint.timestamp - firstPoint.timestamp
+                                        val durationHours = durationMs / (1000.0 * 60 * 60)
+                                        val avgSpeed = if (durationHours > 0) (distanceMeters / 1000.0) / durationHours else 0.0
+                                        val durationMinutes = durationMs / (1000.0 * 60)
+                                        val paceMinPerKm = if (distanceMeters >= 50)
+                                            durationMinutes / (distanceMeters / 1000.0)
+                                        else 0.0
 
-                                                val paceDisplay = if (paceMinPerKm > 0)
-                                                    "${paceMinPerKm.toInt()}:${
-                                                        ((paceMinPerKm % 1) * 60).toInt().toString()
-                                                            .padStart(2, '0')
-                                                    } min/km"
-                                                else
-                                                    "Walk at least 50m to see pace"
+                                        val paceDisplay = if (paceMinPerKm > 0)
+                                            "${paceMinPerKm.toInt()}:${((paceMinPerKm % 1) * 60).toInt().toString().padStart(2, '0')} min/km"
+                                        else
+                                            "Walk at least 50m to see pace"
 
-                                                val distanceDisplay = if (distanceMeters < 1000)
-                                                    "${distanceMeters.toInt()} m"
-                                                else
-                                                    "%.2f km".format(distanceMeters / 1000.0)
+                                        val distanceDisplay = if (distanceMeters < 1000)
+                                            "${distanceMeters.toInt()} m"
+                                        else
+                                            "%.2f km".format(distanceMeters / 1000.0)
 
-                                                debugInfo.value = """
-                                                    Route Points: ${points.size}
-                                                    Zoom Level: ${"%.2f".format(zoomLevel.floatValue)}
-                                                    Distance: $distanceDisplay
-                                                    Avg Speed: ${"%.2f".format(avgSpeed)} km/h
-                                                    Pace: $paceDisplay
-                                                """.trimIndent()
-                                            } else {
-                                                debugInfo.value = "Loading..."
-                                            }
-                                        }
+                                        viewModel.updateDebugInfo("""
+                                            Route Points: ${routePoints.size}
+                                            Zoom Level: ${"%.2f".format(zoomLevel.floatValue)}
+                                            Distance: $distanceDisplay
+                                            Avg Speed: ${"%.2f".format(avgSpeed)} km/h
+                                            Pace: $paceDisplay
+                                        """.trimIndent())
+                                    } else {
+                                        viewModel.updateDebugInfo("Loading...")
+                                    }
                                 }
 
                                 Column(
@@ -263,7 +263,7 @@ fun RouteTrackerScreen(
                                         .padding(8.dp)
                                 ) {
                                     Text(
-                                        text = debugInfo.value,
+                                        text = debugInfo,
                                         color = Color.White,
                                         fontSize = 12.sp
                                     )
@@ -398,6 +398,7 @@ fun RouteTrackerScreen(
                                     else
                                         "Less than 50m walked"
 
+                                    Text("Route ${route.id}", color = Color.White, fontSize = 14.sp)
                                     Text("Start: ${formatTime(route.startTime)}", color = Color.White, fontSize = 14.sp)
                                     Text("End: ${route.endTime?.let { formatTime(it) } ?: "N/A"}", color = Color.White, fontSize = 14.sp)
                                     Text("Total Distance: $distanceDisplay", color = Color.White, fontSize = 14.sp)
@@ -420,9 +421,41 @@ fun RouteTrackerScreen(
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Button(onClick = { viewModel.startRecording() },
-                            colors = ButtonDefaults.buttonColors(containerColor = Color.Red)) {
+                        Button(
+                            onClick = {
+                                if (selectedRoute != null) {
+                                    showRecordingChoiceDialog.value = true
+                                } else {
+                                    viewModel.startRecording()
+                                }
+                            },
+                            colors = ButtonDefaults.buttonColors(containerColor = Color.Red)
+                        ) {
                             Text("Record")
+                        }
+
+                        if (showRecordingChoiceDialog.value) {
+                            AlertDialog(
+                                onDismissRequest = { showRecordingChoiceDialog.value = false },
+                                title = { Text("Recording Options") },
+                                text = { Text("Do you want to continue recording for the selected route or start new recording?") },
+                                confirmButton = {
+                                    Button(onClick = {
+                                        showRecordingChoiceDialog.value = false
+                                        viewModel.continueRecordingFromSelectedRoute()
+                                    }) {
+                                        Text("Continue Recording")
+                                    }
+                                },
+                                dismissButton = {
+                                    Button(onClick = {
+                                        showRecordingChoiceDialog.value = false
+                                        viewModel.startRecording() // this will clear selectedRoute
+                                    }) {
+                                        Text("New Recording")
+                                    }
+                                }
+                            )
                         }
                     }
                 }

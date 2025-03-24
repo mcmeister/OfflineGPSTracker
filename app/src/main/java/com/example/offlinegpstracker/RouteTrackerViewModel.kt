@@ -7,6 +7,8 @@ import android.graphics.BitmapFactory
 import android.os.Build
 import android.util.Log
 import androidx.annotation.RequiresApi
+import androidx.compose.runtime.State
+import androidx.compose.runtime.mutableStateOf
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.Dispatchers
@@ -42,6 +44,9 @@ class RouteTrackerViewModel(
     private val _selectedRoute = MutableStateFlow<Route?>(null) // New state for selected route
     val selectedRoute: StateFlow<Route?> = _selectedRoute
 
+    private val _debugInfoText = mutableStateOf("")
+    val debugInfoText: State<String> get() = _debugInfoText
+
     init {
         viewModelScope.launch {
             _currentRouteId.collect { routeId ->
@@ -61,10 +66,20 @@ class RouteTrackerViewModel(
         }
     }
 
+    private fun resetDebugInfo() {
+        _debugInfoText.value = ""
+    }
+
+    fun updateDebugInfo(info: String) {
+        _debugInfoText.value = info
+    }
+
     @RequiresApi(Build.VERSION_CODES.O)
     fun startRecording() {
+        _selectedRoute.value = null // ❗ Clear route selection BEFORE coroutine starts
         viewModelScope.launch {
-            _selectedRoute.value = null // Clear selected route when starting new recording
+            resetDebugInfo()
+            _routePoints.value = emptyList()
             val currentLocation = locationViewModel.locationFlow.value
             if (currentLocation != null) {
                 val centerLat = currentLocation.latitude
@@ -118,6 +133,21 @@ class RouteTrackerViewModel(
                         tryUpdateSnapshotForRoute(routeToUpdate)
                     }
                 }
+            }
+        }
+    }
+
+    @RequiresApi(Build.VERSION_CODES.O)
+    fun continueRecordingFromSelectedRoute() {
+        viewModelScope.launch {
+            val route = _selectedRoute.value
+            if (route != null) {
+                _currentRouteId.value = route.id
+                _isRecording.value = true
+                _isPaused.value = false
+                Intent(application, RouteRecordingService::class.java).apply {
+                    putExtra("routeId", route.id)
+                }.also { application.startForegroundService(it) }
             }
         }
     }
