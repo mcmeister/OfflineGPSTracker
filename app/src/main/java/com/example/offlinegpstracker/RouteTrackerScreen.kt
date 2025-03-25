@@ -22,14 +22,23 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Icon
+import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextField
+import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -142,8 +151,22 @@ fun RouteTrackerScreen(
                     val route by produceState<Route?>(initialValue = null) {
                         value = viewModel.routeRepository.getRoute(currentRouteId!!)
                     }
-                    route?.let { r ->
-                        val bitmap = BitmapFactory.decodeFile(r.snapshotPath)?.asImageBitmap()
+
+                    if (route == null) {
+                        // ⏳ Show temporary loading message while new route data is not yet ready
+                        Box(
+                            modifier = Modifier.fillMaxSize(),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = "Loading...",
+                                color = Color.White,
+                                fontSize = 16.sp
+                            )
+                        }
+                    } else {
+                        val r = route
+                        val bitmap = BitmapFactory.decodeFile(r!!.snapshotPath)?.asImageBitmap()
                         if (bitmap != null) {
                             val distance = calculateDistance(routePoints)
 
@@ -243,7 +266,10 @@ fun RouteTrackerScreen(
                                         else
                                             "%.2f km".format(distanceMeters / 1000.0)
 
+                                        val nameLine = route?.routeName ?: "Route ${route?.id}"
                                         viewModel.updateDebugInfo("""
+                                            $nameLine
+                                            Route Points: ${routePoints.size}
                                             Route Points: ${routePoints.size}
                                             Zoom Level: ${"%.2f".format(zoomLevel.floatValue)}
                                             Distance: $distanceDisplay
@@ -383,6 +409,7 @@ fun RouteTrackerScreen(
                                     modifier = Modifier
                                         .align(Alignment.BottomStart)
                                         .padding(16.dp)
+                                        .widthIn(max = 200.dp)
                                         .background(Color.Black.copy(alpha = 0.7f))
                                         .padding(8.dp)
                                 ) {
@@ -398,7 +425,67 @@ fun RouteTrackerScreen(
                                     else
                                         "Less than 50m walked"
 
-                                    Text("Route ${route.id}", color = Color.White, fontSize = 14.sp)
+                                    var isEditingName by remember { mutableStateOf(false) }
+                                    var editedName by remember { mutableStateOf("") }
+
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        modifier = Modifier.fillMaxWidth()
+                                    ) {
+                                        if (isEditingName) {
+                                            TextField(
+                                                value = editedName,
+                                                onValueChange = { editedName = it },
+                                                singleLine = true,
+                                                modifier = Modifier
+                                                    .widthIn(min = 100.dp, max = 160.dp)
+                                                    .height(28.dp),
+                                                textStyle = LocalTextStyle.current.copy(
+                                                    color = Color.White,
+                                                    fontSize = 14.sp
+                                                ),
+                                                colors = TextFieldDefaults.colors(
+                                                    focusedIndicatorColor = Color.White,
+                                                    unfocusedIndicatorColor = Color.Gray,
+                                                    cursorColor = Color.White,
+                                                    focusedContainerColor = Color.Transparent,
+                                                    unfocusedContainerColor = Color.Transparent,
+                                                    disabledContainerColor = Color.Transparent
+                                                )
+                                            )
+                                            Icon(
+                                                imageVector = Icons.Default.Check,
+                                                contentDescription = "Save",
+                                                tint = Color.White,
+                                                modifier = Modifier
+                                                    .padding(start = 8.dp)
+                                                    .size(18.dp)
+                                                    .align(Alignment.CenterVertically)
+                                                    .clickable {
+                                                        isEditingName = false
+                                                        viewModel.updateRouteName(route.id, editedName)
+                                                    }
+                                            )
+                                        } else {
+                                            Text(
+                                                text = route.routeName ?: "Route ${route.id}",
+                                                color = Color.White,
+                                                fontSize = 14.sp
+                                            )
+                                            Icon(
+                                                imageVector = Icons.Default.Edit,
+                                                contentDescription = "Edit",
+                                                tint = Color.White,
+                                                modifier = Modifier
+                                                    .padding(start = 8.dp)
+                                                    .size(18.dp)
+                                                    .clickable {
+                                                        editedName = route.routeName ?: "TEST"
+                                                        isEditingName = true
+                                                    }
+                                            )
+                                        }
+                                    }
                                     Text("Start: ${formatTime(route.startTime)}", color = Color.White, fontSize = 14.sp)
                                     Text("End: ${route.endTime?.let { formatTime(it) } ?: "N/A"}", color = Color.White, fontSize = 14.sp)
                                     Text("Total Distance: $distanceDisplay", color = Color.White, fontSize = 14.sp)
@@ -463,44 +550,49 @@ fun RouteTrackerScreen(
 
             // Only show saved routes when NOT recording
             if (!isRecording) {
-                Column(
+                Box(
                     modifier = Modifier
                         .align(Alignment.TopEnd)
                         .padding(16.dp)
-                        .background(Color.Black.copy(alpha = 0.7f))
-                        .width(200.dp)
                 ) {
-                    // Dropdown toggle button
-                    Text(
-                        text = "Saved Routes",
-                        color = Color.White,
-                        fontSize = 16.sp,
+                    Column(
                         modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(8.dp)
-                            .clickable {
-                                isDropdownExpanded = !isDropdownExpanded
-                            }
-                    )
-
-                    // Expandable list
-                    if (isDropdownExpanded) {
-                        LazyColumn(
+                            .background(Color.Black.copy(alpha = 0.7f))
+                            .wrapContentWidth() // ✅ Shrink to content
+                    ) {
+                        // Dropdown toggle button
+                        Text(
+                            text = "Saved Routes",
+                            color = Color.White,
+                            fontSize = 16.sp,
                             modifier = Modifier
-                                .heightIn(max = 300.dp)
-                        ) {
-                            items(savedRoutes) { savedRoute ->
-                                Text(
-                                    text = "Route ${savedRoute.id} (${formatTime(savedRoute.startTime)})",
-                                    color = if (savedRoute == selectedRoute) Color.Yellow else Color.White,
-                                    fontSize = 14.sp,
-                                    modifier = Modifier
-                                        .padding(4.dp)
-                                        .clickable {
-                                            viewModel.selectRoute(savedRoute.id)
-                                            isDropdownExpanded = false // collapse dropdown
-                                        }
-                                )
+                                .align(Alignment.End) // ✅ Match dropdown width and align right
+                                .padding(8.dp)
+                                .clickable {
+                                    isDropdownExpanded = !isDropdownExpanded
+                                }
+                        )
+
+                        // Expandable list
+                        if (isDropdownExpanded) {
+                            LazyColumn(
+                                modifier = Modifier
+                                    .heightIn(max = 290.dp)
+                                    .padding(horizontal = 8.dp, vertical = 4.dp)
+                            ) {
+                                items(savedRoutes) { savedRoute ->
+                                    Text(
+                                        text = "${savedRoute.routeName ?: "Route ${savedRoute.id}"} (${formatTime(savedRoute.startTime)})",
+                                        color = if (savedRoute == selectedRoute) Color.Yellow else Color.White,
+                                        fontSize = 14.sp,
+                                        modifier = Modifier
+                                            .padding(vertical = 2.dp)
+                                            .clickable {
+                                                viewModel.selectRoute(savedRoute.id)
+                                                isDropdownExpanded = false
+                                            }
+                                    )
+                                }
                             }
                         }
                     }

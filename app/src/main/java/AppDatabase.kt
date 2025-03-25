@@ -16,7 +16,7 @@ import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 import kotlinx.coroutines.flow.Flow
 
-@Database(entities = [Location::class, Route::class, RoutePoint::class], version = 7, exportSchema = false) // Updated to version 6
+@Database(entities = [Location::class, Route::class, RoutePoint::class], version = 8, exportSchema = false) // Updated to version 6
 @TypeConverters(Converters::class)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun locationDao(): LocationDao
@@ -34,7 +34,14 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     "location_database"
                 )
-                    .addMigrations(MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7) // Added MIGRATION_5_6
+                    .addMigrations(
+                        MIGRATION_2_3,
+                        MIGRATION_3_4,
+                        MIGRATION_4_5,
+                        MIGRATION_5_6,
+                        MIGRATION_6_7,
+                        MIGRATION_7_8
+                    )
                     .build()
                 INSTANCE = instance
                 instance
@@ -113,6 +120,12 @@ val MIGRATION_6_7 = object : Migration(6, 7) {
     }
 }
 
+val MIGRATION_7_8 = object : Migration(7, 8) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE Route ADD COLUMN routeName TEXT")
+    }
+}
+
 @Entity
 data class Route(
     @PrimaryKey(autoGenerate = true) val id: Int = 0,
@@ -124,7 +137,8 @@ data class Route(
     val zoom: Int,
     val width: Int,
     val height: Int,
-    val averageSpeed: Double? = null
+    val averageSpeed: Double? = null,
+    val routeName: String? = null
 )
 
 @Entity(
@@ -168,6 +182,9 @@ interface RouteDao {
 
     @Query("UPDATE route SET snapshotPath = :snapshotPath WHERE id = :routeId")
     suspend fun updateRouteSnapshot(routeId: Int, snapshotPath: String)
+
+    @Query("UPDATE route SET routeName = :name WHERE id = :routeId")
+    suspend fun updateRouteName(routeId: Int, name: String)
 }
 
 @Dao

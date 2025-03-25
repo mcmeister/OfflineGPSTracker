@@ -76,10 +76,10 @@ class RouteTrackerViewModel(
 
     @RequiresApi(Build.VERSION_CODES.O)
     fun startRecording() {
-        _selectedRoute.value = null // ❗ Clear route selection BEFORE coroutine starts
+        _selectedRoute.value = null               // 🛑 CLEAR THIS FIRST
+        _routePoints.value = emptyList()          // 🧹 Clear red line
+        resetDebugInfo()
         viewModelScope.launch {
-            resetDebugInfo()
-            _routePoints.value = emptyList()
             val currentLocation = locationViewModel.locationFlow.value
             if (currentLocation != null) {
                 val centerLat = currentLocation.latitude
@@ -149,6 +149,15 @@ class RouteTrackerViewModel(
                     putExtra("routeId", route.id)
                 }.also { application.startForegroundService(it) }
             }
+        }
+    }
+
+    fun updateRouteName(routeId: Int, name: String) {
+        viewModelScope.launch {
+            routeRepository.routeDao.updateRouteName(routeId, name)
+            // Force refresh
+            val updated = routeRepository.getRoute(routeId)
+            _selectedRoute.value = updated
         }
     }
 
