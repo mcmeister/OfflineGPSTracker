@@ -270,7 +270,6 @@ fun RouteTrackerScreen(
                                         viewModel.updateDebugInfo("""
                                             $nameLine
                                             Route Points: ${routePoints.size}
-                                            Route Points: ${routePoints.size}
                                             Zoom Level: ${"%.2f".format(zoomLevel.floatValue)}
                                             Distance: $distanceDisplay
                                             Avg Speed: ${"%.2f".format(avgSpeed)} km/h
@@ -480,7 +479,7 @@ fun RouteTrackerScreen(
                                                     .padding(start = 8.dp)
                                                     .size(18.dp)
                                                     .clickable {
-                                                        editedName = route.routeName ?: "TEST"
+                                                        editedName = route.routeName ?: ""
                                                         isEditingName = true
                                                     }
                                             )
