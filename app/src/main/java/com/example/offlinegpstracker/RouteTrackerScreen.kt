@@ -13,6 +13,7 @@ import androidx.compose.foundation.gestures.rememberTransformableState
 import androidx.compose.foundation.gestures.transformable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -21,12 +22,17 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
-import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Edit
@@ -37,11 +43,10 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextField
-import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableLongStateOf
@@ -52,14 +57,20 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.rememberTextMeasurer
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.FlowPreview
@@ -67,6 +78,7 @@ import kotlinx.coroutines.flow.debounce
 import kotlin.math.PI
 import kotlin.math.ln
 import kotlin.math.pow
+import kotlin.math.roundToInt
 import kotlin.math.sin
 
 @OptIn(FlowPreview::class)
@@ -76,6 +88,8 @@ fun RouteTrackerScreen(
     viewModel: RouteTrackerViewModel,
     modifier: Modifier = Modifier
 ) {
+    var isEditingName by remember { mutableStateOf(false) }
+    var editedName by remember { mutableStateOf("") }
     val isRecording by viewModel.isRecording.collectAsState()
     val isPaused by viewModel.isPaused.collectAsState()
     val routePoints by viewModel.routePoints.collectAsState()
@@ -102,6 +116,7 @@ fun RouteTrackerScreen(
             val t = (zoom - 1.5f) / (20f - 1.5f)
             5f - (4f * t) // From 5 → 1
         }
+
         else -> 1f
     }
 
@@ -242,56 +257,71 @@ fun RouteTrackerScreen(
                                     }
                                 }
 
-                                // DEBUG INFO BLOCK
                                 LaunchedEffect(routePoints, zoomLevel.floatValue) {
                                     if (routePoints.isNotEmpty()) {
-                                        val lastPoint = routePoints.last()
-                                        val firstPoint = routePoints.first()
+                                        val first = routePoints.first()
+                                        val last = routePoints.last()
                                         val distanceMeters = calculateDistance(routePoints)
-                                        val durationMs = lastPoint.timestamp - firstPoint.timestamp
-                                        val durationHours = durationMs / (1000.0 * 60 * 60)
-                                        val avgSpeed = if (durationHours > 0) (distanceMeters / 1000.0) / durationHours else 0.0
-                                        val durationMinutes = durationMs / (1000.0 * 60)
+                                        val durationMs = last.timestamp - first.timestamp
+                                        val durationMin = durationMs / 60_000.0
+                                        val durationHr = durationMs / 3_600_000.0
+                                        val avgSpeedKmH =
+                                            if (durationHr > 0) (distanceMeters / 1000.0) / durationHr else 0.0
                                         val paceMinPerKm = if (distanceMeters >= 50)
-                                            durationMinutes / (distanceMeters / 1000.0)
-                                        else 0.0
+                                            durationMin / (distanceMeters / 1000.0) else -1.0
 
                                         val paceDisplay = if (paceMinPerKm > 0)
-                                            "${paceMinPerKm.toInt()}:${((paceMinPerKm % 1) * 60).toInt().toString().padStart(2, '0')} min/km"
-                                        else
-                                            "Walk at least 50m to see pace"
+                                            "%d:%02d min/km".format(
+                                                paceMinPerKm.toInt(),
+                                                ((paceMinPerKm % 1) * 60).toInt()
+                                            )
+                                        else "Walk ≥ 50 m to see pace"
 
-                                        val distanceDisplay = if (distanceMeters < 1000)
-                                            "${distanceMeters.toInt()} m"
-                                        else
-                                            "%.2f km".format(distanceMeters / 1000.0)
+                                        val distDisplay = if (distanceMeters < 1000)
+                                            "${distanceMeters.toInt()} m"
+                                        else "%.2f km".format(distanceMeters / 1000.0)
 
-                                        val nameLine = route?.routeName ?: "Route ${route?.id}"
-                                        viewModel.updateDebugInfo("""
-                                            $nameLine
-                                            Route Points: ${routePoints.size}
-                                            Zoom Level: ${"%.2f".format(zoomLevel.floatValue)}
-                                            Distance: $distanceDisplay
-                                            Avg Speed: ${"%.2f".format(avgSpeed)} km/h
-                                            Pace: $paceDisplay
-                                        """.trimIndent())
+                                        val nameLine = route?.routeName ?: "Recording…"
+
+                                        viewModel.updateDebugInfo(
+                                            listOf(
+                                                nameLine,
+                                                "Route points: ${routePoints.size}",
+                                                "Zoom: %.2f".format(zoomLevel.floatValue),
+                                                "Distance: $distDisplay",
+                                                "Avg speed: %.2f km/h".format(avgSpeedKmH),
+                                                "Pace: $paceDisplay"
+                                            ).joinToString("\n")
+                                        )
                                     } else {
-                                        viewModel.updateDebugInfo("Loading...")
+                                        viewModel.updateDebugInfo("Recording…")
                                     }
                                 }
+
+                                /* ─────────── stylised overlay – same pill style as saved‑route block ─────────── */
+                                val pillShape = RoundedCornerShape(4.dp)
+                                val pillBackground = Color.Black.copy(alpha = 0.60f)
+                                val chipModifier = Modifier
+                                    .padding(vertical = 2.dp)
+                                    .background(pillBackground, pillShape)
+                                    .padding(horizontal = 6.dp, vertical = 4.dp)
 
                                 Column(
                                     modifier = Modifier
                                         .align(Alignment.TopStart)
                                         .padding(16.dp)
-                                        .background(Color.Black.copy(alpha = 0.7f))
-                                        .padding(8.dp)
                                 ) {
-                                    Text(
-                                        text = debugInfo,
-                                        color = Color.White,
-                                        fontSize = 12.sp
-                                    )
+                                    debugInfo              // → State<String> you already show elsewhere
+                                        .lines()
+                                        .filter { it.isNotBlank() }
+                                        .forEach { line ->
+                                            Text(
+                                                text = line.trim(),
+                                                color = Color.White,
+                                                fontSize = 14.sp,
+                                                modifier = chipModifier
+                                            )
+                                        }
                                 }
                             }
 
@@ -338,13 +368,35 @@ fun RouteTrackerScreen(
                 !isRecording && selectedRoute != null -> {
                     val route = selectedRoute!!
                     val bitmap = BitmapFactory.decodeFile(route.snapshotPath)?.asImageBitmap()
-                    if (bitmap != null) {
-                        val distance = calculateDistance(routePoints)
 
-                        // Removed offset: only using zoom adjustments now.
+                    if (bitmap != null) {
+
+                        /* ── helper numbers for the info chips ─────────────────────────────── */
+                        val distanceMeters = calculateDistance(routePoints)                // meters
+                        val durationMinutes =
+                            ((route.endTime ?: route.startTime) - route.startTime) / (1000.0 * 60)
+
+                        val paceMinPerKm = if (distanceMeters >= 50)
+                            durationMinutes / (distanceMeters / 1000.0)
+                        else 0.0
+
+                        val paceDisplay = if (paceMinPerKm > 0)
+                            "${paceMinPerKm.toInt()}:${
+                                ((paceMinPerKm % 1) * 60)
+                                    .toInt().toString().padStart(2, '0')
+                            } min/km"
+                        else "Less than 50m walked"
+
+                        val distanceDisplay = if (distanceMeters < 1000)
+                            "${distanceMeters.toInt()} m"
+                        else "%.2f km".format(distanceMeters / 1000.0)
+                        /* ───────────────────────────────────────────────────────────────────── */
+
+                        /* zoom / pan logic — unchanged except for offset removal */
                         val transformState = rememberTransformableState { zoomChange, _, _ ->
-                            zoomLevel.floatValue = (zoomLevel.floatValue * zoomChange)
-                                .coerceIn(0.5f * originalZoom.floatValue, 20f)
+                            zoomLevel.floatValue =
+                                (zoomLevel.floatValue * zoomChange)
+                                    .coerceIn(0.5f * originalZoom.floatValue, 20f)
                             lastInteractionTime.longValue = System.currentTimeMillis()
                         }
 
@@ -354,14 +406,16 @@ fun RouteTrackerScreen(
                                 .pointerInput(Unit) {
                                     detectTapGestures(
                                         onDoubleTap = {
-                                            zoomLevel.floatValue = 1.0f
-                                            lastInteractionTime.longValue = System.currentTimeMillis()
+                                            zoomLevel.floatValue = 1f
+                                            lastInteractionTime.longValue =
+                                                System.currentTimeMillis()
                                         }
                                     )
                                 }
                                 .transformable(transformState)
                         ) {
-                            // Map snapshot and route (zoomed)
+
+                            /* ─────────── map snapshot + red route line (zoomed) ───────────── */
                             Box(
                                 modifier = Modifier
                                     .fillMaxWidth()
@@ -396,101 +450,152 @@ fun RouteTrackerScreen(
                                             if (index == 0) path.moveTo(x, y) else path.lineTo(x, y)
                                         }
                                         drawPath(
-                                            path,
+                                            path = path,
                                             color = Color.Red,
                                             style = Stroke(width = strokeWidthPx)
                                         )
                                     }
                                 }
 
-                                // Overlay inside map area (NOT zoomed)
+                                /* ─────────── overlay: inline‑chip info block ──────────────── */
                                 Column(
                                     modifier = Modifier
                                         .align(Alignment.BottomStart)
                                         .padding(16.dp)
-                                        .widthIn(max = 200.dp)
-                                        .background(Color.Black.copy(alpha = 0.7f))
-                                        .padding(8.dp)
+                                        .widthIn(max = 200.dp)          // keep a ceiling, not a floor
                                 ) {
-                                    val distanceDisplay = if (distance < 1000)
-                                        "${distance.toInt()} m"
-                                    else
-                                        "%.2f km".format(distance / 1000.0)
+                                    /* ---------- shared pill background + padding ---------- */
+                                    val chipModifier = Modifier
+                                        .padding(vertical = 2.dp)
+                                        .background(
+                                            color = Color.Black.copy(alpha = 0.60f),
+                                            shape = RoundedCornerShape(4.dp)
+                                        )
+                                        .padding(horizontal = 6.dp, vertical = 4.dp)
 
-                                    val durationMinutes = ((route.endTime ?: route.startTime) - route.startTime) / (1000.0 * 60)
-                                    val paceMinPerKm = if (distance >= 50) durationMinutes / (distance / 1000.0) else 0.0
-                                    val paceDisplay = if (paceMinPerKm > 0)
-                                        "${paceMinPerKm.toInt()}:${((paceMinPerKm % 1) * 60).toInt().toString().padStart(2, '0')} min/km"
-                                    else
-                                        "Less than 50m walked"
+                                    val displayName = route.routeName ?: "Route ${route.id}"
+                                    val densityRouteName =
+                                        LocalDensity.current        // ← composable read here
+                                    val textMeasurer = rememberTextMeasurer()
 
-                                    var isEditingName by remember { mutableStateOf(false) }
-                                    var editedName by remember { mutableStateOf("") }
+                                    /*  Measure the text once per name‑change (and density change) */
+                                    val minNameWidth by remember(displayName, densityRouteName) {
+                                        mutableStateOf(
+                                            with(densityRouteName) {
+                                                textMeasurer
+                                                    .measure(
+                                                        text = displayName,
+                                                        style = TextStyle(fontSize = 14.sp)
+                                                    )
+                                                    .size.width.toDp()
+                                            } + 6.dp           // 6 dp = same trailing padding you add below
+                                        )
+                                    }
 
+                                    /* ───── name / edit chip ───── */
                                     Row(
                                         verticalAlignment = Alignment.CenterVertically,
-                                        modifier = Modifier.fillMaxWidth()
+                                        modifier = chipModifier            // dark pill background
                                     ) {
                                         if (isEditingName) {
-                                            TextField(
+
+                                            BasicTextField(
                                                 value = editedName,
                                                 onValueChange = { editedName = it },
                                                 singleLine = true,
-                                                modifier = Modifier
-                                                    .widthIn(min = 100.dp, max = 160.dp)
-                                                    .height(28.dp),
                                                 textStyle = LocalTextStyle.current.copy(
                                                     color = Color.White,
                                                     fontSize = 14.sp
                                                 ),
-                                                colors = TextFieldDefaults.colors(
-                                                    focusedIndicatorColor = Color.White,
-                                                    unfocusedIndicatorColor = Color.Gray,
-                                                    cursorColor = Color.White,
-                                                    focusedContainerColor = Color.Transparent,
-                                                    unfocusedContainerColor = Color.Transparent,
-                                                    disabledContainerColor = Color.Transparent
-                                                )
+                                                cursorBrush = SolidColor(Color.White),
+                                                modifier = Modifier
+                                                    .widthIn(
+                                                        min = minNameWidth,
+                                                        max = 160.dp
+                                                    ) // lock min width
+                                                    .weight(
+                                                        1f,
+                                                        fill = false
+                                                    )                  // push icon only when needed
+                                                    .padding(end = 6.dp)
                                             )
+
                                             Icon(
                                                 imageVector = Icons.Default.Check,
                                                 contentDescription = "Save",
                                                 tint = Color.White,
                                                 modifier = Modifier
-                                                    .padding(start = 8.dp)
                                                     .size(18.dp)
-                                                    .align(Alignment.CenterVertically)
                                                     .clickable {
                                                         isEditingName = false
-                                                        viewModel.updateRouteName(route.id, editedName)
+                                                        viewModel.updateRouteName(
+                                                            route.id,
+                                                            editedName.trim()
+                                                        )
                                                     }
                                             )
+
                                         } else {
+
                                             Text(
-                                                text = route.routeName ?: "Route ${route.id}",
+                                                text = displayName,
                                                 color = Color.White,
-                                                fontSize = 14.sp
+                                                fontSize = 14.sp,
+                                                modifier = Modifier
+                                                    .widthIn(min = minNameWidth)              // same min width
+                                                    .weight(1f, fill = false)
+                                                    .padding(end = 6.dp)
                                             )
+
                                             Icon(
                                                 imageVector = Icons.Default.Edit,
                                                 contentDescription = "Edit",
                                                 tint = Color.White,
                                                 modifier = Modifier
-                                                    .padding(start = 8.dp)
                                                     .size(18.dp)
                                                     .clickable {
-                                                        editedName = route.routeName ?: ""
+                                                        editedName = displayName
                                                         isEditingName = true
                                                     }
                                             )
                                         }
                                     }
-                                    Text("Start: ${formatTime(route.startTime)}", color = Color.White, fontSize = 14.sp)
-                                    Text("End: ${route.endTime?.let { formatTime(it) } ?: "N/A"}", color = Color.White, fontSize = 14.sp)
-                                    Text("Total Distance: $distanceDisplay", color = Color.White, fontSize = 14.sp)
+
+                                    /* ───── single‑line info chips ───── */
+                                    Text(
+                                        text = "Start: ${formatTime(route.startTime)}",
+                                        color = Color.White,
+                                        fontSize = 14.sp,
+                                        modifier = chipModifier
+                                    )
+
+                                    Text(
+                                        text = "End: ${route.endTime?.let { formatTime(it) } ?: "N/A"}",
+                                        color = Color.White,
+                                        fontSize = 14.sp,
+                                        modifier = chipModifier
+                                    )
+
+                                    Text(
+                                        text = "Total Distance: $distanceDisplay",
+                                        color = Color.White,
+                                        fontSize = 14.sp,
+                                        modifier = chipModifier
+                                    )
+
                                     route.averageSpeed?.let {
-                                        Text("Avg Speed: %.2f km/h".format(it), color = Color.White, fontSize = 14.sp)
-                                        Text("Pace: $paceDisplay", color = Color.White, fontSize = 14.sp)
+                                        Text(
+                                            text = "Avg Speed: %.2f km/h".format(it),
+                                            color = Color.White,
+                                            fontSize = 14.sp,
+                                            modifier = chipModifier
+                                        )
+                                        Text(
+                                            text = "Pace: $paceDisplay",
+                                            color = Color.White,
+                                            fontSize = 14.sp,
+                                            modifier = chipModifier
+                                        )
                                     }
                                 }
                             }
@@ -547,51 +652,113 @@ fun RouteTrackerScreen(
                 }
             }
 
-            // Only show saved routes when NOT recording
             if (!isRecording) {
+
+                /* visual constants */
+                val pillShape = RoundedCornerShape(4.dp)
+                val pillBackground = Color.Black.copy(alpha = 0.60f)
+
+                /* composable helpers (✓) */
+                val densitySavedRoutes = LocalDensity.current
+                val textMeasurer = rememberTextMeasurer()
+
+                /* width of the pill text – measured once */
+                val pillWidthDp by remember {
+                    mutableStateOf(
+                        with(densitySavedRoutes) {
+                            val w = textMeasurer
+                                .measure("Saved Routes", TextStyle(fontSize = 16.sp))
+                                .size.width
+                            (w + 16).toDp()           // 8 dp start + 8 dp end
+                        }
+                    )
+                }
+
+                /* width of the longest list item – recomputed only while open */
+                val listWidthDp by remember(isDropdownExpanded, savedRoutes) {
+                    derivedStateOf {
+                        if (!isDropdownExpanded) 0.dp
+                        else {
+                            val longestPx = savedRoutes.maxOfOrNull { r ->
+                                textMeasurer
+                                    .measure(
+                                        "${r.routeName ?: "Route ${r.id}"} (${formatTime(r.startTime)})",
+                                        TextStyle(fontSize = 14.sp)
+                                    ).size.width
+                            } ?: 0
+                            with(densitySavedRoutes) { (longestPx + 16).toDp() } // 8 dp + 8 dp padding
+                        }
+                    }
+                }
+
                 Box(
                     modifier = Modifier
                         .align(Alignment.TopEnd)
                         .padding(16.dp)
                 ) {
-                    Column(
-                        modifier = Modifier
-                            .background(Color.Black.copy(alpha = 0.7f))
-                            .wrapContentWidth() // ✅ Shrink to content
-                    ) {
-                        // Dropdown toggle button
-                        Text(
-                            text = "Saved Routes",
-                            color = Color.White,
-                            fontSize = 16.sp,
-                            modifier = Modifier
-                                .align(Alignment.End) // ✅ Match dropdown width and align right
-                                .padding(8.dp)
-                                .clickable {
-                                    isDropdownExpanded = !isDropdownExpanded
-                                }
-                        )
 
-                        // Expandable list
-                        if (isDropdownExpanded) {
-                            LazyColumn(
-                                modifier = Modifier
-                                    .heightIn(max = 290.dp)
-                                    .padding(horizontal = 8.dp, vertical = 4.dp)
-                            ) {
-                                items(savedRoutes) { savedRoute ->
-                                    Text(
-                                        text = "${savedRoute.routeName ?: "Route ${savedRoute.id}"} (${formatTime(savedRoute.startTime)})",
-                                        color = if (savedRoute == selectedRoute) Color.Yellow else Color.White,
-                                        fontSize = 14.sp,
-                                        modifier = Modifier
-                                            .padding(vertical = 2.dp)
-                                            .clickable {
-                                                viewModel.selectRoute(savedRoute.id)
-                                                isDropdownExpanded = false
-                                            }
-                                    )
+                    /* ───────── toggle pill ───────── */
+                    Box(
+                        modifier = Modifier
+                            .clip(pillShape)
+                            .background(pillBackground)
+                            .clickable { isDropdownExpanded = !isDropdownExpanded }
+                            .padding(horizontal = 8.dp, vertical = 4.dp)
+                            .align(Alignment.TopEnd)
+                    ) {
+                        Text("Saved Routes", color = Color.White, fontSize = 16.sp)
+                    }
+
+                    /* ───────── dropdown panel ───────── */
+                    if (isDropdownExpanded) {
+
+                        val fixedWidth = maxOf(listWidthDp, pillWidthDp)
+                        val listState =
+                            rememberLazyListState()          // we need this for the thumb
+
+                        Column(
+                            modifier = Modifier
+                                .align(Alignment.TopEnd)
+                                .offset(y = 32.5.dp)                       // right below the pill
+                                .width(fixedWidth)
+                                .clip(pillShape)
+                                .background(pillBackground)
+                        ) {
+                            Row {                                        // list + thumb side‑by‑side
+
+                                /* ---------- list ---------- */
+                                LazyColumn(
+                                    state = listState,
+                                    modifier = Modifier
+                                        .weight(1f)                      // take all remaining width
+                                        .heightIn(max = 200.dp)
+                                        .padding(horizontal = 8.dp, vertical = 4.dp)
+                                ) {
+                                    items(savedRoutes) { savedRoute ->
+                                        val selected = savedRoute == selectedRoute
+                                        Text(
+                                            text = "${savedRoute.routeName ?: "Route ${savedRoute.id}"} " +
+                                                    "(${formatTime(savedRoute.startTime)})",
+                                            color = if (selected) Color.Yellow else Color.White,
+                                            fontSize = 14.sp,
+                                            modifier = Modifier
+                                                .padding(vertical = 2.dp)
+                                                .clickable {
+                                                    viewModel.selectRoute(savedRoute.id)
+                                                    isDropdownExpanded = false
+                                                }
+                                        )
+                                    }
                                 }
+
+                                /* ---------- vertical thumb ---------- */
+                                ScrollThumb(
+                                    listState = listState,
+                                    modifier = Modifier
+                                        .heightIn(max = 200.dp)
+                                        .width(4.dp)
+                                        .padding(vertical = 4.dp)        // little air top/bottom
+                                )
                             }
                         }
                     }
@@ -654,3 +821,76 @@ fun latLonToWebMercatorPixel(
     return pixelX to pixelY
 }
 
+private data class ScrollMetrics(val progress: Float, val thumbHeight: Dp)
+
+@Composable
+private fun ScrollThumb(
+    listState      : LazyListState,
+    modifier       : Modifier = Modifier,
+    thumbColor     : Color     = Color.LightGray.copy(alpha = .85f),
+    trackColor     : Color     = Color.Black.copy(alpha = .25f),
+    minThumbHeight : Dp        = 14.dp,
+    thumbWidth     : Dp        = 4.dp
+) {
+    val density = LocalDensity.current
+
+    BoxWithConstraints(modifier) {
+
+        /* ---- whether we need a thumb at all (derived) ---- */
+        val showThumb by remember {
+            derivedStateOf {
+                val total    = listState.layoutInfo.totalItemsCount
+                val visible  = listState.layoutInfo.visibleItemsInfo.size
+                total > 0 && visible < total
+            }
+        }
+        if (!showThumb) return@BoxWithConstraints   // nothing to draw
+
+        /* ---- scroll progress & thumb height (derived) ---- */
+        val metrics by remember {
+            derivedStateOf {
+
+                val totalItems   = listState.layoutInfo.totalItemsCount
+                val visibleItems = listState.layoutInfo.visibleItemsInfo.size
+
+                /* progress 0f‑1f */
+                val firstIndex  = listState.firstVisibleItemIndex.toFloat()
+                val firstOffset = listState.firstVisibleItemScrollOffset
+                val itemHeight  = listState.layoutInfo.visibleItemsInfo
+                    .firstOrNull()?.size ?: 1
+                val exact   = (firstIndex + firstOffset / itemHeight) /
+                        (totalItems - visibleItems).coerceAtLeast(1)
+                val progress = exact.coerceIn(0f, 1f)
+
+                /* thumb height */
+                val ratio       = visibleItems.toFloat() / totalItems
+                val rawHeightDp = maxHeight * ratio
+                val thumbDp     = maxOf(rawHeightDp, minThumbHeight)
+
+                ScrollMetrics(progress, thumbDp)
+            }
+        }
+
+        /* px maths */
+        val containerHeightPx = with(density) { maxHeight.toPx() }
+        val thumbHeightPx     = with(density) { metrics.thumbHeight.toPx() }
+        val yOffsetPx         = (containerHeightPx - thumbHeightPx) * metrics.progress
+
+        /* background track (optional) */
+        Box(
+            Modifier
+                .fillMaxSize()
+                .background(trackColor)
+        )
+
+        /* thumb */
+        Box(
+            Modifier
+                .offset { IntOffset(0, yOffsetPx.roundToInt()) }
+                .width(thumbWidth)
+                .height(metrics.thumbHeight)
+                .clip(RoundedCornerShape(percent = 50))
+                .background(thumbColor)
+        )
+    }
+}
