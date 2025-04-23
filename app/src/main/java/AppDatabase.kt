@@ -131,7 +131,7 @@ data class Route(
     @PrimaryKey(autoGenerate = true) val id: Int = 0,
     val startTime: Long,
     val endTime: Long? = null,
-    val snapshotPath: String?,
+    val snapshotPath: String? = null,
     val centerLat: Double,
     val centerLon: Double,
     val zoom: Int,
@@ -185,6 +185,9 @@ interface RouteDao {
 
     @Query("UPDATE route SET routeName = :name WHERE id = :routeId")
     suspend fun updateRouteName(routeId: Int, name: String)
+
+    @Query("SELECT * FROM Route WHERE endTime IS NULL ORDER BY id DESC LIMIT 1")
+    suspend fun getLastUnfinishedRoute(): Route?
 }
 
 @Dao

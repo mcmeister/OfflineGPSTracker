@@ -11,6 +11,7 @@ class RouteRepository(
     suspend fun updateRouteEndTime(routeId: Int, endTime: Long) = routeDao.updateRouteEndTime(routeId, endTime)
 
     suspend fun insertPoint(point: RoutePoint) = routePointDao.insert(point)
+    suspend fun getLastUnfinishedRoute(): Route? = routeDao.getLastUnfinishedRoute()
 
     fun getPointsForRoute(routeId: Int): Flow<List<RoutePoint>> = routePointDao.getPointsForRoute(routeId)
 

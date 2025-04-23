@@ -51,10 +51,10 @@ class MainActivity : AppCompatActivity() {
         LocationViewModelFactory(application, (application as MyApplication).repository)
     }
     private val routeTrackerViewModel: RouteTrackerViewModel by viewModels {
-        RouteTrackerViewModelFactory(
-            (application as MyApplication).routeRepository,
-            application,
-            locationViewModel
+        RouteTrackerViewModelFactory(           // ← uses your existing factory
+            application           = application,                 // ① order matches factory
+            routeRepository       = (application as MyApplication).routeRepository,
+            locationViewModel     = locationViewModel
         )
     }
     private val userPreferences by lazy { UserPreferences(application) }
@@ -95,7 +95,7 @@ class MainActivity : AppCompatActivity() {
 
                     LaunchedEffect(Unit) {
                         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                            routeTrackerViewModel.tryUpdateSnapshotsForAllRoutes()
+                            routeTrackerViewModel.tryDownloadTilesForAllRoutes()
                         }
                     }
 
@@ -268,6 +268,7 @@ class MainActivity : AppCompatActivity() {
                                 NavGraph(
                                     navController = navController,
                                     locationViewModel = locationViewModel,
+                                    routeTrackerVM     = routeTrackerViewModel,
                                     modifier = Modifier.fillMaxSize(),
                                     pagerState = pagerState,
                                     locations = locations,

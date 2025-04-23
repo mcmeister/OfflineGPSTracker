@@ -1,6 +1,5 @@
 package com.example.offlinegpstracker
 
-import android.app.Application
 import android.os.Build
 import androidx.annotation.RequiresApi
 import androidx.compose.foundation.pager.HorizontalPager
@@ -8,7 +7,6 @@ import androidx.compose.foundation.pager.PagerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
@@ -18,6 +16,7 @@ import androidx.navigation.compose.composable
 fun NavGraph(
     navController: NavHostController,
     locationViewModel: LocationViewModel,
+    routeTrackerVM: RouteTrackerViewModel,
     userPreferences: UserPreferences,
     modifier: Modifier = Modifier,
     pagerState: PagerState,
@@ -34,13 +33,8 @@ fun NavGraph(
                         locations = locations,
                         userPreferences = userPreferences
                     )
-                    2 -> RouteTrackerScreen(
-                        viewModel = RouteTrackerViewModel(
-                            routeRepository = (LocalContext.current.applicationContext as MyApplication).routeRepository,
-                            application = LocalContext.current.applicationContext as Application,
-                            locationViewModel = locationViewModel
-                        )
-                    )
+
+                    2 -> RouteTrackerScreen(viewModel = routeTrackerVM)
                 }
             }
         }

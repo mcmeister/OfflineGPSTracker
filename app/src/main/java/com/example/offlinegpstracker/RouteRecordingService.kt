@@ -27,15 +27,18 @@ class RouteRecordingService : Service() {
         super.onCreate()
         val app = application as MyApplication
         locationViewModel = LocationViewModel(app, app.locationRepository)
-        if (ActivityCompat.checkSelfPermission(this, android.Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED) {
+        // only start updates if we have permission
+        if (ActivityCompat.checkSelfPermission(this, android.Manifest.permission.ACCESS_FINE_LOCATION)
+            == PackageManager.PERMISSION_GRANTED
+        ) {
             locationViewModel.startLocationUpdates()
         }
         scope.launch {
             locationViewModel.locationFlow.collect { location ->
                 if (location != null && !isPaused && routeId != -1) {
                     val point = RoutePoint(
-                        routeId = routeId,
-                        latitude = location.latitude,
+                        routeId   = routeId,
+                        latitude  = location.latitude,
                         longitude = location.longitude,
                         timestamp = System.currentTimeMillis()
                     )
@@ -84,6 +87,8 @@ class RouteRecordingService : Service() {
 
     override fun onDestroy() {
         super.onDestroy()
+        // unregister the location listener to avoid leaks
+        locationViewModel.stopLocationUpdates()
         scope.cancel()
     }
 }

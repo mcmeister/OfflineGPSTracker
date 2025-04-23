@@ -4,13 +4,16 @@ import android.annotation.SuppressLint
 import android.graphics.BitmapFactory
 import android.os.Build
 import androidx.annotation.RequiresApi
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
-import androidx.compose.foundation.gestures.rememberTransformableState
-import androidx.compose.foundation.gestures.transformable
+import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -58,7 +61,9 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.asImageBitmap
@@ -66,16 +71,21 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.flow.debounce
+import java.io.File
 import kotlin.math.PI
+import kotlin.math.floor
 import kotlin.math.ln
 import kotlin.math.pow
 import kotlin.math.roundToInt
@@ -168,86 +178,105 @@ fun RouteTrackerScreen(
                     }
 
                     if (route == null) {
-                        // ⏳ Show temporary loading message while new route data is not yet ready
                         Box(
                             modifier = Modifier.fillMaxSize(),
                             contentAlignment = Alignment.Center
-                        ) {
-                            Text(
-                                text = "Loading...",
-                                color = Color.White,
-                                fontSize = 16.sp
-                            )
-                        }
+                        ) { Text("Loading…", color = Color.White, fontSize = 16.sp) }
                     } else {
-                        val r = route
-                        val bitmap = BitmapFactory.decodeFile(r!!.snapshotPath)?.asImageBitmap()
-                        if (bitmap != null) {
-                            val distance = calculateDistance(routePoints)
+                        val r = route!!
+                        val distance = calculateDistance(routePoints)
 
-                            // Shared transform state (zoom + offset)
-                            val transformState = rememberTransformableState { zoomChange, _, _ ->
-                                zoomLevel.floatValue = (zoomLevel.floatValue * zoomChange)
-                                    .coerceIn(0.5f * originalZoom.floatValue, 20f)
-                                lastInteractionTime.longValue = System.currentTimeMillis()
-                            }
+                        /* ── pan & zoom state ──────────────────────── */
+                        var offsetX by remember { mutableFloatStateOf(0f) }
+                        var offsetY by remember { mutableFloatStateOf(0f) }
+
+                        // ★ Visibility state for debug info
+                        var showInfo by remember { mutableStateOf(true) }
+
+                        // ★ Re-show 500ms after lastInteractionTime stops changing
+                        LaunchedEffect(Unit) {
+                            snapshotFlow { lastInteractionTime.longValue }
+                                .debounce(1500L)
+                                .collect {
+                                    showInfo = true
+                                }
+                        }
+
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                // pinch-zoom + pan
+                                .pointerInput(Unit) {
+                                    detectTransformGestures { _, pan, zoomChange, _ ->
+                                        // → your existing zoom/pan logic
+                                        zoomLevel.floatValue =
+                                            (zoomLevel.floatValue * zoomChange)
+                                                .coerceIn(0.5f * originalZoom.floatValue, 20f)
+                                        lastInteractionTime.longValue = System.currentTimeMillis()
+                                        offsetX += pan.x
+                                        offsetY += pan.y
+
+                                        // ★ hide debug info at gesture start
+                                        if (showInfo) showInfo = false
+                                    }
+                                }
+                                // double-tap → reset
+                                .pointerInput(Unit) {
+                                    detectTapGestures(onDoubleTap = {
+                                        zoomLevel.floatValue = 1f
+                                        offsetX = 0f
+                                        offsetY = 0f
+                                        lastInteractionTime.longValue = System.currentTimeMillis()
+                                        // ★ immediate re-show on double-tap
+                                        showInfo = true
+                                    })
+                                }
+                        ) {
+                            /* ── fixed-size clipped viewport ────────── */
+                            val aspectRatio = r.width.toFloat() / r.height.toFloat()
 
                             Box(
                                 modifier = Modifier
-                                    .fillMaxSize()
-                                    .pointerInput(Unit) {
-                                        detectTapGestures(
-                                            onDoubleTap = {
-                                                zoomLevel.floatValue = 1.0f
-                                                // offset reset removed because we no longer update it
-                                                lastInteractionTime.longValue =
-                                                    System.currentTimeMillis()
-                                            }
-                                        )
-                                    }
-                                    .transformable(transformState)
+                                    .fillMaxWidth()
+                                    .aspectRatio(aspectRatio)
+                                    .clipToBounds()
+                                    .align(Alignment.Center)
                             ) {
-                                // Centered container; note that we removed translationX/Y so the image always stays centered.
+                                /* ── apply scale + translation ───────── */
                                 Box(
                                     modifier = Modifier
-                                        .fillMaxWidth()
-                                        .aspectRatio(bitmap.width.toFloat() / bitmap.height.toFloat())
-                                        .align(Alignment.Center)
                                         .graphicsLayer(
                                             scaleX = zoomLevel.floatValue,
-                                            scaleY = zoomLevel.floatValue
-                                            // translationX and translationY have been removed
+                                            scaleY = zoomLevel.floatValue,
+                                            translationX = offsetX,
+                                            translationY = offsetY
                                         )
+                                        .fillMaxSize()
                                 ) {
-                                    Image(
-                                        bitmap = bitmap,
-                                        contentDescription = "Map Snapshot",
-                                        modifier = Modifier.fillMaxSize(),
-                                        contentScale = ContentScale.Fit
+                                    /* map tiles  (or placeholder) */
+                                    TileMapOrPlaceholder(
+                                        centerLat = r.centerLat,
+                                        centerLon = r.centerLon,
+                                        zoom = r.zoom,
+                                        zoomLevel = zoomLevel.floatValue,
+                                        offsetX = offsetX,
+                                        offsetY = offsetY
                                     )
 
-                                    // Red route line
-                                    Canvas(modifier = Modifier.fillMaxSize()) {
+                                    /* red polyline */
+                                    Canvas(Modifier.fillMaxSize()) {
                                         if (routePoints.isNotEmpty()) {
                                             val path = Path()
-                                            routePoints.forEachIndexed { index, point ->
+                                            routePoints.forEachIndexed { i, pt ->
                                                 val (x, y) = latLonToWebMercatorPixel(
-                                                    point.latitude,  // ✅ fixed
-                                                    point.longitude, // ✅ fixed
-                                                    r.centerLat,
-                                                    r.centerLon,
+                                                    pt.latitude, pt.longitude,
+                                                    r.centerLat, r.centerLon,
                                                     r.zoom.toFloat(),
-                                                    size.width.toInt(),   // ✅ use Canvas size, not r.width
+                                                    size.width.toInt(),
                                                     size.height.toInt()
                                                 )
-
-                                                if (index == 0) {
-                                                    path.moveTo(x, y)
-                                                } else {
-                                                    path.lineTo(x, y)
-                                                }
+                                                if (i == 0) path.moveTo(x, y) else path.lineTo(x, y)
                                             }
-
                                             drawPath(
                                                 path,
                                                 color = Color.Red,
@@ -257,7 +286,7 @@ fun RouteTrackerScreen(
                                     }
                                 }
 
-                                LaunchedEffect(routePoints, zoomLevel.floatValue) {
+                                LaunchedEffect(routePoints, zoomLevel.floatValue, isPaused) {
                                     if (routePoints.isNotEmpty()) {
                                         val first = routePoints.first()
                                         val last = routePoints.last()
@@ -271,17 +300,18 @@ fun RouteTrackerScreen(
                                             durationMin / (distanceMeters / 1000.0) else -1.0
 
                                         val paceDisplay = if (paceMinPerKm > 0)
-                                            "%d:%02d min/km".format(
+                                            "%d:%02d min/km".format(
                                                 paceMinPerKm.toInt(),
                                                 ((paceMinPerKm % 1) * 60).toInt()
                                             )
-                                        else "Walk ≥ 50 m to see pace"
+                                        else "Walk ≥ 50m to see pace"
 
                                         val distDisplay = if (distanceMeters < 1000)
-                                            "${distanceMeters.toInt()} m"
-                                        else "%.2f km".format(distanceMeters / 1000.0)
+                                            "${distanceMeters.toInt()} m"
+                                        else "%.2f km".format(distanceMeters / 1000.0)
 
-                                        val nameLine = route?.routeName ?: "Recording…"
+                                        // ← here’s the only real change:
+                                        val nameLine = if (isPaused) "Paused" else "Recording…"
 
                                         viewModel.updateDebugInfo(
                                             listOf(
@@ -289,16 +319,19 @@ fun RouteTrackerScreen(
                                                 "Route points: ${routePoints.size}",
                                                 "Zoom: %.2f".format(zoomLevel.floatValue),
                                                 "Distance: $distDisplay",
-                                                "Avg speed: %.2f km/h".format(avgSpeedKmH),
+                                                "Avg speed: %.2f km/h".format(avgSpeedKmH),
                                                 "Pace: $paceDisplay"
                                             ).joinToString("\n")
                                         )
                                     } else {
-                                        viewModel.updateDebugInfo("Recording…")
+                                        // also respect isPaused when there are no points yet
+                                        viewModel.updateDebugInfo(
+                                            if (isPaused) "Paused" else "Recording…"
+                                        )
                                     }
                                 }
 
-                                /* ─────────── stylised overlay – same pill style as saved‑route block ─────────── */
+                                /* ─────────── stylised overlay – debug info block with fade logic ─────────── */
                                 val pillShape = RoundedCornerShape(4.dp)
                                 val pillBackground = Color.Black.copy(alpha = 0.60f)
                                 val chipModifier = Modifier
@@ -306,22 +339,27 @@ fun RouteTrackerScreen(
                                     .background(pillBackground, pillShape)
                                     .padding(horizontal = 6.dp, vertical = 4.dp)
 
-                                Column(
+                                AnimatedVisibility(
+                                    visible = showInfo,
+                                    enter = fadeIn(tween(300)),
+                                    exit = fadeOut(tween(300)),
                                     modifier = Modifier
                                         .align(Alignment.TopStart)
                                         .padding(16.dp)
                                 ) {
-                                    debugInfo              // → State<String> you already show elsewhere
-                                        .lines()
-                                        .filter { it.isNotBlank() }
-                                        .forEach { line ->
-                                            Text(
-                                                text = line.trim(),
-                                                color = Color.White,
-                                                fontSize = 14.sp,
-                                                modifier = chipModifier
-                                            )
-                                        }
+                                    Column {
+                                        debugInfo
+                                            .lines()
+                                            .filter { it.isNotBlank() }
+                                            .forEach { line ->
+                                                Text(
+                                                    text = line.trim(),
+                                                    color = Color.White,
+                                                    fontSize = 14.sp,
+                                                    modifier = chipModifier
+                                                )
+                                            }
+                                    }
                                 }
                             }
 
@@ -336,13 +374,19 @@ fun RouteTrackerScreen(
                                     .padding(bottom = 16.dp),
                                 horizontalAlignment = Alignment.CenterHorizontally
                             ) {
+                                // ← define exactly the same chip modifier you use for debug-info
+                                val pillShape = RoundedCornerShape(4.dp)
+                                val pillBackground = Color.Black.copy(alpha = 0.60f)
+                                val chipModifier = Modifier
+                                    .padding(vertical = 2.dp)
+                                    .background(pillBackground, pillShape)
+                                    .padding(horizontal = 6.dp, vertical = 4.dp)
+
                                 Text(
                                     text = "Total Distance: $distanceDisplay",
-                                    modifier = Modifier
-                                        .background(Color.Black.copy(alpha = 0.7f))
-                                        .padding(8.dp),
                                     color = Color.White,
-                                    fontSize = 14.sp
+                                    fontSize = 14.sp,
+                                    modifier = chipModifier
                                 )
 
                                 Spacer(modifier = Modifier.height(12.dp))
@@ -367,102 +411,146 @@ fun RouteTrackerScreen(
 
                 !isRecording && selectedRoute != null -> {
                     val route = selectedRoute!!
-                    val bitmap = BitmapFactory.decodeFile(route.snapshotPath)?.asImageBitmap()
 
-                    if (bitmap != null) {
+                    /* ── helper numbers for the info chips ─────────────────────────────── */
+                    val distanceMeters = calculateDistance(routePoints)                // meters
+                    val durationMinutes =
+                        ((route.endTime ?: route.startTime) - route.startTime) / (1000.0 * 60)
 
-                        /* ── helper numbers for the info chips ─────────────────────────────── */
-                        val distanceMeters = calculateDistance(routePoints)                // meters
-                        val durationMinutes =
-                            ((route.endTime ?: route.startTime) - route.startTime) / (1000.0 * 60)
+                    val paceMinPerKm = if (distanceMeters >= 50)
+                        durationMinutes / (distanceMeters / 1000.0)
+                    else 0.0
 
-                        val paceMinPerKm = if (distanceMeters >= 50)
-                            durationMinutes / (distanceMeters / 1000.0)
-                        else 0.0
+                    val paceDisplay = if (paceMinPerKm > 0)
+                        "${paceMinPerKm.toInt()}:${
+                            ((paceMinPerKm % 1) * 60)
+                                .toInt().toString().padStart(2, '0')
+                        } min/km"
+                    else "Less than 50m walked"
 
-                        val paceDisplay = if (paceMinPerKm > 0)
-                            "${paceMinPerKm.toInt()}:${
-                                ((paceMinPerKm % 1) * 60)
-                                    .toInt().toString().padStart(2, '0')
-                            } min/km"
-                        else "Less than 50m walked"
+                    val distanceDisplay = if (distanceMeters < 1000)
+                        "${distanceMeters.toInt()} m"
+                    else "%.2f km".format(distanceMeters / 1000.0)
 
-                        val distanceDisplay = if (distanceMeters < 1000)
-                            "${distanceMeters.toInt()} m"
-                        else "%.2f km".format(distanceMeters / 1000.0)
-                        /* ───────────────────────────────────────────────────────────────────── */
+                    // ─────────── new pan + zoom state ───────────
+                    var offsetX by remember { mutableFloatStateOf(0f) }
+                    var offsetY by remember { mutableFloatStateOf(0f) }
+                    val minZoom = 0.5f * originalZoom.floatValue
+                    val maxZoom = 20f
 
-                        /* zoom / pan logic — unchanged except for offset removal */
-                        val transformState = rememberTransformableState { zoomChange, _, _ ->
-                            zoomLevel.floatValue =
-                                (zoomLevel.floatValue * zoomChange)
-                                    .coerceIn(0.5f * originalZoom.floatValue, 20f)
-                            lastInteractionTime.longValue = System.currentTimeMillis()
-                        }
+                    // ★ Visibility state
+                    var showInfo by remember { mutableStateOf(true) }
+
+                    // ★ Debounced re‑show 500ms after lastInteractionTime updates
+                    LaunchedEffect(Unit) {
+                        snapshotFlow { lastInteractionTime.longValue }
+                            .debounce(1500L)
+                            .collect {
+                                showInfo = true
+                            }
+                    }
+
+                    // ─────────── merged gesture detector ───────────
+                    Box(
+                        modifier = modifier
+                            .fillMaxSize()
+                            .pointerInput(Unit) {
+                                detectTransformGestures { _, pan, zoomChange, _ ->
+                                    // 1) update zoom
+                                    zoomLevel.floatValue = (zoomLevel.floatValue * zoomChange)
+                                        .coerceIn(minZoom, maxZoom)
+                                    lastInteractionTime.longValue = System.currentTimeMillis()
+
+                                    // 2) update pan
+                                    offsetX += pan.x
+                                    offsetY += pan.y
+
+                                    // mark the time of this interaction
+                                    lastInteractionTime.longValue = System.currentTimeMillis()
+
+                                    // hide info at the start of the gesture
+                                    if (showInfo) showInfo = false
+                                }
+                            }
+                            .pointerInput(Unit) {
+                                detectTapGestures(
+                                    onDoubleTap = {
+                                        // reset on double‑tap
+                                        zoomLevel.floatValue = 1f
+                                        offsetX = 0f
+                                        offsetY = 0f
+                                        lastInteractionTime.longValue =
+                                            System.currentTimeMillis()
+                                        showInfo = true
+                                    }
+                                )
+                            }
+                    ) {
+                        // ─────────── fixed‑size, clipped viewport ───────────
+                        val aspectRatio = route.width.toFloat() / route.height.toFloat()
 
                         Box(
                             modifier = Modifier
-                                .fillMaxSize()
-                                .pointerInput(Unit) {
-                                    detectTapGestures(
-                                        onDoubleTap = {
-                                            zoomLevel.floatValue = 1f
-                                            lastInteractionTime.longValue =
-                                                System.currentTimeMillis()
-                                        }
-                                    )
-                                }
-                                .transformable(transformState)
+                                .fillMaxWidth()
+                                .aspectRatio(aspectRatio)
+                                .clipToBounds()   // mask anything that moves outside
+                                .align(Alignment.Center)
                         ) {
-
-                            /* ─────────── map snapshot + red route line (zoomed) ───────────── */
+                            // ─────────── apply both scale & translation ───────────
                             Box(
                                 modifier = Modifier
-                                    .fillMaxWidth()
-                                    .aspectRatio(bitmap.width.toFloat() / bitmap.height.toFloat())
-                                    .align(Alignment.Center)
-                            ) {
-                                Box(
-                                    modifier = Modifier
-                                        .fillMaxSize()
-                                        .graphicsLayer(
-                                            scaleX = zoomLevel.floatValue,
-                                            scaleY = zoomLevel.floatValue
-                                        )
-                                ) {
-                                    Image(
-                                        bitmap = bitmap,
-                                        contentDescription = "Saved Route Snapshot",
-                                        modifier = Modifier.fillMaxSize(),
-                                        contentScale = ContentScale.Fit
+                                    .graphicsLayer(
+                                        scaleX = zoomLevel.floatValue,
+                                        scaleY = zoomLevel.floatValue,
+                                        translationX = offsetX,
+                                        translationY = offsetY
                                     )
+                                    .fillMaxSize()
+                            ) {
+                                TileMapOrPlaceholder(
+                                    centerLat = route.centerLat,
+                                    centerLon = route.centerLon,
+                                    zoom = route.zoom,
+                                    zoomLevel = zoomLevel.floatValue,
+                                    offsetX = offsetX,
+                                    offsetY = offsetY
+                                )
 
-                                    Canvas(modifier = Modifier.fillMaxSize()) {
-                                        val path = Path()
-                                        routePoints.forEachIndexed { index, point ->
-                                            val (x, y) = latLonToWebMercatorPixel(
-                                                point.latitude, point.longitude,
-                                                route.centerLat, route.centerLon,
-                                                route.zoom.toFloat(),
-                                                size.width.toInt(),
-                                                size.height.toInt()
-                                            )
-                                            if (index == 0) path.moveTo(x, y) else path.lineTo(x, y)
-                                        }
-                                        drawPath(
-                                            path = path,
-                                            color = Color.Red,
-                                            style = Stroke(width = strokeWidthPx)
+                                Canvas(modifier = Modifier.fillMaxSize()) {
+                                    val path = Path()
+                                    routePoints.forEachIndexed { i, pt ->
+                                        val (x, y) = latLonToWebMercatorPixel(
+                                            pt.latitude, pt.longitude,
+                                            route.centerLat, route.centerLon,
+                                            route.zoom.toFloat(),
+                                            size.width.toInt(), size.height.toInt()
                                         )
+                                        if (i == 0) path.moveTo(x, y) else path.lineTo(x, y)
                                     }
+                                    drawPath(
+                                        path,
+                                        color = Color.Red,
+                                        style = Stroke(width = strokeWidthPx)
+                                    )
                                 }
+                            }
 
-                                /* ─────────── overlay: inline‑chip info block ──────────────── */
+                            /* ─────────── overlay: inline‑chip info block ──────────────── */
+                            AnimatedVisibility(
+                                visible = showInfo,
+                                enter = fadeIn(tween(300)),
+                                exit = fadeOut(tween(300)),
+                                modifier = Modifier
+                                    .align(Alignment.BottomStart)
+                                    .padding(16.dp)
+                                    .widthIn(max = 200.dp)
+                            ) {
                                 Column(
                                     modifier = Modifier
+                                        .fillMaxWidth()           // if you need full width inside the 200dp max
                                         .align(Alignment.BottomStart)
                                         .padding(16.dp)
-                                        .widthIn(max = 200.dp)          // keep a ceiling, not a floor
+                                        .widthIn(max = 200.dp)    // ceiling, not a floor
                                 ) {
                                     /* ---------- shared pill background + padding ---------- */
                                     val chipModifier = Modifier
@@ -474,11 +562,10 @@ fun RouteTrackerScreen(
                                         .padding(horizontal = 6.dp, vertical = 4.dp)
 
                                     val displayName = route.routeName ?: "Route ${route.id}"
-                                    val densityRouteName =
-                                        LocalDensity.current        // ← composable read here
+                                    val densityRouteName = LocalDensity.current
                                     val textMeasurer = rememberTextMeasurer()
 
-                                    /*  Measure the text once per name‑change (and density change) */
+                                    /* Measure the text once per name‑change (and density change) */
                                     val minNameWidth by remember(displayName, densityRouteName) {
                                         mutableStateOf(
                                             with(densityRouteName) {
@@ -488,17 +575,16 @@ fun RouteTrackerScreen(
                                                         style = TextStyle(fontSize = 14.sp)
                                                     )
                                                     .size.width.toDp()
-                                            } + 6.dp           // 6 dp = same trailing padding you add below
+                                            } + 6.dp
                                         )
                                     }
 
                                     /* ───── name / edit chip ───── */
                                     Row(
                                         verticalAlignment = Alignment.CenterVertically,
-                                        modifier = chipModifier            // dark pill background
+                                        modifier = chipModifier
                                     ) {
                                         if (isEditingName) {
-
                                             BasicTextField(
                                                 value = editedName,
                                                 onValueChange = { editedName = it },
@@ -509,17 +595,10 @@ fun RouteTrackerScreen(
                                                 ),
                                                 cursorBrush = SolidColor(Color.White),
                                                 modifier = Modifier
-                                                    .widthIn(
-                                                        min = minNameWidth,
-                                                        max = 160.dp
-                                                    ) // lock min width
-                                                    .weight(
-                                                        1f,
-                                                        fill = false
-                                                    )                  // push icon only when needed
+                                                    .widthIn(min = minNameWidth, max = 160.dp)
+                                                    .weight(1f, fill = false)
                                                     .padding(end = 6.dp)
                                             )
-
                                             Icon(
                                                 imageVector = Icons.Default.Check,
                                                 contentDescription = "Save",
@@ -534,19 +613,16 @@ fun RouteTrackerScreen(
                                                         )
                                                     }
                                             )
-
                                         } else {
-
                                             Text(
                                                 text = displayName,
                                                 color = Color.White,
                                                 fontSize = 14.sp,
                                                 modifier = Modifier
-                                                    .widthIn(min = minNameWidth)              // same min width
+                                                    .widthIn(min = minNameWidth)
                                                     .weight(1f, fill = false)
                                                     .padding(end = 6.dp)
                                             )
-
                                             Icon(
                                                 imageVector = Icons.Default.Edit,
                                                 contentDescription = "Edit",
@@ -669,7 +745,7 @@ fun RouteTrackerScreen(
                             val w = textMeasurer
                                 .measure("Saved Routes", TextStyle(fontSize = 16.sp))
                                 .size.width
-                            (w + 16).toDp()           // 8 dp start + 8 dp end
+                            (w + 16).toDp()           // 8dp start + 8dp end
                         }
                     )
                 }
@@ -686,7 +762,7 @@ fun RouteTrackerScreen(
                                         TextStyle(fontSize = 14.sp)
                                     ).size.width
                             } ?: 0
-                            with(densitySavedRoutes) { (longestPx + 16).toDp() } // 8 dp + 8 dp padding
+                            with(densitySavedRoutes) { (longestPx + 16).toDp() } // 8dp + 8dp padding
                         }
                     }
                 }
@@ -891,6 +967,120 @@ private fun ScrollThumb(
                 .height(metrics.thumbHeight)
                 .clip(RoundedCornerShape(percent = 50))
                 .background(thumbColor)
+        )
+    }
+}
+
+@Composable
+fun TileMap(
+    centerLat: Double,
+    centerLon: Double,
+    zoom: Int,
+    zoomLevel: Float,
+    offsetX: Float,
+    offsetY: Float,
+    tileRoot: File,
+    modifier: Modifier = Modifier
+) {
+    Canvas(modifier = modifier) {
+        val canvasW = size.width
+        val canvasH = size.height
+
+        // 256px tiles @2x → 512
+        val tileSize = 512f
+
+        // 1) Project lat/lon → world‑pixel at this zoom:
+        val worldSize = tileSize * (1 shl zoom)
+        fun project(lat: Double, lon: Double): Pair<Double,Double> {
+            val x = (lon + 180.0) / 360.0 * worldSize
+            val siny = sin(lat * PI/180.0).coerceIn(-0.9999, 0.9999)
+            val y = (0.5 - ln((1 + siny)/(1 - siny)) / (4*PI)) * worldSize
+            return x to y
+        }
+        val (centerX, centerY) = project(centerLat, centerLon)
+
+        // 2) Compute on‑screen center:
+        val screenCenterX = canvasW/2f + offsetX
+        val screenCenterY = canvasH/2f + offsetY
+
+        // 3) Figure which world‑pixels are visible:
+        val halfW = (canvasW/zoomLevel)/2.0
+        val halfH = (canvasH/zoomLevel)/2.0
+        val minWX = centerX - halfW
+        val maxWX = centerX + halfW
+        val minWY = centerY - halfH
+        val maxWY = centerY + halfH
+
+        // 4) Convert those to tile index extents:
+        val minTileX = floor(minWX / tileSize).toInt().coerceAtLeast(0)
+        val maxTileX = floor(maxWX / tileSize).toInt().coerceAtMost((1 shl zoom) - 1)
+        val minTileY = floor(minWY / tileSize).toInt().coerceAtLeast(0)
+        val maxTileY = floor(maxWY / tileSize).toInt().coerceAtMost((1 shl zoom) - 1)
+
+        // 5) Loop and draw
+        for (tx in minTileX .. maxTileX) {
+            for (ty in minTileY .. maxTileY) {
+                val file = File(tileRoot, "$tx-$ty.png")
+                if (!file.exists()) continue
+                val bmp = BitmapFactory.decodeFile(file.absolutePath) ?: continue
+                val img: ImageBitmap = bmp.asImageBitmap()
+
+                // world‑pixel coords of this tile’s top‑left
+                val worldTileX = tx * tileSize
+                val worldTileY = ty * tileSize
+
+                // map to screen
+                val screenX = ((worldTileX - centerX) * zoomLevel + screenCenterX)
+                val screenY = ((worldTileY - centerY) * zoomLevel + screenCenterY)
+
+                // destination size in pixels
+                val dstSize = IntSize(
+                    (tileSize * zoomLevel).toInt(),
+                    (tileSize * zoomLevel).toInt()
+                )
+
+                drawImage(
+                    image     = img,
+                    srcOffset = IntOffset.Zero,
+                    srcSize   = IntSize(img.width, img.height),
+                    dstOffset = IntOffset(screenX.toInt(), screenY.toInt()),
+                    dstSize   = dstSize
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun TileMapOrPlaceholder(
+    centerLat: Double,
+    centerLon: Double,
+    zoom: Int,
+    zoomLevel: Float,
+    offsetX: Float,
+    offsetY: Float
+) {
+    val context  = LocalContext.current
+    val tileRoot = File(context.filesDir, "tiles/$zoom")
+    val tilesReady = tileRoot.list()?.isNotEmpty() == true
+
+    if (tilesReady) {
+        TileMap(
+            centerLat = centerLat,
+            centerLon = centerLon,
+            zoom      = zoom,
+            zoomLevel = zoomLevel,
+            offsetX   = offsetX,
+            offsetY   = offsetY,
+            tileRoot  = tileRoot,
+            modifier  = Modifier.fillMaxSize()
+        )
+    } else {
+        Image(
+            painter          = painterResource(R.drawable.default_map_placeholder),
+            contentDescription = "Offline map placeholder",
+            modifier         = Modifier.fillMaxSize(),
+            contentScale     = ContentScale.Crop
         )
     }
 }
