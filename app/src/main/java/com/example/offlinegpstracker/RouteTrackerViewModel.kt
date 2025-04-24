@@ -54,6 +54,9 @@ class RouteTrackerViewModel(
     private val connectivityManager =
         application.getSystemService(android.net.ConnectivityManager::class.java)
 
+    private val _tilesVersion = MutableStateFlow(0)
+    val     tilesVersion: StateFlow<Int> get() = _tilesVersion
+
     private val activeRouteId = MutableStateFlow<Int?>(null)
 
     private val app = getApplication<Application>()
@@ -119,7 +122,7 @@ class RouteTrackerViewModel(
     }
 
     private fun resetDebugInfo() {
-        Log.d("RouteTracker","resetDebugInfo() called – clearing old stats")
+        Log.d("RouteTracker", "resetDebugInfo() called – clearing old stats")
         _debugInfoText.value = ""
     }
 
@@ -127,34 +130,61 @@ class RouteTrackerViewModel(
         _debugInfoText.value = info
     }
 
+    private suspend fun downloadTilesPyramid(
+        centerLat: Double,
+        centerLon: Double,
+        baseZoom: Int,         // e.g. 11
+        maxZoom: Int = baseZoom + 2,
+        tileRadius: Int = 2    // constant radius, no shifting
+    ) = withContext(Dispatchers.IO) {
+        for (z in baseZoom..maxZoom) {
+            // quick‐check: if we already have a full 5×5 block, skip
+            val cacheDir = File(app.filesDir, "tiles/$z")
+            val needed = (2 * tileRadius + 1).let { it * it }
+            if (cacheDir.exists() && (cacheDir.list()?.size ?: 0) >= needed) {
+                Log.i("RouteTracker", "Zoom $z already has $needed tiles; skipping")
+                continue
+            }
+
+            // otherwise download the constant-radius block
+            downloadTiles(centerLat, centerLon, z, tileRadius)
+        }
+
+        // once all done, bump tilesVersion to force a recompose
+        withContext(Dispatchers.Main) { _tilesVersion.value++ }
+    }
+
     private suspend fun downloadTiles(
-        centerLat : Double,
-        centerLon : Double,
-        zoom      : Int,
+        centerLat: Double,
+        centerLon: Double,
+        zoom: Int,
         tileRadius: Int
     ) = withContext(Dispatchers.IO) {
 
-        val token     = "pk.eyJ1IjoibWNtZWlzdGVyIiwiYSI6ImNtOGF3d3YzdjBtcjUyaW9yNmFidndlbWsifQ.nlbq1LxHYM1jBBZUcXM0zw"
-        val tileSize  = 512
-        val z         = 1 shl zoom
-        val sinLat    = sin(centerLat * PI/180).coerceIn(-.9999,.9999)
-        val cx        = ((centerLon+180)/360*z).toInt()
-        val cy        = ((0.5 - ln((1+sinLat)/(1-sinLat))/(4*PI))*z).toInt()
+        val token =
+            "pk.eyJ1IjoibWNtZWlzdGVyIiwiYSI6ImNtOGF3d3YzdjBtcjUyaW9yNmFidndlbWsifQ.nlbq1LxHYM1jBBZUcXM0zw"
+        val tileSize = 512
+        val z = 1 shl zoom
+        val sinLat = sin(centerLat * PI / 180).coerceIn(-.9999, .9999)
+        val cx = ((centerLon + 180) / 360 * z).toInt()
+        val cy = ((0.5 - ln((1 + sinLat) / (1 - sinLat)) / (4 * PI)) * z).toInt()
 
         val client = OkHttpClient.Builder()
             .connectTimeout(15, java.util.concurrent.TimeUnit.SECONDS)
-            .readTimeout   (15, java.util.concurrent.TimeUnit.SECONDS)
+            .readTimeout(15, java.util.concurrent.TimeUnit.SECONDS)
             .build()
 
         val cacheDir = File(app.filesDir, "tiles/$zoom")
         var downloaded = 0
-        var skipped    = 0
+        var skipped = 0
 
         for (dx in -tileRadius..tileRadius) for (dy in -tileRadius..tileRadius) {
-            val x = (cx+dx).coerceIn(0, z-1)
-            val y = (cy+dy).coerceIn(0, z-1)
+            val x = (cx + dx).coerceIn(0, z - 1)
+            val y = (cy + dy).coerceIn(0, z - 1)
             val tileFile = File(cacheDir, "$x-$y.png")
-            if (tileFile.exists()) { skipped++; continue }
+            if (tileFile.exists()) {
+                skipped++; continue
+            }
 
             val url = "https://api.mapbox.com/styles/v1/" +
                     "mapbox/streets-v11/tiles/$tileSize/$zoom/$x/$y@2x?access_token=$token"
@@ -168,40 +198,46 @@ class RouteTrackerViewModel(
                         }
                         downloaded++
                     } else {
-                        Log.e("RouteTracker","[$zoom/$x/$y] HTTP ${resp.code}")
+                        Log.e("RouteTracker", "[$zoom/$x/$y] HTTP ${resp.code}")
                     }
                 }
             }.onFailure { e ->
-                Log.e("RouteTracker","Tile download failed $zoom/$x/$y (${e.javaClass.simpleName})")
+                Log.e(
+                    "RouteTracker",
+                    "Tile download failed $zoom/$x/$y (${e.javaClass.simpleName})"
+                )
             }
         }
 
-        Log.i("RouteTracker",
-            "Tiles for z=$zoom  downloaded=$downloaded  skipped(existed)=$skipped")
+        Log.i(
+            "RouteTracker",
+            "Tiles for z=$zoom  downloaded=$downloaded  skipped(existed)=$skipped"
+        )
     }
 
     @RequiresApi(Build.VERSION_CODES.O)
     fun startRecording() = viewModelScope.launch {
         resetDebugInfo()
         _selectedRoute.value = null
+        _routePoints.value    = emptyList()
 
-        // Clear old points NOW – the collector will refill when activeRouteId changes
-        _routePoints.value   = emptyList()
+        val loc = locationViewModel.locationFlow.value
+            ?: return@launch
 
-        val loc = locationViewModel.locationFlow.value ?: return@launch
-        val zoom       = 11
-        val tileRadius = 2
-
-        if (isInternetAvailable())
-            downloadTiles(loc.latitude, loc.longitude, zoom, tileRadius)
+        // Fetch a small pyramid in the background
+        if (isInternetAvailable()) {
+            viewModelScope.launch(Dispatchers.IO) {
+                downloadTilesPyramid(loc.latitude, loc.longitude, baseZoom = 11)
+            }
+        }
 
         val id = routeRepository.insertRoute(
             Route(
                 startTime    = System.currentTimeMillis(),
-                snapshotPath = null,          // <-  IMPORTANT: no bogus path
+                snapshotPath = null,
                 centerLat    = loc.latitude,
                 centerLon    = loc.longitude,
-                zoom         = zoom,
+                zoom         = 11,    // your base zoom
                 width        = 640,
                 height       = 640
             )
@@ -213,7 +249,8 @@ class RouteTrackerViewModel(
         _isPaused.value       = false
 
         app.startForegroundService(
-            Intent(app, RouteRecordingService::class.java).putExtra("routeId", id)
+            Intent(app, RouteRecordingService::class.java)
+                .putExtra("routeId", id)
         )
     }
 
@@ -235,7 +272,9 @@ class RouteTrackerViewModel(
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
             _currentRouteId.value?.let { id ->
                 viewModelScope.launch {
-                    routeRepository.getRoute(id)?.let { tryDownloadTilesForRoute(it) }
+                    routeRepository.getRoute(id)?.let {
+                        downloadTilesPyramid(it.centerLat, it.centerLon, it.zoom)
+                    }
                 }
             }
         }
@@ -247,7 +286,7 @@ class RouteTrackerViewModel(
             val route = _selectedRoute.value
             if (route != null) {
                 _currentRouteId.value = route.id
-                activeRouteId.value   = route.id
+                activeRouteId.value = route.id
                 _isRecording.value = true
                 _isPaused.value = false
                 Intent(app, RouteRecordingService::class.java).apply {
@@ -274,20 +313,21 @@ class RouteTrackerViewModel(
         viewModelScope.launch {
             _currentRouteId.value?.let { id ->
 
-                val pts   = routePoints.value
-                var route = routeRepository.getRoute(id)   // current copy – may not have endTime yet
+                val pts = routePoints.value
+                var route =
+                    routeRepository.getRoute(id)   // current copy – may not have endTime yet
 
                 /* ── 1️⃣  bookkeeping ─────────────────────────── */
                 if (route != null && pts.size >= 2) {
-                    val start    = pts.first().timestamp
-                    val end      = pts.last().timestamp
-                    val hours    = (end - start) / 3_600_000.0
-                    val km       = calculateDistance(pts) / 1000.0
+                    val start = pts.first().timestamp
+                    val end = pts.last().timestamp
+                    val hours = (end - start) / 3_600_000.0
+                    val km = calculateDistance(pts) / 1000.0
                     val avgSpeed = if (hours > 0) km / hours else 0.0
 
                     routeRepository.routeDao.updateRouteWithSpeed(
-                        routeId      = id,
-                        endTime      = end,
+                        routeId = id,
+                        endTime = end,
                         snapshotPath = route.snapshotPath,   // keep whatever you stored earlier
                         averageSpeed = avgSpeed
                     )
@@ -297,7 +337,8 @@ class RouteTrackerViewModel(
                 }
 
                 /* ── 2️⃣  refresh + tile download ───────────────── */
-                route = routeRepository.getRoute(id)        // fetch fresh copy (has endTime/speed now)
+                route =
+                    routeRepository.getRoute(id)        // fetch fresh copy (has endTime/speed now)
 
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
                     route?.let { tryDownloadTilesForRoute(it) }
@@ -306,13 +347,13 @@ class RouteTrackerViewModel(
                 /* ── 3️⃣  switch UI into “saved-route preview” ─── */
                 if (route != null) {
                     _selectedRoute.value = route        // saved-route branch will render this
-                    activeRouteId.value  = id           // keeps points flow alive
+                    activeRouteId.value = id           // keeps points flow alive
                 }
             }
 
             /* ── 4️⃣  recording state flags ───────────────────── */
-            _isRecording.value  = false
-            _isPaused.value     = false
+            _isRecording.value = false
+            _isPaused.value = false
             _currentRouteId.value = null               // no active recording anymore
         }
     }
@@ -335,7 +376,13 @@ class RouteTrackerViewModel(
     fun tryDownloadTilesForRoute(route: Route, tileRadius: Int = 2) {
         if (!isInternetAvailable()) return
         viewModelScope.launch(Dispatchers.IO) {
-            downloadTiles(route.centerLat, route.centerLon, route.zoom, tileRadius)
+            downloadTilesPyramid(
+                route.centerLat,
+                route.centerLon,
+                route.zoom,
+                maxZoom = 15,
+                tileRadius = tileRadius
+            )
         }
     }
 
@@ -352,5 +399,4 @@ class RouteTrackerViewModel(
         val capabilities = connectivityManager.getNetworkCapabilities(network) ?: return false
         return capabilities.hasCapability(android.net.NetworkCapabilities.NET_CAPABILITY_INTERNET)
     }
-
 }
