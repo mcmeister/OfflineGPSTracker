@@ -5,6 +5,7 @@ import android.graphics.BitmapFactory
 import android.os.Build
 import androidx.annotation.RequiresApi
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.Crossfade
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -85,6 +86,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.FlowPreview
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -282,46 +284,15 @@ fun RouteTrackerScreen(
                                 ) {
                                     /* map tiles  (or placeholder) */
                                     TileMapOrPlaceholder(
-                                        centerLat = r.centerLat,
-                                        centerLon = r.centerLon,
-                                        baseZoom = r.zoom,
+                                        centerLat = route!!.centerLat,
+                                        centerLon = route!!.centerLon,
+                                        baseZoom = route!!.zoom,
                                         zoomLevel = zoomLevel.floatValue,
                                         offsetX = offsetX,
                                         offsetY = offsetY,
-                                        tilesVersion = tilesVersion
+                                        tilesVersion = tilesVersion,
+                                        routePoints = routePoints
                                     )
-
-                                    /* red polyline */
-                                    Canvas(Modifier.fillMaxSize()) {
-                                        // 1) pull in everything you need:
-                                        val canvasW  = size.width
-                                        val canvasH  = size.height
-                                        val tileSize = 512f
-                                        val worldSize = tileSize * (1 shl r.zoom)
-
-                                        // same projection you use in TileMap:
-                                        fun project(lat: Double, lon: Double): Pair<Double,Double> {
-                                            val x = (lon + 180.0) / 360.0 * worldSize
-                                            val siny = sin(lat * PI/180.0).coerceIn(-0.9999, 0.9999)
-                                            val y = (0.5 - ln((1 + siny)/(1 - siny)) / (4*PI)) * worldSize
-                                            return x to y
-                                        }
-                                        val (centerX, centerY) = project(r.centerLat, r.centerLon)
-
-                                        // build your path in *world* coords → *screen* coords
-                                        val path = Path().apply {
-                                            routePoints.forEachIndexed { i, pt ->
-                                                val (px, py) = project(pt.latitude, pt.longitude)
-                                                val zl = zoomLevel.floatValue
-                                                val screenX = ((px - centerX).toFloat() * zl + canvasW/2 + offsetX)
-                                                val screenY = ((py - centerY).toFloat() * zl + canvasH/2 + offsetY)
-                                                if (i == 0) moveTo(screenX, screenY) else lineTo(screenX, screenY)
-                                            }
-                                        }
-
-                                        // finally draw it with the same stroke you already compute
-                                        drawPath(path, color = Color.Red, style = Stroke(width = strokeWidthPx))
-                                    }
                                 }
 
                                 LaunchedEffect(routePoints, zoomLevel.floatValue, isPaused) {
@@ -564,49 +535,9 @@ fun RouteTrackerScreen(
                                     zoomLevel = zoomLevel.floatValue,
                                     offsetX = offsetX,
                                     offsetY = offsetY,
-                                    tilesVersion = tilesVersion
+                                    tilesVersion = tilesVersion,
+                                    routePoints = routePoints
                                 )
-
-                                Canvas(modifier = Modifier.fillMaxSize()) {
-                                    val canvasW  = size.width
-                                    val canvasH  = size.height
-                                    val tileSize = 512f
-                                    // world‐pixel width at this zoom folder:
-                                    val worldSize = tileSize * (1 shl route.zoom)
-
-                                    // exactly the same projection as in TileMap:
-                                    fun project(lat: Double, lon: Double): Pair<Double, Double> {
-                                        val x = (lon + 180.0) / 360.0 * worldSize
-                                        val siny = sin(lat * PI / 180.0).coerceIn(-0.9999, 0.9999)
-                                        val y = (0.5 - ln((1 + siny) / (1 - siny)) / (4 * PI)) * worldSize
-                                        return x to y
-                                    }
-
-                                    // world-pixel center of the map:
-                                    val (centerX, centerY) = project(route.centerLat, route.centerLon)
-
-                                    // build the path in **world-pixels translated to screen-pixels**
-                                    val path = Path()
-                                    routePoints.forEachIndexed { i, pt ->
-                                        val (px, py) = project(pt.latitude, pt.longitude)
-                                        // delta from center in world-pixels:
-                                        val dx = px - centerX
-                                        val dy = py - centerY
-                                        // now map into the Canvas; because the entire Canvas is already
-                                        // under the same graphicsLayer(scale+translate), we do:
-                                        val screenX = canvasW/2 + dx.toFloat()
-                                        val screenY = canvasH/2 + dy.toFloat()
-
-                                        if (i == 0) path.moveTo(screenX, screenY)
-                                        else        path.lineTo(screenX, screenY)
-                                    }
-
-                                    drawPath(
-                                        path,
-                                        color = Color.Red,
-                                        style = Stroke(width = strokeWidthPx)
-                                    )
-                                }
                             }
 
                             /* ─────────── overlay: inline‑chip info block ──────────────── */
@@ -1156,13 +1087,24 @@ private fun TileMapOrPlaceholder(
     zoomLevel: Float,
     offsetX: Float,
     offsetY: Float,
-    tilesVersion: Int
+    tilesVersion: Int,
+    routePoints: List<RoutePoint> // Use existing RoutePoint
 ) {
     key(tilesVersion) {
         val context = LocalContext.current
 
-        // pick the right zoom folder
-        val wantedZoom = (baseZoom + log2(zoomLevel).roundToInt())
+        // State to track the current and previous tile configuration
+        var tileConfig by remember { mutableStateOf<TileConfig?>(null) }
+        val previousTileConfig = remember { mutableStateOf<TileConfig?>(null) }
+
+        // Debounced zoom level to reduce rapid updates
+        val debouncedZoomLevel by produceState(initialValue = zoomLevel, zoomLevel) {
+            delay(100) // Debounce by 100ms
+            value = zoomLevel
+        }
+
+        // Pick the right zoom folder
+        val wantedZoom = (baseZoom + log2(debouncedZoomLevel).roundToInt())
             .coerceIn(baseZoom, 22)
         var z = wantedZoom
         var tileRoot: File? = null
@@ -1175,30 +1117,128 @@ private fun TileMapOrPlaceholder(
             z--
         }
 
-        if (tileRoot != null) {
-            // adjust your scale & offsets into that folder
-            val scaleFactor = zoomLevel / 2f.pow(z - baseZoom)
-            val adjOffsetX  = offsetX * scaleFactor / zoomLevel
-            val adjOffsetY  = offsetY * scaleFactor / zoomLevel
+        // Update tile configuration
+        LaunchedEffect(tileRoot, z, debouncedZoomLevel, offsetX, offsetY) {
+            if (tileRoot != null) {
+                println("Loading tiles for zoom=$z, tileRoot=$tileRoot")
+                previousTileConfig.value = tileConfig
+                tileConfig = TileConfig(
+                    tileRoot = tileRoot,
+                    zoom = z,
+                    zoomLevel = debouncedZoomLevel / 2f.pow(z - baseZoom),
+                    offsetX = offsetX * (debouncedZoomLevel / 2f.pow(z - baseZoom)) / debouncedZoomLevel,
+                    offsetY = offsetY * (debouncedZoomLevel / 2f.pow(z - baseZoom)) / debouncedZoomLevel
+                )
+            } else {
+                println("No tileRoot found, falling back to placeholder")
+                tileConfig = null
+            }
+        }
 
-            TileMap(
-                centerLat = centerLat,
-                centerLon = centerLon,
-                zoom      = z,
-                zoomLevel = scaleFactor,
-                offsetX   = adjOffsetX,
-                offsetY   = adjOffsetY,
-                tileRoot  = tileRoot,
-                modifier  = Modifier.fillMaxSize()
-            )
-        } else {
-            // placeholder
-            Image(
-                painter            = painterResource(R.drawable.default_map_placeholder),
-                contentDescription = null,
-                modifier           = Modifier.fillMaxSize(),
-                contentScale       = ContentScale.Crop
-            )
+        // Box with synchronized map and polyline
+        Box(
+            modifier = Modifier
+                .graphicsLayer(
+                    scaleX = debouncedZoomLevel,
+                    scaleY = debouncedZoomLevel,
+                    translationX = offsetX,
+                    translationY = offsetY
+                )
+                .fillMaxSize()
+        ) {
+            // Render map
+            Crossfade(
+                targetState = tileConfig,
+                animationSpec = tween(durationMillis = 200),
+                modifier = Modifier.fillMaxSize(), label = "Crossfade Tiles"
+            ) { currentConfig ->
+                if (currentConfig != null) {
+                    TileMap(
+                        centerLat = centerLat,
+                        centerLon = centerLon,
+                        zoom = currentConfig.zoom,
+                        zoomLevel = currentConfig.zoomLevel,
+                        offsetX = currentConfig.offsetX,
+                        offsetY = currentConfig.offsetY,
+                        tileRoot = currentConfig.tileRoot,
+                        modifier = Modifier.fillMaxSize()
+                    )
+                } else {
+                    if (previousTileConfig.value != null) {
+                        TileMap(
+                            centerLat = centerLat,
+                            centerLon = centerLon,
+                            zoom = previousTileConfig.value!!.zoom,
+                            zoomLevel = previousTileConfig.value!!.zoomLevel,
+                            offsetX = previousTileConfig.value!!.offsetX,
+                            offsetY = previousTileConfig.value!!.offsetY,
+                            tileRoot = previousTileConfig.value!!.tileRoot,
+                            modifier = Modifier.fillMaxSize()
+                        )
+                    } else {
+                        Image(
+                            painter = painterResource(R.drawable.default_map_placeholder),
+                            contentDescription = null,
+                            modifier = Modifier.fillMaxSize(),
+                            contentScale = ContentScale.Crop
+                        )
+                    }
+                }
+            }
+
+            // Draw polyline synchronized with TileMap
+            Canvas(modifier = Modifier.fillMaxSize()) {
+                val canvasW = size.width
+                val canvasH = size.height
+                val tileSize = 512f
+                // Use the same zoom and zoomLevel as TileMap
+                val effectiveZoom = tileConfig?.zoom ?: previousTileConfig.value?.zoom ?: baseZoom
+                val effectiveZoomLevel = tileConfig?.zoomLevel ?: previousTileConfig.value?.zoomLevel ?: 1f
+                val effectiveOffsetX = tileConfig?.offsetX ?: previousTileConfig.value?.offsetX ?: 0f
+                val effectiveOffsetY = tileConfig?.offsetY ?: previousTileConfig.value?.offsetY ?: 0f
+                val worldSize = tileSize * (1 shl effectiveZoom).toFloat()
+
+                // Projection function matching TileMap
+                fun project(lat: Double, lon: Double): Pair<Float, Float> {
+                    val x = ((lon + 180.0) / 360.0 * worldSize).toFloat()
+                    val siny = sin(lat * PI / 180.0).coerceIn(-0.9999, 0.9999)
+                    val y = ((0.5 - ln((1 + siny) / (1 - siny)) / (4 * PI)) * worldSize).toFloat()
+                    return x to y
+                }
+
+                // Project the map's center
+                val (centerX, centerY) = project(centerLat, centerLon)
+
+                // Build the path
+                val path = Path()
+                routePoints.forEachIndexed { i, pt ->
+                    val (px, py) = project(pt.latitude, pt.longitude)
+                    // Delta from center in world-pixels, scaled by effectiveZoomLevel
+                    val dx = (px - centerX) * effectiveZoomLevel + effectiveOffsetX
+                    val dy = (py - centerY) * effectiveZoomLevel + effectiveOffsetY
+                    // Map to screen coordinates
+                    val screenX = canvasW / 2 + dx
+                    val screenY = canvasH / 2 + dy
+
+                    if (i == 0) path.moveTo(screenX, screenY)
+                    else path.lineTo(screenX, screenY)
+                }
+
+                drawPath(
+                    path,
+                    color = Color.Red,
+                    style = Stroke(width = 4f / effectiveZoomLevel.coerceAtLeast(1f)) // Scale stroke width
+                )
+            }
         }
     }
 }
+
+// Data class for tile configuration
+private data class TileConfig(
+    val tileRoot: File,
+    val zoom: Int,
+    val zoomLevel: Float,
+    val offsetX: Float,
+    val offsetY: Float
+)
