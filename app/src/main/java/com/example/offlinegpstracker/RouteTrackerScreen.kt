@@ -1088,7 +1088,7 @@ private fun TileMapOrPlaceholder(
     offsetX: Float,
     offsetY: Float,
     tilesVersion: Int,
-    routePoints: List<RoutePoint> // Use existing RoutePoint
+    routePoints: List<RoutePoint>
 ) {
     key(tilesVersion) {
         val context = LocalContext.current
@@ -1227,7 +1227,7 @@ private fun TileMapOrPlaceholder(
                 drawPath(
                     path,
                     color = Color.Red,
-                    style = Stroke(width = 4f / effectiveZoomLevel.coerceAtLeast(1f)) // Scale stroke width
+                    style = Stroke(width = 1.5f / effectiveZoomLevel.coerceAtLeast(1f).coerceAtMost(2f))
                 )
             }
         }
