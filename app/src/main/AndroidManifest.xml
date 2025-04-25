@@ -27,12 +27,14 @@
     <application
         android:name=".MyApplication"
         android:allowBackup="true"
+        android:enableOnBackInvokedCallback="true"
         android:icon="@mipmap/ic_launcher"
         android:label="Amazon Jungle"
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
         android:theme="@style/Theme.AmazonJungle"
-        tools:ignore="ForegroundServicePermission">
+        tools:ignore="ForegroundServicePermission"
+        tools:targetApi="tiramisu">
 
         <!-- SplashActivity is the launcher activity -->
         <activity
