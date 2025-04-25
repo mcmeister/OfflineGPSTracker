@@ -1227,7 +1227,7 @@ private fun TileMapOrPlaceholder(
                 drawPath(
                     path,
                     color = Color.Red,
-                    style = Stroke(width = 1.5f / effectiveZoomLevel.coerceAtLeast(1f).coerceAtMost(2f))
+                    style = Stroke(width = (1.0f / (effectiveZoomLevel * 1.5f)).coerceAtLeast(0.5f).coerceAtMost(1.5f))
                 )
             }
         }
