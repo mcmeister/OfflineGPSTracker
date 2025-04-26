@@ -1,8 +1,10 @@
 package com.example.offlinegpstracker
 
 import android.annotation.SuppressLint
+import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.os.Build
+import android.util.Log
 import androidx.annotation.RequiresApi
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.Crossfade
@@ -71,7 +73,6 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
@@ -91,20 +92,14 @@ import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.withContext
 import java.io.File
 import kotlin.math.PI
+import kotlin.math.cos
 import kotlin.math.floor
 import kotlin.math.ln
 import kotlin.math.log2
 import kotlin.math.pow
 import kotlin.math.roundToInt
 import kotlin.math.sin
-
-/** 64 most-recent tiles ≈ 16 MB with 512×512 @ARGB_8888 */
-val tileCache: MutableMap<String, ImageBitmap> =
-    object : LinkedHashMap<String, ImageBitmap>(256, .75f, true) {
-        override fun removeEldestEntry(
-            eldest: MutableMap.MutableEntry<String, ImageBitmap>
-        ): Boolean = size > 64
-    }
+import kotlin.math.tan
 
 @OptIn(FlowPreview::class)
 @RequiresApi(Build.VERSION_CODES.O)
@@ -127,12 +122,9 @@ fun RouteTrackerScreen(
     // Global zoom states
     val originalZoom = remember { mutableFloatStateOf(1f) }
     val zoomLevel = remember { mutableFloatStateOf(1f) }
-    // debounce to ~60 fps so the GPU can keep up
-    val displayZoom by produceState(initialValue = zoomLevel.floatValue) {
-        snapshotFlow { zoomLevel.floatValue }
-            .debounce(16)                 // ∼60 Hz max
-            .collect { value = it }
-    }
+    val minZoom = 0.5f
+    val maxZoom = 20f
+
     val autoZoomApplied = remember { mutableStateOf(false) }
     val lastInteractionTime = remember { mutableLongStateOf(System.currentTimeMillis()) }
     val density = LocalDensity.current
@@ -213,6 +205,7 @@ fun RouteTrackerScreen(
                         var offsetX by remember { mutableFloatStateOf(0f) }
                         var offsetY by remember { mutableFloatStateOf(0f) }
 
+
                         // ★ Visibility state for debug info
                         var showInfo by remember { mutableStateOf(true) }
                         var ignoreAutoShow by remember { mutableStateOf(false) }
@@ -220,7 +213,7 @@ fun RouteTrackerScreen(
                         // ★ Re-show 500ms after lastInteractionTime stops changing
                         LaunchedEffect(Unit) {
                             snapshotFlow { lastInteractionTime.longValue }
-                                .debounce(1500L)
+                                .debounce(500L)
                                 .collect {
                                     if (!ignoreAutoShow) showInfo = true
                                 }
@@ -239,55 +232,98 @@ fun RouteTrackerScreen(
                                     .aspectRatio(aspectRatio)
                                     .clipToBounds()
                                     .align(Alignment.Center)
-                                    // ─ pinch-zoom + pan ─
+
+                                    // ── SINGLE‐ & DOUBLE‐TAP ─────────────────────────────────────────────
                                     .pointerInput(Unit) {
-                                        detectTransformGestures { _, pan, zoomChange, _ ->
-                                            // any new map gesture should re-enable auto-show
-                                            ignoreAutoShow = false
+                                        detectTapGestures(
+                                            onTap = {
+                                                // toggles info
+                                                val willBeVisible = !showInfo
+                                                showInfo = willBeVisible
+                                                // if we just hid, suppress auto-re-show; if we just showed, allow it
+                                                ignoreAutoShow = !willBeVisible
+                                                lastInteractionTime.longValue = System.currentTimeMillis()
+                                            },
+                                            onDoubleTap = {
+                                                // 1) suppress info block
+                                                ignoreAutoShow = true
+                                                lastInteractionTime.longValue =
+                                                    System.currentTimeMillis()
 
-                                            zoomLevel.floatValue =
-                                                (zoomLevel.floatValue * zoomChange)
-                                                    .coerceIn(0.5f * originalZoom.floatValue, 20f)
+                                                // 2) recenter the map
+                                                offsetX = 0f
+                                                offsetY = 0f
 
-                                            lastInteractionTime.longValue =
-                                                System.currentTimeMillis()
-                                            offsetX += pan.x
-                                            offsetY += pan.y
-
-                                            if (showInfo) showInfo = false
-                                        }
+                                                // 3) cycle through your zoom levels
+                                                val base = originalZoom.floatValue
+                                                zoomLevel.floatValue = when {
+                                                    zoomLevel.floatValue < base * 1.5f -> base * 1.5f
+                                                    zoomLevel.floatValue < base * 3.0f -> base * 3.0f
+                                                    zoomLevel.floatValue < base * 6.0f -> base * 6.0f
+                                                    else -> base
+                                                }
+                                            }
+                                        )
                                     }
-                                    // ─ double-tap ─
+
+                                    // ── PINCH-ZOOM & PAN ───────────────────────────────────────────────────
                                     .pointerInput(Unit) {
-                                        detectTapGestures(onDoubleTap = {
-                                            // re-enable auto-show and show immediately
-                                            ignoreAutoShow = false
-                                            zoomLevel.floatValue = 1f
-                                            offsetX = 0f
-                                            offsetY = 0f
+                                        detectTransformGestures { centroid, pan, zoomChange, _ ->
+                                            // 1) Compute new zoom with non-linear scaling for smoother feel
+                                            val oldZoom = zoomLevel.floatValue
+                                            val zoomSensitivity =
+                                                0.6f // Lower sensitivity for smoother zoom
+                                            val newZoom =
+                                                (oldZoom * (1f + (zoomChange - 1f) * zoomSensitivity))
+                                                    .coerceIn(minZoom, maxZoom)
+                                            val zoomDelta = newZoom - oldZoom
+
+                                            // 2) Hide info if visible
+                                            if (showInfo) showInfo = false
+
+                                            // 3) Record interaction
                                             lastInteractionTime.longValue =
                                                 System.currentTimeMillis()
-                                            showInfo = true
-                                        })
+
+                                            // 4) Pan with damping
+                                            val panSensitivity =
+                                                0.5f // Reduce pan speed for precision
+                                            val panX = pan.x * panSensitivity
+                                            val panY = pan.y * panSensitivity
+
+                                            // 5) Calculate map bounds to constrain panning
+                                            val mapWidth = r.width * zoomLevel.floatValue
+                                            val mapHeight = r.height * zoomLevel.floatValue
+                                            val maxOffsetX = mapWidth * 0.5f
+                                            val maxOffsetY = mapHeight * 0.5f
+
+                                            // Apply panning with bounds
+                                            offsetX =
+                                                (offsetX + panX).coerceIn(-maxOffsetX, maxOffsetX)
+                                            offsetY =
+                                                (offsetY + panY).coerceIn(-maxOffsetY, maxOffsetY)
+
+                                            // 6) Adjust offset to keep centroid stable during zoom
+                                            val centroidXRatio = centroid.x / size.width
+                                            val centroidYRatio = centroid.y / size.height
+                                            offsetX -= (centroidXRatio * size.width) * zoomDelta
+                                            offsetY -= (centroidYRatio * size.height) * zoomDelta
+
+                                            // 7) Apply zoom
+                                            zoomLevel.floatValue = newZoom
+                                        }
                                     }
                             ) {
                                 /* ── apply scale + translation ───────── */
                                 Box(
                                     modifier = Modifier
-                                        .graphicsLayer(
-                                            scaleX = displayZoom,
-                                            scaleY = displayZoom,
-                                            translationX = offsetX,
-                                            translationY = offsetY
-                                        )
                                         .fillMaxSize()
                                 ) {
-                                    /* map tiles  (or placeholder) */
                                     TileMapOrPlaceholder(
                                         centerLat = route!!.centerLat,
                                         centerLon = route!!.centerLon,
                                         baseZoom = route!!.zoom,
-                                        zoomLevel = zoomLevel.floatValue,
+                                        zoomLevel = zoomLevel.floatValue, // Use zoomLevel directly
                                         offsetX = offsetX,
                                         offsetY = offsetY,
                                         tilesVersion = tilesVersion,
@@ -345,12 +381,6 @@ fun RouteTrackerScreen(
                                 val pillBackground = Color.Black.copy(alpha = 0.60f)
                                 val chipModifier = Modifier
                                     .padding(vertical = 2.dp)
-                                    .clickable {
-                                        // hide and suppress auto-show until next map gesture
-                                        showInfo = false
-                                        ignoreAutoShow = true
-                                        lastInteractionTime.longValue = System.currentTimeMillis()
-                                    }
                                     .background(pillBackground, pillShape)
                                     .padding(horizontal = 6.dp, vertical = 4.dp)
 
@@ -450,8 +480,7 @@ fun RouteTrackerScreen(
                     // ─────────── new pan + zoom state ───────────
                     var offsetX by remember { mutableFloatStateOf(0f) }
                     var offsetY by remember { mutableFloatStateOf(0f) }
-                    val minZoom = 0.5f * originalZoom.floatValue
-                    val maxZoom = 20f
+
 
                     // ★ Visibility state
                     var showInfo by remember { mutableStateOf(true) }
@@ -460,7 +489,7 @@ fun RouteTrackerScreen(
                     // ★ Debounced re‑show 500ms after lastInteractionTime updates
                     LaunchedEffect(Unit) {
                         snapshotFlow { lastInteractionTime.longValue }
-                            .debounce(1500L)
+                            .debounce(500L)
                             .collect {
                                 if (!ignoreAutoShow) {
                                     showInfo = true
@@ -480,60 +509,97 @@ fun RouteTrackerScreen(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .aspectRatio(aspectRatio)
-                                .clipToBounds()   // mask anything that moves outside
+                                .clipToBounds()
                                 .align(Alignment.Center)
-                                .pointerInput(Unit) {
-                                    detectTransformGestures { _, pan, zoomChange, _ ->
-                                        // on *any* map gesture, clear the “ignore”-flag:
-                                        ignoreAutoShow = false
 
-                                        // 1) update zoom
-                                        zoomLevel.floatValue = (zoomLevel.floatValue * zoomChange)
-                                            .coerceIn(minZoom, maxZoom)
-
-                                        // 2) hide immediately
-                                        if (showInfo) showInfo = false
-
-                                        // 3) record map interaction time for debounce
-                                        lastInteractionTime.longValue = System.currentTimeMillis()
-
-                                        // 4) pan
-                                        offsetX += pan.x
-                                        offsetY += pan.y
-                                    }
-                                }
+                                // ── SINGLE‐ & DOUBLE‐TAP ─────────────────────────────────────────────
                                 .pointerInput(Unit) {
                                     detectTapGestures(
+                                        onTap = {
+                                            // toggles info
+                                            val willBeVisible = !showInfo
+                                            showInfo = willBeVisible
+                                            // if we just hid, suppress auto-re-show; if we just showed, allow it
+                                            ignoreAutoShow = !willBeVisible
+                                            lastInteractionTime.longValue = System.currentTimeMillis()
+                                        },
                                         onDoubleTap = {
-                                            // double-tap is also a map interaction
-                                            ignoreAutoShow = false
-                                            zoomLevel.floatValue = 1f
-                                            offsetX = 0f
-                                            offsetY = 0f
-                                            showInfo = true
+                                            // 1) suppress info block
+                                            ignoreAutoShow = true
                                             lastInteractionTime.longValue =
                                                 System.currentTimeMillis()
+
+                                            // 2) recenter the map
+                                            offsetX = 0f
+                                            offsetY = 0f
+
+                                            // 3) cycle through your zoom levels
+                                            val base = originalZoom.floatValue
+                                            zoomLevel.floatValue = when {
+                                                zoomLevel.floatValue < base * 1.5f -> base * 1.5f
+                                                zoomLevel.floatValue < base * 3.0f -> base * 3.0f
+                                                zoomLevel.floatValue < base * 6.0f -> base * 6.0f
+                                                else -> base
+                                            }
                                         }
                                     )
+                                }
+
+                                // ── PINCH-ZOOM & PAN ───────────────────────────────────────────────────
+                                .pointerInput(Unit) {
+                                    detectTransformGestures { centroid, pan, zoomChange, _ ->
+                                        // 1) Compute new zoom with non-linear scaling for smoother feel
+                                        val oldZoom = zoomLevel.floatValue
+                                        val zoomSensitivity =
+                                            0.6f // Lower sensitivity for smoother zoom
+                                        val newZoom =
+                                            (oldZoom * (1f + (zoomChange - 1f) * zoomSensitivity))
+                                                .coerceIn(minZoom, maxZoom)
+                                        val zoomDelta = newZoom - oldZoom
+
+                                        // 2) Hide info if visible
+                                        if (showInfo) showInfo = false
+
+                                        // 3) Record interaction
+                                        lastInteractionTime.longValue = System.currentTimeMillis()
+
+                                        // 4) Pan with damping
+                                        val panSensitivity = 0.5f // Reduce pan speed for precision
+                                        val panX = pan.x * panSensitivity
+                                        val panY = pan.y * panSensitivity
+
+                                        // 5) Calculate map bounds to constrain panning
+                                        val mapWidth = route.width * zoomLevel.floatValue
+                                        val mapHeight = route.height * zoomLevel.floatValue
+                                        val maxOffsetX = mapWidth * 0.5f
+                                        val maxOffsetY = mapHeight * 0.5f
+
+                                        // Apply panning with bounds
+                                        offsetX = (offsetX + panX).coerceIn(-maxOffsetX, maxOffsetX)
+                                        offsetY = (offsetY + panY).coerceIn(-maxOffsetY, maxOffsetY)
+
+                                        // 6) Adjust offset to keep centroid stable during zoom
+                                        val centroidXRatio = centroid.x / size.width
+                                        val centroidYRatio = centroid.y / size.height
+                                        offsetX -= (centroidXRatio * size.width) * zoomDelta
+                                        offsetY -= (centroidYRatio * size.height) * zoomDelta
+
+                                        // 7) Apply zoom
+                                        zoomLevel.floatValue = newZoom
+                                    }
                                 }
                         ) {
                             // ─────────── apply both scale & translation ───────────
                             Box(
                                 modifier = Modifier
-                                    .graphicsLayer(
-                                        scaleX = displayZoom,
-                                        scaleY = displayZoom,
-                                        translationX = offsetX,
-                                        translationY = offsetY
-                                    )
                                     .fillMaxSize()
                             ) {
                                 TileMapOrPlaceholder(
                                     centerLat = route.centerLat,
                                     centerLon = route.centerLon,
                                     baseZoom = route.zoom,
-                                    zoomLevel = zoomLevel.floatValue,
-                                    offsetX = offsetX,
+                                    zoomLevel = zoomLevel.floatValue,  // your live zoom state
+                                    offsetX = offsetX,              // your live pan state
                                     offsetY = offsetY,
                                     tilesVersion = tilesVersion,
                                     routePoints = routePoints
@@ -553,11 +619,6 @@ fun RouteTrackerScreen(
                                 Column(Modifier.fillMaxWidth()) {
                                     val chipModifier = Modifier
                                         .padding(vertical = 2.dp)
-                                        .clickable {
-                                            // hide due to chip tap, and suppress auto-show until next map gesture
-                                            showInfo = false
-                                            ignoreAutoShow = true
-                                        }
                                         .background(
                                             color = Color.Black.copy(alpha = 0.60f),
                                             shape = RoundedCornerShape(4.dp)
@@ -976,107 +1037,114 @@ private fun ScrollThumb(
 
 @Composable
 fun TileMap(
-    centerLat : Double,
-    centerLon : Double,
-    zoom      : Int,
-    zoomLevel : Float,      // 1 ≤ zoomLevel < 2
-    offsetX   : Float,
-    offsetY   : Float,
-    tileRoot  : File,
-    modifier  : Modifier = Modifier,
+    centerLat: Double,
+    centerLon: Double,
+    zoom: Int,
+    zoomLevel: Float, // 1 ≤ zoomLevel < 2
+    offsetX: Float,
+    offsetY: Float,
+    tileRoot: File,
+    modifier: Modifier = Modifier,
+    tileCache: MutableMap<String, Bitmap>
 ) {
     BoxWithConstraints(modifier) {
         val density = LocalDensity.current
-        // Convert our BoxWithConstraints to actual pixel size:
         val canvasW = with(density) { maxWidth.toPx() }
         val canvasH = with(density) { maxHeight.toPx() }
 
-        val tileSize  = 512f
+        val tileSize = 512f
         val worldSize = tileSize * (1 shl zoom)
 
-        // Simple Web-Mercator projection to world‐pixels:
-        fun project(lat: Double, lon: Double): Pair<Double,Double> {
+        // Web Mercator projection to world pixels
+        fun project(lat: Double, lon: Double): Pair<Double, Double> {
             val x = (lon + 180.0) / 360.0 * worldSize
-            val siny = sin(lat * PI/180).coerceIn(-0.9999, 0.9999)
-            val y = (0.5 - ln((1 + siny)/(1 - siny)) / (4*PI)) * worldSize
+            val siny = sin(lat * PI / 180).coerceIn(-0.9999, 0.9999)
+            val y = (0.5 - ln((1 + siny) / (1 - siny)) / (4 * PI)) * worldSize
             return x to y
         }
         val (centerX, centerY) = project(centerLat, centerLon)
 
-        // Compute world‐pixel bounds of the viewport:
+        // Compute viewport bounds in world pixels
         val halfW = (canvasW / zoomLevel) / 2f
         val halfH = (canvasH / zoomLevel) / 2f
-        val minWX = centerX - halfW
-        val maxWX = centerX + halfW
-        val minWY = centerY - halfH
-        val maxWY = centerY + halfH
+        val minWX = centerX - halfW + offsetX / zoomLevel
+        val maxWX = centerX + halfW + offsetX / zoomLevel
+        val minWY = centerY - halfH + offsetY / zoomLevel
+        val maxWY = centerY + halfH + offsetY / zoomLevel
 
-        // Convert to tile indices at this zoom folder:
+        // Convert to tile indices
         val minTileX = floor(minWX / tileSize).toInt().coerceAtLeast(0)
         val maxTileX = floor(maxWX / tileSize).toInt().coerceAtMost((1 shl zoom) - 1)
         val minTileY = floor(minWY / tileSize).toInt().coerceAtLeast(0)
         val maxTileY = floor(maxWY / tileSize).toInt().coerceAtMost((1 shl zoom) - 1)
 
-        // Flatten into a list of (tx,ty) pairs:
+        // Generate tile coordinates
         val coords = remember(minTileX, maxTileX, minTileY, maxTileY) {
             (minTileX..maxTileX).flatMap { tx ->
                 (minTileY..maxTileY).map { ty -> tx to ty }
             }
         }
 
-        // Off–UI-thread loading & caching of visible tiles:
-        val bitmaps by produceState(initialValue = emptyMap<String,ImageBitmap>(), coords, zoomLevel, tileRoot) {
+        // Load tiles off UI thread
+        val bitmaps by produceState(initialValue = emptyMap<String, ImageBitmap>(), coords, zoomLevel, tileRoot) {
             withContext(Dispatchers.IO) {
-                val loaded = mutableMapOf<String,ImageBitmap>()
+                val loaded = mutableMapOf<String, ImageBitmap>()
                 coords.forEach { (tx, ty) ->
-                    val key  = "$zoom/$tx/$ty"
+                    val key = "$zoom/$tx/$ty"
                     val file = File(tileRoot, "$tx-$ty.png")
-
-                    // 1) Check LRU cache
-                    val cached = synchronized(tileCache) { tileCache[key] }
-                    if (cached != null) {
-                        loaded[key] = cached
-                    }
-                    // 2) Otherwise decode from disk
-                    else if (file.exists()) {
+                    val cachedBitmap = synchronized(tileCache) { tileCache[key] }
+                    if (cachedBitmap != null) {
+                        loaded[key] = cachedBitmap.asImageBitmap()
+                    } else if (file.exists()) {
                         BitmapFactory.decodeFile(file.absolutePath)
-                            ?.asImageBitmap()
-                            ?.also { bmp ->
-                                synchronized(tileCache) { tileCache[key] = bmp }
-                            }
-                            ?.let { bmp ->
-                                loaded[key] = bmp
-                            }
+                            ?.also { bmp -> synchronized(tileCache) { tileCache[key] = bmp } }
+                            ?.let { bmp -> loaded[key] = bmp.asImageBitmap() }
                     }
                 }
                 value = loaded
             }
         }
 
-        // Now draw every loaded tile with bilinear filtering:
+        // Render tiles
         Canvas(modifier = Modifier.fillMaxSize()) {
             coords.forEach { (tx, ty) ->
                 val key = "$zoom/$tx/$ty"
                 val img = bitmaps[key] ?: return@forEach
 
-                // Compute where this tile sits in screen‐pixels:
                 val worldTileX = tx * tileSize
                 val worldTileY = ty * tileSize
-                val screenX = ((worldTileX - centerX) * zoomLevel + canvasW/2 + offsetX)
-                val screenY = ((worldTileY - centerY) * zoomLevel + canvasH/2 + offsetY)
-                val dst     = (tileSize * zoomLevel).roundToInt()
+                val screenX = ((worldTileX - centerX) * zoomLevel + canvasW / 2 + offsetX)
+                val screenY = ((worldTileY - centerY) * zoomLevel + canvasH / 2 + offsetY)
+                val dst = (tileSize * zoomLevel).roundToInt()
 
                 drawImage(
-                    image         = img,
-                    srcOffset     = IntOffset.Zero,
-                    srcSize       = IntSize(img.width, img.height),
-                    dstOffset     = IntOffset(screenX.toInt(), screenY.toInt()),
-                    dstSize       = IntSize(dst, dst),
+                    image = img,
+                    srcOffset = IntOffset.Zero,
+                    srcSize = IntSize(img.width, img.height),
+                    dstOffset = IntOffset(screenX.toInt(), screenY.toInt()),
+                    dstSize = IntSize(dst, dst),
                     filterQuality = FilterQuality.High
                 )
             }
         }
     }
+}
+
+private fun proj(lat: Double, lon: Double, zoom: Int): Pair<Float, Float> {
+    val world = 256f * (1 shl zoom) // Mapbox uses 256 pixels per tile in world space
+    val x = ((lon + 180) / 360 * world).toFloat()
+    val siny = sin(lat * PI / 180).coerceIn(-0.9999, 0.9999)
+    val y = ((0.5 - ln((1 + siny) / (1 - siny)) / (4 * PI)) * world).toFloat()
+    return x to y
+}
+
+fun tileXY(lat: Double, lon: Double, zoom: Int): Pair<Int, Int> {
+    val n = 1 shl zoom
+    val x = ((lon + 180) / 360 * n).toInt().coerceIn(0, n - 1)
+    val latRad = lat * PI / 180
+    val y = ((1 - ln(tan(latRad) + 1 / cos(latRad)) / PI) / 2 * n)
+        .toInt().coerceIn(0, n - 1)
+    return x to y
 }
 
 @Composable
@@ -1090,155 +1158,153 @@ private fun TileMapOrPlaceholder(
     tilesVersion: Int,
     routePoints: List<RoutePoint>
 ) {
+    // Fallback to a default location if centerLat/centerLon are invalid (e.g., 0.0, 0.0)
+    val validCenterLat = if (centerLat == 0.0 || centerLat.isNaN()) 37.7749 else centerLat // Default to San Francisco
+    val validCenterLon = if (centerLon == 0.0 || centerLon.isNaN()) -122.4194 else centerLon
+
+    Log.d("TileMapOrPlaceholder", "Center coordinates: lat=$validCenterLat, lon=$validCenterLon (original: lat=$centerLat, lon=$centerLon)")
+
     key(tilesVersion) {
         val context = LocalContext.current
 
-        // State to track the current and previous tile configuration
-        var tileConfig by remember { mutableStateOf<TileConfig?>(null) }
-        val previousTileConfig = remember { mutableStateOf<TileConfig?>(null) }
-
-        // Debounced zoom level to reduce rapid updates
-        val debouncedZoomLevel by produceState(initialValue = zoomLevel, zoomLevel) {
-            delay(100) // Debounce by 100ms
+        // 1) Debounce the zoom to decide when *folder* should switch
+        val debouncedZoom by produceState(initialValue = zoomLevel, zoomLevel) {
+            delay(100)
             value = zoomLevel
         }
 
-        // Pick the right zoom folder
-        val wantedZoom = (baseZoom + log2(debouncedZoomLevel).roundToInt())
-            .coerceIn(baseZoom, 22)
+        // 2) Pick which zoom folder actually has tiles
+        val wantedZoom = (baseZoom + log2(debouncedZoom).roundToInt()).coerceIn(baseZoom, 22)
+        Log.d("TileMapOrPlaceholder", "Wanted zoom: $wantedZoom, baseZoom: $baseZoom, debouncedZoom: $debouncedZoom")
         var z = wantedZoom
         var tileRoot: File? = null
         while (z >= baseZoom) {
-            val candidate = File(context.filesDir, "tiles/$z")
-            if (candidate.list()?.isNotEmpty() == true) {
-                tileRoot = candidate
-                break
+            val folder = File(context.filesDir, "tiles/$z")
+            if (folder.exists() && folder.isDirectory) {
+                val tileFiles = folder.listFiles()
+                if (!tileFiles.isNullOrEmpty()) {
+                    tileRoot = folder
+                    Log.d("TileMapOrPlaceholder", "Selected zoom level $z with ${tileFiles.size} tiles")
+                    break
+                } else {
+                    Log.d("TileMapOrPlaceholder", "Zoom level $z folder exists but contains no tiles")
+                }
+            } else {
+                Log.d("TileMapOrPlaceholder", "Zoom level $z folder does not exist")
             }
             z--
         }
+        if (tileRoot == null) {
+            Log.w("TileMapOrPlaceholder", "No tiles found for any zoom level from $wantedZoom down to $baseZoom")
+        }
 
-        // Update tile configuration
-        LaunchedEffect(tileRoot, z, debouncedZoomLevel, offsetX, offsetY) {
-            if (tileRoot != null) {
-                println("Loading tiles for zoom=$z, tileRoot=$tileRoot")
-                previousTileConfig.value = tileConfig
-                tileConfig = TileConfig(
-                    tileRoot = tileRoot,
-                    zoom = z,
-                    zoomLevel = debouncedZoomLevel / 2f.pow(z - baseZoom),
-                    offsetX = offsetX * (debouncedZoomLevel / 2f.pow(z - baseZoom)) / debouncedZoomLevel,
-                    offsetY = offsetY * (debouncedZoomLevel / 2f.pow(z - baseZoom)) / debouncedZoomLevel
-                )
-            } else {
-                println("No tileRoot found, falling back to placeholder")
-                tileConfig = null
+        // 3) Tile bitmap cache with LRU eviction
+        val tileCache = remember {
+            object : LinkedHashMap<String, Bitmap>(100, 0.75f, true) {
+                override fun removeEldestEntry(eldest: Map.Entry<String, Bitmap>?): Boolean {
+                    return size > 100 // Limit to 100 tiles (~25 MB for 512x512 ARGB_8888)
+                }
             }
         }
 
-        // Box with synchronized map and polyline
-        Box(
-            modifier = Modifier
-                .graphicsLayer(
-                    scaleX = debouncedZoomLevel,
-                    scaleY = debouncedZoomLevel,
-                    translationX = offsetX,
-                    translationY = offsetY
-                )
-                .fillMaxSize()
-        ) {
-            // Render map
-            Crossfade(
-                targetState = tileConfig,
-                animationSpec = tween(durationMillis = 200),
-                modifier = Modifier.fillMaxSize(), label = "Crossfade Tiles"
-            ) { currentConfig ->
-                if (currentConfig != null) {
-                    TileMap(
-                        centerLat = centerLat,
-                        centerLon = centerLon,
-                        zoom = currentConfig.zoom,
-                        zoomLevel = currentConfig.zoomLevel,
-                        offsetX = currentConfig.offsetX,
-                        offsetY = currentConfig.offsetY,
-                        tileRoot = currentConfig.tileRoot,
-                        modifier = Modifier.fillMaxSize()
-                    )
-                } else {
-                    if (previousTileConfig.value != null) {
-                        TileMap(
-                            centerLat = centerLat,
-                            centerLon = centerLon,
-                            zoom = previousTileConfig.value!!.zoom,
-                            zoomLevel = previousTileConfig.value!!.zoomLevel,
-                            offsetX = previousTileConfig.value!!.offsetX,
-                            offsetY = previousTileConfig.value!!.offsetY,
-                            tileRoot = previousTileConfig.value!!.tileRoot,
-                            modifier = Modifier.fillMaxSize()
-                        )
-                    } else {
-                        Image(
-                            painter = painterResource(R.drawable.default_map_placeholder),
-                            contentDescription = null,
-                            modifier = Modifier.fillMaxSize(),
-                            contentScale = ContentScale.Crop
-                        )
+        // 4) Prefetch adjacent tiles (using wantedZoom for consistency)
+        LaunchedEffect(wantedZoom, validCenterLat, validCenterLon) {
+            val prefetchZoomLevels = listOf(wantedZoom - 1, wantedZoom, wantedZoom + 1)
+            prefetchZoomLevels.forEach { z ->
+                if (z in baseZoom..22) {
+                    val (tx, ty) = tileXY(validCenterLat, validCenterLon, z)
+                    for (dx in -1..1) {
+                        for (dy in -1..1) {
+                            val tileFile = File(context.filesDir, "tiles/$z/${tx + dx}-${ty + dy}.png")
+                            if (tileFile.exists() && !tileCache.containsKey(tileFile.path)) {
+                                try {
+                                    val bitmap = BitmapFactory.decodeFile(tileFile.path)
+                                    tileCache[tileFile.path] = bitmap
+                                    Log.d("TileMapOrPlaceholder", "Prefetched tile: ${tileFile.path}")
+                                } catch (e: Exception) {
+                                    Log.e("TileMap", "Failed to load tile ${tileFile.path}", e)
+                                }
+                            }
+                        }
                     }
                 }
             }
+        }
 
-            // Draw polyline synchronized with TileMap
-            Canvas(modifier = Modifier.fillMaxSize()) {
-                val canvasW = size.width
-                val canvasH = size.height
-                val tileSize = 512f
-                // Use the same zoom and zoomLevel as TileMap
-                val effectiveZoom = tileConfig?.zoom ?: previousTileConfig.value?.zoom ?: baseZoom
-                val effectiveZoomLevel = tileConfig?.zoomLevel ?: previousTileConfig.value?.zoomLevel ?: 1f
-                val effectiveOffsetX = tileConfig?.offsetX ?: previousTileConfig.value?.offsetX ?: 0f
-                val effectiveOffsetY = tileConfig?.offsetY ?: previousTileConfig.value?.offsetY ?: 0f
-                val worldSize = tileSize * (1 shl effectiveZoom).toFloat()
+        // 5) Compute TileConfig only when tileRoot or z changes
+        val tileConfig: TileConfig? = remember(tileRoot, z) {
+            tileRoot?.let {
+                TileConfig(it, z)
+            }
+        }
 
-                // Projection function matching TileMap
-                fun project(lat: Double, lon: Double): Pair<Float, Float> {
-                    val x = ((lon + 180.0) / 360.0 * worldSize).toFloat()
-                    val siny = sin(lat * PI / 180.0).coerceIn(-0.9999, 0.9999)
-                    val y = ((0.5 - ln((1 + siny) / (1 - siny)) / (4 * PI)) * worldSize).toFloat()
-                    return x to y
+        Box(Modifier.fillMaxSize()) {
+            // A) TileMap without graphicsLayer scaling (scaling is now handled in TileMap)
+            Crossfade(
+                targetState = tileConfig,
+                animationSpec = tween(200),
+                modifier = Modifier.fillMaxSize(),
+                label = ""
+            ) { cfg ->
+                if (cfg != null) {
+                    TileMap(
+                        centerLat = validCenterLat,
+                        centerLon = validCenterLon,
+                        zoom = cfg.zoom,
+                        tileRoot = cfg.tileRoot,
+                        zoomLevel = zoomLevel, // Pass zoomLevel to TileMap
+                        offsetX = offsetX,
+                        offsetY = offsetY,
+                        modifier = Modifier.fillMaxSize(),
+                        tileCache = tileCache
+                    )
+                } else {
+                    // No local tiles → placeholder
+                    Log.w("TileMapOrPlaceholder", "No tile config available, showing placeholder")
+                    Image(
+                        painter = painterResource(R.drawable.default_map_placeholder),
+                        contentDescription = "Map Placeholder",
+                        modifier = Modifier.fillMaxSize(),
+                        contentScale = ContentScale.Crop
+                    )
                 }
+            }
 
-                // Project the map's center
-                val (centerX, centerY) = project(centerLat, centerLon)
+            // B) Draw the polyline with the same scaling logic
+            Canvas(Modifier.fillMaxSize()) {
+                val w = size.width
+                val h = size.height
 
-                // Build the path
-                val path = Path()
-                routePoints.forEachIndexed { i, pt ->
-                    val (px, py) = project(pt.latitude, pt.longitude)
-                    // Delta from center in world-pixels, scaled by effectiveZoomLevel
-                    val dx = (px - centerX) * effectiveZoomLevel + effectiveOffsetX
-                    val dy = (py - centerY) * effectiveZoomLevel + effectiveOffsetY
-                    // Map to screen coordinates
-                    val screenX = canvasW / 2 + dx
-                    val screenY = canvasH / 2 + dy
+                // Use tileConfig or fallback to baseZoom
+                val zoomE = tileConfig?.zoom ?: baseZoom
+                val worldTileSize = 256f
+                val tileSize = 512
+                val scale = tileSize / worldTileSize
 
-                    if (i == 0) path.moveTo(screenX, screenY)
-                    else path.lineTo(screenX, screenY)
+                val (cX, cY) = proj(validCenterLat, validCenterLon, zoomE)
+                val path = Path().apply {
+                    routePoints.forEachIndexed { i, pt ->
+                        val (xP, yP) = proj(pt.latitude, pt.longitude, zoomE)
+                        // Apply the same transform as the map
+                        val dx = (xP - cX) * scale * zoomLevel + (offsetX / zoomLevel)
+                        val dy = (yP - cY) * scale * zoomLevel + (offsetY / zoomLevel)
+                        val sx = (w / 2 + dx).roundToInt().toFloat()
+                        val sy = (h / 2 + dy).roundToInt().toFloat()
+                        if (i == 0) moveTo(sx, sy) else lineTo(sx, sy)
+                    }
                 }
 
                 drawPath(
-                    path,
+                    path = path,
                     color = Color.Red,
-                    style = Stroke(width = (1.0f / (effectiveZoomLevel * 1.5f)).coerceAtLeast(0.5f).coerceAtMost(1.5f))
+                    style = Stroke(width = 1.5f)
                 )
             }
         }
     }
 }
 
-// Data class for tile configuration
 private data class TileConfig(
     val tileRoot: File,
-    val zoom: Int,
-    val zoomLevel: Float,
-    val offsetX: Float,
-    val offsetY: Float
+    val zoom: Int
 )
