@@ -274,9 +274,10 @@ fun RouteTrackerScreen(
                                             val zoomSensitivity =
                                                 0.6f // Lower sensitivity for smoother zoom
                                             val newZoom =
-                                                (oldZoom * (1f + (zoomChange - 1f) * zoomSensitivity))
-                                                    .coerceIn(minZoom, maxZoom)
-                                            val zoomDelta = newZoom - oldZoom
+                                                (oldZoom * (1f + (zoomChange - 1f) * zoomSensitivity)).coerceIn(
+                                                    minZoom,
+                                                    maxZoom
+                                                )
 
                                             // 2) Hide info if visible
                                             if (showInfo) showInfo = false
@@ -285,32 +286,61 @@ fun RouteTrackerScreen(
                                             lastInteractionTime.longValue =
                                                 System.currentTimeMillis()
 
-                                            // 4) Pan with damping
+                                            // 4) Pan with damping (only apply if the user is panning)
                                             val panSensitivity =
                                                 0.5f // Reduce pan speed for precision
                                             val panX = pan.x * panSensitivity
                                             val panY = pan.y * panSensitivity
 
                                             // 5) Calculate map bounds to constrain panning
-                                            val mapWidth = r.width * zoomLevel.floatValue
-                                            val mapHeight = r.height * zoomLevel.floatValue
+                                            val mapWidth =
+                                                r.width * newZoom // Use newZoom for bounds after zoom
+                                            val mapHeight = r.height * newZoom
                                             val maxOffsetX = mapWidth * 0.5f
                                             val maxOffsetY = mapHeight * 0.5f
 
-                                            // Apply panning with bounds
+                                            // 6) Compute the world pixel position under the centroid before zooming
+                                            // Convert centroid (screen coords) to world pixel coords
+                                            val canvasW = size.width.toFloat()
+                                            val canvasH = size.height.toFloat()
+                                            val centerX =
+                                                ((r.centerLon.toFloat() + 180f) / 360f) * (512f * (1 shl r.zoom)) // Use Float literals
+                                            val siny =
+                                                sin((r.centerLat.toFloat() * PI.toFloat() / 180f)).coerceIn(
+                                                    -0.9999f,
+                                                    0.9999f
+                                                )
+                                            val centerY =
+                                                (0.5f - ln((1f + siny) / (1f - siny)) / (4f * PI.toFloat())) * (512f * (1 shl r.zoom))
+
+                                            // Screen position relative to the center (convert centroid to Float)
+                                            val screenX = centroid.x
+                                            val screenY = centroid.y
+
+                                            // Convert screen position to world pixel position (reverse TileMap's rendering math)
+                                            val worldXBefore =
+                                                (screenX - canvasW / 2 - offsetX) / oldZoom + centerX
+                                            val worldYBefore =
+                                                (screenY - canvasH / 2 - offsetY) / oldZoom + centerY
+
+                                            // 7) Apply zoom
+                                            zoomLevel.floatValue = newZoom
+
+                                            // 8) Compute the new screen position of the same world pixel after zooming
+                                            val screenXAfter =
+                                                (worldXBefore - centerX) * newZoom + canvasW / 2 + offsetX
+                                            val screenYAfter =
+                                                (worldYBefore - centerY) * newZoom + canvasH / 2 + offsetY
+
+                                            // 9) Adjust offsetX and offsetY to keep the centroid at the same world pixel
+                                            offsetX += (screenX - screenXAfter)
+                                            offsetY += (screenY - screenYAfter)
+
+                                            // 10) Apply panning with bounds (after zoom adjustment)
                                             offsetX =
                                                 (offsetX + panX).coerceIn(-maxOffsetX, maxOffsetX)
                                             offsetY =
                                                 (offsetY + panY).coerceIn(-maxOffsetY, maxOffsetY)
-
-                                            // 6) Adjust offset to keep centroid stable during zoom
-                                            val centroidXRatio = centroid.x / size.width
-                                            val centroidYRatio = centroid.y / size.height
-                                            offsetX -= (centroidXRatio * size.width) * zoomDelta
-                                            offsetY -= (centroidYRatio * size.height) * zoomDelta
-
-                                            // 7) Apply zoom
-                                            zoomLevel.floatValue = newZoom
                                         }
                                     }
                             ) {
@@ -553,39 +583,73 @@ fun RouteTrackerScreen(
                                         val zoomSensitivity =
                                             0.6f // Lower sensitivity for smoother zoom
                                         val newZoom =
-                                            (oldZoom * (1f + (zoomChange - 1f) * zoomSensitivity))
-                                                .coerceIn(minZoom, maxZoom)
-                                        val zoomDelta = newZoom - oldZoom
+                                            (oldZoom * (1f + (zoomChange - 1f) * zoomSensitivity)).coerceIn(
+                                                minZoom,
+                                                maxZoom
+                                            )
 
                                         // 2) Hide info if visible
                                         if (showInfo) showInfo = false
 
                                         // 3) Record interaction
-                                        lastInteractionTime.longValue = System.currentTimeMillis()
+                                        lastInteractionTime.longValue =
+                                            System.currentTimeMillis()
 
-                                        // 4) Pan with damping
-                                        val panSensitivity = 0.5f // Reduce pan speed for precision
+                                        // 4) Pan with damping (only apply if the user is panning)
+                                        val panSensitivity =
+                                            0.5f // Reduce pan speed for precision
                                         val panX = pan.x * panSensitivity
                                         val panY = pan.y * panSensitivity
 
                                         // 5) Calculate map bounds to constrain panning
-                                        val mapWidth = route.width * zoomLevel.floatValue
-                                        val mapHeight = route.height * zoomLevel.floatValue
+                                        val mapWidth =
+                                            route.width * newZoom // Use newZoom for bounds after zoom
+                                        val mapHeight = route.height * newZoom
                                         val maxOffsetX = mapWidth * 0.5f
                                         val maxOffsetY = mapHeight * 0.5f
 
-                                        // Apply panning with bounds
-                                        offsetX = (offsetX + panX).coerceIn(-maxOffsetX, maxOffsetX)
-                                        offsetY = (offsetY + panY).coerceIn(-maxOffsetY, maxOffsetY)
+                                        // 6) Compute the world pixel position under the centroid before zooming
+                                        // Convert centroid (screen coords) to world pixel coords
+                                        val canvasW = size.width.toFloat()
+                                        val canvasH = size.height.toFloat()
+                                        val centerX =
+                                            ((route.centerLon.toFloat() + 180f) / 360f) * (512f * (1 shl route.zoom)) // Use Float literals
+                                        val siny =
+                                            sin((route.centerLat.toFloat() * PI.toFloat() / 180f)).coerceIn(
+                                                -0.9999f,
+                                                0.9999f
+                                            )
+                                        val centerY =
+                                            (0.5f - ln((1f + siny) / (1f - siny)) / (4f * PI.toFloat())) * (512f * (1 shl route.zoom))
 
-                                        // 6) Adjust offset to keep centroid stable during zoom
-                                        val centroidXRatio = centroid.x / size.width
-                                        val centroidYRatio = centroid.y / size.height
-                                        offsetX -= (centroidXRatio * size.width) * zoomDelta
-                                        offsetY -= (centroidYRatio * size.height) * zoomDelta
+                                        // Screen position relative to the center (convert centroid to Float)
+                                        val screenX = centroid.x
+                                        val screenY = centroid.y
+
+                                        // Convert screen position to world pixel position (reverse TileMap's rendering math)
+                                        val worldXBefore =
+                                            (screenX - canvasW / 2 - offsetX) / oldZoom + centerX
+                                        val worldYBefore =
+                                            (screenY - canvasH / 2 - offsetY) / oldZoom + centerY
 
                                         // 7) Apply zoom
                                         zoomLevel.floatValue = newZoom
+
+                                        // 8) Compute the new screen position of the same world pixel after zooming
+                                        val screenXAfter =
+                                            (worldXBefore - centerX) * newZoom + canvasW / 2 + offsetX
+                                        val screenYAfter =
+                                            (worldYBefore - centerY) * newZoom + canvasH / 2 + offsetY
+
+                                        // 9) Adjust offsetX and offsetY to keep the centroid at the same world pixel
+                                        offsetX += (screenX - screenXAfter)
+                                        offsetY += (screenY - screenYAfter)
+
+                                        // 10) Apply panning with bounds (after zoom adjustment)
+                                        offsetX =
+                                            (offsetX + panX).coerceIn(-maxOffsetX, maxOffsetX)
+                                        offsetY =
+                                            (offsetY + panY).coerceIn(-maxOffsetY, maxOffsetY)
                                     }
                                 }
                         ) {
