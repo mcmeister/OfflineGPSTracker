@@ -485,6 +485,19 @@ private suspend fun fetchNearbyImages(
                 ExifInterface(it)
             } ?: continue
 
+            val latTag  = exif.getAttribute(ExifInterface.TAG_GPS_LATITUDE)
+            val latRef  = exif.getAttribute(ExifInterface.TAG_GPS_LATITUDE_REF)
+            val lonTag  = exif.getAttribute(ExifInterface.TAG_GPS_LONGITUDE)
+            val lonRef  = exif.getAttribute(ExifInterface.TAG_GPS_LONGITUDE_REF)
+            Log.d(
+                "GalleryTest",
+                """
+                ── EXIF dump for $uri ──
+                   LAT = $latTag  ($latRef)
+                   LON = $lonTag  ($lonRef)
+                """.trimIndent()
+            )
+
             val coords = getLatLongFromExif(exif)
             if (coords == null) {
                 Log.d("GalleryTest", "   GPS tags missing for $uri")      // ②
@@ -543,30 +556,29 @@ private fun getLatLongFromExif(exif: ExifInterface): Pair<Double, Double>? {
     return if (lat != null && lon != null) Pair(lat, lon) else null
 }
 
-private fun parseGpsValue(value: String, ref: String): Double? {
-    // New fast path – already decimal?
+private fun parseGpsValue(raw: String, ref: String): Double? {
+    // 1) remove any whitespace / wrappers like "(" and ")"
+    val value = raw.trim().removePrefix("(").removeSuffix(")")
+
+    // 2) fast-path: already plain decimal?
     value.toDoubleOrNull()?.let { dec ->
         return if (ref == "S" || ref == "W") -dec else dec
     }
 
-    // … otherwise fall back to “d/m/s” parsing
+    // 3) otherwise expect “d/m/s” rationals  e.g.  "37/1,25/1,1907/100"
     val parts = value.split(',').map { it.trim() }
     if (parts.size != 3) return null
 
-    fun parseRational(rational: String): Double? {
-        val fraction = rational.split('/').map { it.trim() }
-        if (fraction.size != 2) return null
-        val num = fraction[0].toDoubleOrNull() ?: return null
-        val denom = fraction[1].toDoubleOrNull() ?: return null
-        if (denom == 0.0) return null
-        return num / denom
+    fun rat(r: String): Double? {
+        val (num, den) = r.split('/').map { it.trim() }
+        return num.toDoubleOrNull()?.div(den.toDoubleOrNull() ?: return null)
     }
 
-    val degrees = parseRational(parts[0]) ?: return null
-    val minutes = parseRational(parts[1]) ?: return null
-    val seconds = parseRational(parts[2]) ?: return null
+    val deg = rat(parts[0]) ?: return null
+    val min = rat(parts[1]) ?: return null
+    val sec = rat(parts[2]) ?: return null
 
-    val decimal = degrees + (minutes / 60.0) + (seconds / 3600.0)
+    val decimal = deg + min / 60 + sec / 3600
     return if (ref == "S" || ref == "W") -decimal else decimal
 }
 
