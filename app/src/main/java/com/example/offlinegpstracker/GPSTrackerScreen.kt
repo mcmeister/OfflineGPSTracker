@@ -7,13 +7,17 @@ import android.hardware.Sensor
 import android.hardware.SensorEvent
 import android.hardware.SensorEventListener
 import android.hardware.SensorManager
+import android.location.Geocoder
 import android.net.Uri
 import android.widget.Toast
 import androidx.compose.animation.Crossfade
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -28,6 +32,8 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.LocationOn
@@ -61,13 +67,20 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -238,6 +251,7 @@ fun GPSTrackerScreen(locationViewModel: LocationViewModel = viewModel()) {
     val altitude by locationViewModel.altitude.observeAsState("")
 
     val context = LocalContext.current
+    val scope = rememberCoroutineScope()
 
     // Sensor setup
     val sensorManager =
@@ -261,6 +275,11 @@ fun GPSTrackerScreen(locationViewModel: LocationViewModel = viewModel()) {
             override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {}
         }
     }
+
+    val navButtonColors = ButtonDefaults.buttonColors(
+        containerColor = MaterialTheme.colorScheme.primary,
+        contentColor = MaterialTheme.colorScheme.onPrimary
+    )
 
     DisposableEffect(Unit) {
         sensorManager.registerListener(
@@ -301,21 +320,38 @@ fun GPSTrackerScreen(locationViewModel: LocationViewModel = viewModel()) {
     val coroutineScope = rememberCoroutineScope()
     val isGauge = (compassViewType == 2)
 
-    // ✅ **Fix: Ensure Skin Updates Immediately**
-    val currentSkin by rememberUpdatedState(newValue = storedCompassSkin)
+    val rawSkin by rememberUpdatedState(newValue = storedCompassSkin)
 
-    // ✅ **Fix: Force UI to Update Instantly**
-    LaunchedEffect(currentSkin) {
-        delay(10)  // Forces UI refresh to synchronize all elements
+    // If we’re *in* Gauge mode but the last-used skin belongs to the
+    // default/static set (SHIP / MINIMAL), fall back to a valid Gauge skin
+    val currentSkin = if (
+        isGauge &&
+        (rawSkin == UserPreferences.SKIN_SHIP || rawSkin == UserPreferences.SKIN_MINIMAL)
+    ) {
+        UserPreferences.SKIN_CLASSIC_GAUGE
+    } else {
+        rawSkin
     }
+
+    val focusManager = LocalFocusManager.current
+
+    // keep the tiny refresh-kick
+    LaunchedEffect(currentSkin) { delay(10) }
 
     val screenModifier = Modifier
         .fillMaxSize()
         .then(
             when {
-                isGauge && currentSkin == UserPreferences.SKIN_CLASSIC_GAUGE -> Modifier.background(Color.Transparent) // Handled by Box with Image
-                isGauge && currentSkin == UserPreferences.SKIN_NEON_GAUGE -> Modifier.background(Color.Transparent) // Background handled by Image
-                isGauge && currentSkin == UserPreferences.SKIN_MINIMAL_GAUGE -> Modifier.background(Color.Transparent)
+                isGauge && currentSkin == UserPreferences.SKIN_CLASSIC_GAUGE -> Modifier.background(
+                    Color.Transparent
+                ) // Handled by Box with Image
+                isGauge && currentSkin == UserPreferences.SKIN_NEON_GAUGE -> Modifier.background(
+                    Color.Transparent
+                ) // Background handled by Image
+                isGauge && currentSkin == UserPreferences.SKIN_MINIMAL_GAUGE -> Modifier.background(
+                    Color.Transparent
+                )
+
                 else -> Modifier.background(MaterialTheme.colorScheme.background)
             }
         )
@@ -334,6 +370,12 @@ fun GPSTrackerScreen(locationViewModel: LocationViewModel = viewModel()) {
     Box(
         modifier = Modifier.fillMaxSize()
     ) {
+        SkinBackground(
+            compassType = if (compassViewType == 2) 2 else 0,   // gauge or not
+            skin        = currentSkin,                          // resolved skin
+            modifier    = Modifier.fillMaxSize()
+        )
+
         Column(
             modifier = screenModifier,
             horizontalAlignment = Alignment.CenterHorizontally
@@ -344,14 +386,31 @@ fun GPSTrackerScreen(locationViewModel: LocationViewModel = viewModel()) {
                     .then(
                         if (isGauge && currentSkin == UserPreferences.SKIN_NEON_GAUGE) {
                             Modifier
-                                .border(1.dp, Color.Cyan, RoundedCornerShape(12.dp)) // ✅ Border first!
-                                .background(Color.Black.copy(alpha = 0.3f), RoundedCornerShape(12.dp))
-                                .padding(horizontal = 12.dp, vertical = 6.dp) // ✅ Increased padding to match border size
+                                .border(
+                                    1.dp,
+                                    Color.Cyan,
+                                    RoundedCornerShape(12.dp)
+                                ) // ✅ Border first!
+                                .background(
+                                    Color.Black.copy(alpha = 0.3f),
+                                    RoundedCornerShape(12.dp)
+                                )
+                                .padding(
+                                    horizontal = 12.dp,
+                                    vertical = 6.dp
+                                ) // ✅ Increased padding to match border size
                         } else {
                             Modifier
-                                .border(1.dp, Color.Transparent, RoundedCornerShape(12.dp)) // ✅ Border first!
+                                .border(
+                                    1.dp,
+                                    Color.Transparent,
+                                    RoundedCornerShape(12.dp)
+                                ) // ✅ Border first!
                                 .background(Color.Transparent, RoundedCornerShape(12.dp))
-                                .padding(horizontal = 12.dp, vertical = 6.dp) // ✅ Increased padding to match border size
+                                .padding(
+                                    horizontal = 12.dp,
+                                    vertical = 6.dp
+                                ) // ✅ Increased padding to match border size
                         }
                     )
             ) {
@@ -372,20 +431,43 @@ fun GPSTrackerScreen(locationViewModel: LocationViewModel = viewModel()) {
                     .pointerInput(Unit) {
                         detectTapGestures(
                             onDoubleTap = {
-                                compassViewType = (compassViewType + 1) % 3
+                                val newType = (compassViewType + 1) % 3
+                                compassViewType = newType
+
+                                if (newType == 2 &&
+                                    (storedCompassSkin == UserPreferences.SKIN_SHIP ||
+                                            storedCompassSkin == UserPreferences.SKIN_MINIMAL)
+                                ) {
+                                    coroutineScope.launch {
+                                        userPreferences.saveCompassSkin(UserPreferences.SKIN_CLASSIC_GAUGE)
+                                    }
+                                }
                             },
                             onTap = {
                                 coroutineScope.launch {
                                     when (compassViewType) {
-                                        2 -> { // Gauge Compass Skin Switch
-                                            val newSkin = (storedCompassSkin + 1) % 3
+                                        2 -> {                    // ── Gauge → cycle the 3 gauge skins
+                                            val newSkin =
+                                                (storedCompassSkin + 1) % 3          // 0->1->2
                                             userPreferences.saveCompassSkin(newSkin)
                                         }
-                                        0, 1 -> { // Default or Static Compass Image Toggle
-                                            val newSkin = if (storedCompassSkin == UserPreferences.SKIN_SHIP)
-                                                UserPreferences.SKIN_MINIMAL
-                                            else
-                                                UserPreferences.SKIN_SHIP
+
+                                        0, 1 -> {                 // ── Default / Static → toggle SHIP ⇄ MINIMAL
+                                            // Treat *any* non-static skin that leaks in (Classic, Neon, Minimal-Gauge)
+                                            // as SHIP so the very first tap always produces a visible change.
+                                            val effectiveSkin = when (storedCompassSkin) {
+                                                UserPreferences.SKIN_SHIP,
+                                                UserPreferences.SKIN_MINIMAL -> storedCompassSkin
+
+                                                else -> UserPreferences.SKIN_SHIP
+                                            }
+
+                                            val newSkin =
+                                                if (effectiveSkin == UserPreferences.SKIN_SHIP)
+                                                    UserPreferences.SKIN_MINIMAL
+                                                else
+                                                    UserPreferences.SKIN_SHIP
+
                                             userPreferences.saveCompassSkin(newSkin)
                                         }
                                     }
@@ -402,10 +484,12 @@ fun GPSTrackerScreen(locationViewModel: LocationViewModel = viewModel()) {
                                 modifier = Modifier.fillMaxSize(),
                                 skin = currentSkin
                             )
+
                             1 -> CompassViewStatic(
                                 modifier = Modifier.fillMaxSize(),
                                 skin = currentSkin
                             )
+
                             2 -> CompassViewGauge(azimuth = azimuth)
                         }
                     }
@@ -423,14 +507,31 @@ fun GPSTrackerScreen(locationViewModel: LocationViewModel = viewModel()) {
                     .then(
                         if (isGauge && currentSkin == UserPreferences.SKIN_NEON_GAUGE) {
                             Modifier
-                                .border(1.dp, Color.Cyan, RoundedCornerShape(12.dp)) // ✅ Border first!
-                                .background(Color.Black.copy(alpha = 0.3f), RoundedCornerShape(12.dp))
-                                .padding(horizontal = 12.dp, vertical = 6.dp) // ✅ Increased padding to match border size
+                                .border(
+                                    1.dp,
+                                    Color.Cyan,
+                                    RoundedCornerShape(12.dp)
+                                ) // ✅ Border first!
+                                .background(
+                                    Color.Black.copy(alpha = 0.3f),
+                                    RoundedCornerShape(12.dp)
+                                )
+                                .padding(
+                                    horizontal = 12.dp,
+                                    vertical = 6.dp
+                                ) // ✅ Increased padding to match border size
                         } else {
                             Modifier
-                                .border(1.dp, Color.Transparent, RoundedCornerShape(12.dp)) // ✅ Border first!
+                                .border(
+                                    1.dp,
+                                    Color.Transparent,
+                                    RoundedCornerShape(12.dp)
+                                ) // ✅ Border first!
                                 .background(Color.Transparent, RoundedCornerShape(12.dp))
-                                .padding(horizontal = 12.dp, vertical = 6.dp) // ✅ Increased padding to match border size
+                                .padding(
+                                    horizontal = 12.dp,
+                                    vertical = 6.dp
+                                ) // ✅ Increased padding to match border size
                         }
                     )
             ) {
@@ -466,6 +567,7 @@ fun GPSTrackerScreen(locationViewModel: LocationViewModel = viewModel()) {
                     focusedLabelColor = Color.Black,
                     unfocusedLabelColor = Color.Black
                 )
+
                 currentSkin == UserPreferences.SKIN_CLASSIC_GAUGE -> TextFieldDefaults.colors(
                     focusedContainerColor = Color.Transparent,
                     unfocusedContainerColor = Color.Transparent,
@@ -477,6 +579,7 @@ fun GPSTrackerScreen(locationViewModel: LocationViewModel = viewModel()) {
                     focusedLabelColor = textColor,
                     unfocusedLabelColor = textColor
                 )
+
                 currentSkin == UserPreferences.SKIN_NEON_GAUGE -> TextFieldDefaults.colors(
                     focusedContainerColor = Color.Transparent,
                     unfocusedContainerColor = Color.Transparent,
@@ -488,17 +591,19 @@ fun GPSTrackerScreen(locationViewModel: LocationViewModel = viewModel()) {
                     focusedLabelColor = textColor,
                     unfocusedLabelColor = textColor
                 )
+
                 currentSkin == UserPreferences.SKIN_MINIMAL_GAUGE -> TextFieldDefaults.colors(
                     focusedContainerColor = Color.Transparent,
                     unfocusedContainerColor = Color.Transparent,
                     focusedTextColor = textColor,
                     unfocusedTextColor = textColor,
                     cursorColor = textColor,
-                    focusedIndicatorColor = Color.Transparent,
-                    unfocusedIndicatorColor = Color.Transparent,
+                    focusedIndicatorColor = Color.White,
+                    unfocusedIndicatorColor = Color.White,
                     focusedLabelColor = textColor,
                     unfocusedLabelColor = textColor
                 )
+
                 else -> TextFieldDefaults.colors(
                     focusedContainerColor = Color.Black,
                     unfocusedContainerColor = Color.Black,
@@ -517,7 +622,13 @@ fun GPSTrackerScreen(locationViewModel: LocationViewModel = viewModel()) {
 
             // ✅ **Fix: Move Background Modifier to OutlinedTextField**
             Box(
-                modifier = Modifier.fillMaxWidth()
+                modifier = Modifier
+                    .fillMaxSize()
+                    // ②  blank-area tap hides keyboard
+                    .clickable(
+                        indication = null,
+                        interactionSource = remember { MutableInteractionSource() }
+                    ) { focusManager.clearFocus() }
             ) {
                 OutlinedTextField(
                     value = name,
@@ -532,10 +643,20 @@ fun GPSTrackerScreen(locationViewModel: LocationViewModel = viewModel()) {
                         Text(
                             "Leave blank to auto-generate",
                             fontSize = 12.sp,
-                            color = if (isGauge) textColor.copy(alpha = 0.5f) else Color.Black.copy(alpha = 0.5f) // ✅ Default black placeholder in non-Gauge mode
+                            color = if (isGauge) textColor.copy(alpha = 0.5f) else Color.Black.copy(
+                                alpha = 0.5f
+                            ) // ✅ Default black placeholder in non-Gauge mode
                         )
                     },
                     colors = textFieldColors,
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(
+                        keyboardType = KeyboardType.Text,
+                        imeAction = ImeAction.Done      // show “Done” on soft keyboard
+                    ),
+                    keyboardActions = KeyboardActions(   // ③  “Done” key hides keyboard
+                        onDone = { focusManager.clearFocus() }
+                    ),
                     modifier = Modifier
                         .fillMaxWidth()
                         .background(
@@ -567,16 +688,33 @@ fun GPSTrackerScreen(locationViewModel: LocationViewModel = viewModel()) {
                             Button(
                                 onClick = {
                                     if (name.isEmpty()) {
-                                        name = generateLocationName()
+                                        val latDouble = latitude.toDoubleOrNull()
+                                        val lonDouble = longitude.toDoubleOrNull()
+                                        if (latDouble != null && lonDouble != null) {
+                                            scope.launch {
+                                                name = generateLocationName(context, latDouble, lonDouble)
+                                                saveLocation(
+                                                    context,
+                                                    name,
+                                                    latitude,
+                                                    longitude,
+                                                    altitude,
+                                                    locationViewModel
+                                                )
+                                            }
+                                        } else {
+                                            Toast.makeText(context, "Invalid coordinates", Toast.LENGTH_SHORT).show()
+                                        }
+                                    } else {
+                                        saveLocation(
+                                            context,
+                                            name,
+                                            latitude,
+                                            longitude,
+                                            altitude,
+                                            locationViewModel
+                                        )
                                     }
-                                    saveLocation(
-                                        context,
-                                        name,
-                                        latitude,
-                                        longitude,
-                                        altitude,
-                                        locationViewModel
-                                    )
                                 },
                                 colors = ButtonDefaults.buttonColors(
                                     containerColor = Color.Transparent,
@@ -602,16 +740,33 @@ fun GPSTrackerScreen(locationViewModel: LocationViewModel = viewModel()) {
                             OutlinedButton(
                                 onClick = {
                                     if (name.isEmpty()) {
-                                        name = generateLocationName()
+                                        val latDouble = latitude.toDoubleOrNull()
+                                        val lonDouble = longitude.toDoubleOrNull()
+                                        if (latDouble != null && lonDouble != null) {
+                                            scope.launch {
+                                                name = generateLocationName(context, latDouble, lonDouble)
+                                                saveLocation(
+                                                    context,
+                                                    name,
+                                                    latitude,
+                                                    longitude,
+                                                    altitude,
+                                                    locationViewModel
+                                                )
+                                            }
+                                        } else {
+                                            Toast.makeText(context, "Invalid coordinates", Toast.LENGTH_SHORT).show()
+                                        }
+                                    } else {
+                                        saveLocation(
+                                            context,
+                                            name,
+                                            latitude,
+                                            longitude,
+                                            altitude,
+                                            locationViewModel
+                                        )
                                     }
-                                    saveLocation(
-                                        context,
-                                        name,
-                                        latitude,
-                                        longitude,
-                                        altitude,
-                                        locationViewModel
-                                    )
                                 },
                                 border = BorderStroke(1.dp, Color.Cyan),
                                 colors = ButtonDefaults.outlinedButtonColors(
@@ -626,7 +781,7 @@ fun GPSTrackerScreen(locationViewModel: LocationViewModel = viewModel()) {
                         UserPreferences.SKIN_MINIMAL_GAUGE -> {
                             OutlinedButton(
                                 onClick = { shareLocation(context, latitude, longitude) },
-                                border = BorderStroke(1.dp, Color.Transparent),
+                                border = BorderStroke(1.dp, Color.White),
                                 colors = ButtonDefaults.outlinedButtonColors(
                                     containerColor = Color.Transparent,
                                     contentColor = Color.White
@@ -637,18 +792,35 @@ fun GPSTrackerScreen(locationViewModel: LocationViewModel = viewModel()) {
                             OutlinedButton(
                                 onClick = {
                                     if (name.isEmpty()) {
-                                        name = generateLocationName()
+                                        val latDouble = latitude.toDoubleOrNull()
+                                        val lonDouble = longitude.toDoubleOrNull()
+                                        if (latDouble != null && lonDouble != null) {
+                                            scope.launch {
+                                                name = generateLocationName(context, latDouble, lonDouble)
+                                                saveLocation(
+                                                    context,
+                                                    name,
+                                                    latitude,
+                                                    longitude,
+                                                    altitude,
+                                                    locationViewModel
+                                                )
+                                            }
+                                        } else {
+                                            Toast.makeText(context, "Invalid coordinates", Toast.LENGTH_SHORT).show()
+                                        }
+                                    } else {
+                                        saveLocation(
+                                            context,
+                                            name,
+                                            latitude,
+                                            longitude,
+                                            altitude,
+                                            locationViewModel
+                                        )
                                     }
-                                    saveLocation(
-                                        context,
-                                        name,
-                                        latitude,
-                                        longitude,
-                                        altitude,
-                                        locationViewModel
-                                    )
                                 },
-                                border = BorderStroke(1.dp, Color.Transparent),
+                                border = BorderStroke(1.dp, Color.White),
                                 colors = ButtonDefaults.outlinedButtonColors(
                                     containerColor = Color.Transparent,
                                     contentColor = Color.White
@@ -659,32 +831,47 @@ fun GPSTrackerScreen(locationViewModel: LocationViewModel = viewModel()) {
                         }
                     }
                 } else {
-                    Button(onClick = {
-                        shareLocation(context, latitude, longitude)
-                    },
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = Color(0xFF3F51B5), // Default Material Blue
-                            contentColor = Color.White
-                        )) {
+                    Button(
+                        onClick = {
+                            shareLocation(context, latitude, longitude)
+                        },
+                        colors = navButtonColors
+                    ) {
                         Text("Share")
                     }
-                    Button(onClick = {
-                        if (name.isEmpty()) {
-                            name = generateLocationName()
-                        }
-                        saveLocation(
-                            context,
-                            name,
-                            latitude,
-                            longitude,
-                            altitude,
-                            locationViewModel
-                        )
-                    },
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = Color(0xFF3F51B5), // Default Material Blue
-                            contentColor = Color.White
-                        )) {
+                    Button(
+                        onClick = {
+                            if (name.isEmpty()) {
+                                val latDouble = latitude.toDoubleOrNull()
+                                val lonDouble = longitude.toDoubleOrNull()
+                                if (latDouble != null && lonDouble != null) {
+                                    scope.launch {
+                                        name = generateLocationName(context, latDouble, lonDouble)
+                                        saveLocation(
+                                            context,
+                                            name,
+                                            latitude,
+                                            longitude,
+                                            altitude,
+                                            locationViewModel
+                                        )
+                                    }
+                                } else {
+                                    Toast.makeText(context, "Invalid coordinates", Toast.LENGTH_SHORT).show()
+                                }
+                            } else {
+                                saveLocation(
+                                    context,
+                                    name,
+                                    latitude,
+                                    longitude,
+                                    altitude,
+                                    locationViewModel
+                                )
+                            }
+                        },
+                        colors = navButtonColors
+                    ) {
                         Text("Save")
                     }
                 }
@@ -693,10 +880,26 @@ fun GPSTrackerScreen(locationViewModel: LocationViewModel = viewModel()) {
     }
 }
 
-private fun generateLocationName(): String {
-    val timestamp = System.currentTimeMillis()
-    val sdf = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault())
-    return "Location at ${sdf.format(Date(timestamp))}"
+private suspend fun generateLocationName(context: Context, lat: Double, lon: Double): String {
+    return withContext(Dispatchers.IO) {
+        val geocoder = Geocoder(context, Locale.getDefault())
+        try {
+            // Use the non-deprecated suspend function (API 33+)
+            @Suppress("DEPRECATION") val addresses: List<android.location.Address>? = geocoder.getFromLocation(lat, lon, 1)
+            if (!addresses.isNullOrEmpty()) {
+                val address = addresses[0]
+                val province = address.adminArea ?: "Unknown province"
+                val city = address.locality ?: "Unknown city"
+                val date = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())
+                return@withContext "$province, $city ($date)"
+            }
+        } catch (e: Exception) {
+            // Handle exceptions such as IOException or service unavailability
+        }
+        // Fallback if Geocoder fails
+        val date = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())
+        "Location ($date)"
+    }
 }
 
 fun saveLocation(
@@ -734,5 +937,35 @@ private fun shareLocation(context: Context, latitude: String, longitude: String)
         }
     } else {
         Toast.makeText(context, "Location data is missing", Toast.LENGTH_SHORT).show()
+    }
+}
+
+@Composable
+fun SkinBackground(
+    compassType: Int,
+    skin: Int,
+    modifier: Modifier = Modifier
+) {
+    if (compassType == 2) {          // Gauge mode only
+        when (skin) {
+            UserPreferences.SKIN_CLASSIC_GAUGE -> Image(
+                painter = painterResource(R.drawable.metallic_background),
+                contentDescription = null,
+                modifier = modifier,
+                contentScale = ContentScale.Crop
+            )
+            UserPreferences.SKIN_NEON_GAUGE -> Image(
+                painter = painterResource(R.drawable.neon_background2),
+                contentDescription = null,
+                modifier = modifier,
+                contentScale = ContentScale.Crop
+            )
+            UserPreferences.SKIN_MINIMAL_GAUGE -> Box(
+                modifier = modifier.background(Color.Black)
+            )
+            else -> Box(modifier = modifier.background(MaterialTheme.colorScheme.background))
+        }
+    } else {                          // Default / non-gauge
+        Box(modifier = modifier.background(MaterialTheme.colorScheme.background))
     }
 }

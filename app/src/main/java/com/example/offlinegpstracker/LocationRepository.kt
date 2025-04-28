@@ -21,8 +21,4 @@ class LocationRepository(private val locationDao: LocationDao) {
     suspend fun deleteLocation(locationId: Int) {
         locationDao.deleteLocation(locationId)
     }
-
-    suspend fun updateLocationPhoto(locationId: Int, photoPath: String?) {
-        locationDao.updateLocationPhoto(locationId, photoPath)
-    }
 }

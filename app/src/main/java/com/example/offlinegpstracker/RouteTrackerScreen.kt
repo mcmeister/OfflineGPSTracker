@@ -906,7 +906,7 @@ fun calculateDistance(points: List<RoutePoint>): Float {
 private data class ScrollMetrics(val progress: Float, val thumbHeight: Dp)
 
 @Composable
-private fun ScrollThumb(
+fun ScrollThumb(
     listState      : LazyListState,
     modifier       : Modifier = Modifier,
     thumbColor     : Color     = Color.LightGray.copy(alpha = .85f),

@@ -1,64 +1,93 @@
 package com.example.offlinegpstracker
 
+import android.annotation.SuppressLint
+import android.content.ContentUris
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
-import android.os.Environment
+import android.provider.MediaStore
 import android.widget.Toast
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.LocationOn
+import androidx.compose.material.icons.filled.Navigation
 import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
-import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedCard
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextFieldColors
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusManager
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.TextFieldValue
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.core.content.FileProvider
+import androidx.compose.ui.zIndex
+import androidx.exifinterface.media.ExifInterface
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavHostController
 import coil.compose.rememberAsyncImagePainter
-import java.io.File
-import java.io.FileOutputStream
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import kotlin.math.atan2
+import kotlin.math.cos
+import kotlin.math.pow
+import kotlin.math.roundToInt
+import kotlin.math.sin
+import kotlin.math.sqrt
 
 @Composable
 fun LocationDetailsScreen(
@@ -68,290 +97,221 @@ fun LocationDetailsScreen(
 ) {
     val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
     val locations by locationViewModel.locations.collectAsStateWithLifecycle(lifecycleOwner.lifecycle)
-    val context = LocalContext.current
+    val context  = LocalContext.current
 
-    // Ensure rememberPagerState is correctly defined
     val pagerState = rememberPagerState { locations.size }
 
-    val userPreferences = remember { UserPreferences(context) }
-    val compassTypeFlow = remember { userPreferences.compassType }
-    val skinPrefFlow = remember { userPreferences.compassSkin }
-
-    val compassType by compassTypeFlow.collectAsState(initial = 0)
-    val skinPref by skinPrefFlow.collectAsState(initial = UserPreferences.SKIN_CLASSIC_GAUGE)
-
-    val isGauge = (compassType == 2)
+    val focusManager = LocalFocusManager.current
 
     LaunchedEffect(startIndex) {
-        if (locations.isNotEmpty()) {
+        if (locations.isNotEmpty())
             pagerState.scrollToPage(startIndex.coerceIn(0, locations.size - 1))
-        }
     }
 
     if (locations.isNotEmpty()) {
-        HorizontalPager(
-            state = pagerState
-        ) { page ->
+        HorizontalPager(state = pagerState) { page ->
             val location = locations[page]
-            var name by remember { mutableStateOf(TextFieldValue(location.name)) }
-            var latitude by remember { mutableStateOf(TextFieldValue(location.latitude.toString())) }
-            var longitude by remember { mutableStateOf(TextFieldValue(location.longitude.toString())) }
-            var altitude by remember { mutableStateOf(TextFieldValue(location.altitude.toString())) }
-            var photoPaths by remember { mutableStateOf(location.photoPaths) }
-            rememberCoroutineScope()
+            val routeRepository = (context.applicationContext as MyApplication).routeRepository
+            val allRoutes      by routeRepository.getAllRoutes()
+                .collectAsState(initial = emptyList())
 
-            val imagePickerLauncher = rememberLauncherForActivityResult(
-                contract = ActivityResultContracts.GetMultipleContents()
-            ) { uris: List<Uri>? ->
-                uris?.let {
-                    val newPaths = it.mapNotNull { uri -> saveImageToInternalStorage(context, uri) }
-                    photoPaths = (photoPaths + newPaths).distinct().take(4) // Store up to 4 photos
-                    locationViewModel.updateLocationPhoto(location.id, photoPaths) // ✅ No Gson() needed!
+            val nearbyRoutes = remember(location.id to allRoutes) {
+                allRoutes.filter {
+                    haversine(it.centerLat, it.centerLon, location.latitude, location.longitude) <= 3_000.0
                 }
             }
+            var name       by remember { mutableStateOf(TextFieldValue(location.name)) }
+            val latitude   by remember { mutableStateOf(TextFieldValue(location.latitude.toString())) }
+            val longitude  by remember { mutableStateOf(TextFieldValue(location.longitude.toString())) }
+            var galleryImages by remember { mutableStateOf<List<Uri>>(emptyList()) }
 
-            LaunchedEffect(location.id) { // Trigger update when location ID changes
-                name = TextFieldValue(location.name)
-                latitude = TextFieldValue(location.latitude.toString())
-                longitude = TextFieldValue(location.longitude.toString())
-                altitude = TextFieldValue(location.altitude.toString())
-                photoPaths = location.photoPaths.toList() // Ensure it's a fresh list copy
+            LaunchedEffect(location.id) {
+                galleryImages = fetchNearbyImages(
+                    context = context,
+                    lat     = location.latitude,
+                    lon     = location.longitude,
+                    radiusM = 1_000.0
+                ).take(3)
             }
 
-            Column(
+            Column(                                     // top-level layout of the screen
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(16.dp)
-                    .verticalScroll(rememberScrollState()),
-                verticalArrangement = Arrangement.Top
+                    // any tap not consumed by children will clear focus & hide keyboard
+                    .clickable(
+                        indication = null,
+                        interactionSource = remember { MutableInteractionSource() }
+                    ) { focusManager.clearFocus() }
+                    .verticalScroll(rememberScrollState())
+                    .padding(horizontal = 8.dp)
             ) {
-                // Location Name Field
-                StyledOutlinedTextField(
-                    value = name,
-                    onValueChange = { name = it },
-                    label = "Location Name",
-                    isGauge = isGauge,
-                    skinPref = skinPref
-                )
+                PlainTextField("Location Name", name, onValueChange = { name = it }, focusManager = focusManager)
+                LatLonCard(lat = latitude.text, lon = longitude.text)
 
-                // Latitude Field
-                StyledOutlinedTextField(
-                    value = latitude,
-                    onValueChange = { latitude = it },
-                    label = "Latitude",
-                    keyboardType = KeyboardType.Decimal,
-                    isGauge = isGauge,
-                    skinPref = skinPref
-                )
+                Spacer(Modifier.height(12.dp))
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable(
+                            indication = null,
+                            interactionSource = remember { MutableInteractionSource() }
+                        ) {
+                            navController.navigate("navigator/${location.id}/${location.name}")
+                        },
+                    horizontalArrangement = Arrangement.Center,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text("Navigate to Location", fontSize = 16.sp, fontWeight = FontWeight.Medium)
+                    Icon(Icons.Filled.Navigation, null, Modifier.padding(start = 4.dp))
+                }
 
-                // Longitude Field
-                StyledOutlinedTextField(
-                    value = longitude,
-                    onValueChange = { longitude = it },
-                    label = "Longitude",
-                    keyboardType = KeyboardType.Decimal,
-                    isGauge = isGauge,
-                    skinPref = skinPref
-                )
+                /* ─────── photo strip ─────── */
+                Spacer(Modifier.height(16.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    repeat(3) { index ->
+                        val uri = galleryImages.getOrNull(index)
+                        Box(
+                            Modifier
+                                .size(80.dp)
+                                .clip(RoundedCornerShape(8.dp))
+                                .border(1.dp, Color.Black, RoundedCornerShape(8.dp)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            if (uri != null) {
+                                Image(
+                                    painter = rememberAsyncImagePainter(uri),
+                                    contentDescription = null,
+                                    modifier = Modifier.fillMaxSize()
+                                )
+                            } else {
+                                Icon(
+                                    painterResource(R.drawable.ic_placeholder),
+                                    null,
+                                    tint = Color.Gray,
+                                    modifier = Modifier.size(32.dp)
+                                )
+                            }
+                        }
+                    }
 
-                Spacer(modifier = Modifier.height(16.dp))
+                    TextButton(
+                        onClick = {
+                            galleryImages.firstOrNull()?.let { uri ->
+                                val view = Intent(Intent.ACTION_VIEW, uri).apply {
+                                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                                }
+                                context.startActivity(view)
+                            } ?: Toast.makeText(context, "No photos to open", Toast.LENGTH_SHORT).show()
+                        },
+                        modifier = Modifier.height(80.dp)
+                    ) {
+                        Text("Go to\nGallery", fontSize = 12.sp)
+                    }
+                }
+                /* ───────────────────────────────────────── */
 
-                if (photoPaths.isNotEmpty()) {
-                    // Display First Image in Full Width
-                    Image(
-                        painter = rememberAsyncImagePainter(photoPaths[0]),
-                        contentDescription = "Location Photo",
+                Spacer(Modifier.height(16.dp))
+                Row(
+                    Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceEvenly
+                ) {
+                    ActionButton("Delete") {
+                        locationViewModel.updateLocation(location.copy(status = "deleted"))
+                        Toast.makeText(context, "Location deleted", Toast.LENGTH_SHORT).show()
+                        navController.popBackStack()
+                    }
+                    ActionButton("Share") {
+                        shareLocationDetails(context, latitude.text, longitude.text)
+                    }
+                }
+
+                Spacer(Modifier.weight(1f))
+
+                if (nearbyRoutes.isNotEmpty()) {
+
+                    /* ─── styled card wrapper ───────────────────────────────────────── */
+                    Card(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .height(200.dp)
-                            .padding(8.dp)
-                    )
-
-                    // Display Row of Thumbnails + Empty Slots for New Photos
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            .padding(top = 16.dp),
+                        shape  = RoundedCornerShape(8.dp),
+                        border = BorderStroke(1.dp, Color.Black),                 // ← new black border
+                        colors = CardDefaults.cardColors(containerColor = Color.Transparent) // ← transparent bg
                     ) {
-                        val placeholders = 4 - photoPaths.size
-                        photoPaths.forEach { path ->
-                            Image(
-                                painter = rememberAsyncImagePainter(path),
-                                contentDescription = "Location Photo",
-                                modifier = Modifier
-                                    .size(80.dp)
-                                    .clip(RoundedCornerShape(8.dp))
-                                    .clickable { /* Optionally open full-size view */ }
+
+                        Column(Modifier.padding(12.dp)) {
+
+                            /* title line */
+                            Text(
+                                "Saved routes within 3 km (${nearbyRoutes.size})",
+                                fontSize   = 16.sp,
+                                fontWeight = FontWeight.SemiBold
                             )
-                        }
-                        repeat(placeholders) {
-                            Box(
+
+                            Spacer(Modifier.height(8.dp))
+
+                            /* list + thumb side-by-side */
+                            val listState = rememberLazyListState()
+
+                            Row(
                                 modifier = Modifier
-                                    .size(80.dp)
-                                    .clip(RoundedCornerShape(8.dp))
-                                    .clickable { imagePickerLauncher.launch("image/*") },
-                                contentAlignment = Alignment.Center
+                                    .fillMaxWidth()
+                                    .height(200.dp)          // ← FIX: constrain viewport height
                             ) {
-                                Icon(
-                                    painter = painterResource(id = android.R.drawable.ic_input_add),
-                                    contentDescription = "Add Photo",
-                                    tint = Color.Gray
+
+                                /* routes list */
+                                LazyColumn(
+                                    state = listState,
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .fillMaxHeight()     // take the full 200 dp
+                                ) {
+                                    items(nearbyRoutes) { r ->
+                                        val displayName = r.routeName?.takeIf { it.isNotBlank() } ?: "Route ${r.id}"
+                                        Text(
+                                            "•  $displayName – ${formatTime(r.startTime)}",
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .padding(vertical = 4.dp)
+                                                .clickable { navController.navigate("view_route/${r.id}") }
+                                        )
+                                    }
+                                }
+
+                                /* scroll thumb */
+                                ScrollThumbLocationDetails(
+                                    listState = listState,
+                                    modifier  = Modifier
+                                        .fillMaxHeight()     // same 200 dp height
+                                        .width(4.dp)
                                 )
                             }
                         }
                     }
                 }
 
-                // --- Buttons Always Displayed ---
-                Spacer(modifier = Modifier.height(16.dp))
+                Spacer(Modifier.weight(1f))
 
                 Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceEvenly
+                    Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween
                 ) {
-                    ThemedButton(
-                        text = "Add Photo",
-                        onClick = { imagePickerLauncher.launch("image/*") },
-                        isGauge = isGauge,
-                        skinPref = skinPref
-                    )
-
-                    ThemedButton(
-                        text = "Download Photo",
-                        onClick = {
-                            if (photoPaths.isNotEmpty()) {
-                                downloadImage(context, photoPaths[0])
-                            } else {
-                                Toast.makeText(
-                                    context,
-                                    "No images to download",
-                                    Toast.LENGTH_SHORT
-                                ).show()
-                            }
-                        },
-                        isGauge = isGauge,
-                        skinPref = skinPref
-                    )
-
-                    ThemedButton(
-                        text = "Remove All Photos",
-                        onClick = {
-                            if (photoPaths.isNotEmpty()) {
-                                photoPaths = emptyList()
-                                locationViewModel.updateLocationPhoto(location.id, emptyList())
-                                Toast.makeText(
-                                    context,
-                                    "All photos removed",
-                                    Toast.LENGTH_SHORT
-                                ).show()
-                            }
-                        },
-                        isGauge = isGauge,
-                        skinPref = skinPref
-                    )
-                }
-
-                // --- Remaining Buttons ---
-                Spacer(modifier = Modifier.height(16.dp))
-
-                ThemedButton(
-                    text = "Save",
-                    onClick = {
-                        val updatedLocation = location.copy(
-                            name = name.text,
-                            latitude = latitude.text.toDoubleOrNull() ?: 0.0,
-                            longitude = longitude.text.toDoubleOrNull() ?: 0.0,
-                            altitude = 0.0, // You can add altitude handling
-                            photoPaths = photoPaths
+                    ActionButton("Back") { navController.popBackStack() }
+                    ActionButton("Save") {
+                        val updated = location.copy(
+                            name      = name.text,
+                            latitude  = latitude.text.toDoubleOrNull() ?: 0.0,
+                            longitude = longitude.text.toDoubleOrNull() ?: 0.0
                         )
-                        locationViewModel.updateLocation(updatedLocation)
+                        locationViewModel.updateLocation(updated)
                         Toast.makeText(context, "Location updated", Toast.LENGTH_SHORT).show()
-                    },
-                    isGauge = isGauge,
-                    skinPref = skinPref
-                )
-
-                Spacer(modifier = Modifier.height(16.dp))
-
-                ThemedButton(
-                    text = "Delete",
-                    onClick = {
-                        locationViewModel.updateLocation(location.copy(status = "deleted"))
-                        Toast.makeText(
-                            context,
-                            "Location flagged as deleted",
-                            Toast.LENGTH_SHORT
-                        ).show()
-                        navController.popBackStack()
-                    },
-                    isGauge = isGauge,
-                    skinPref = skinPref
-                )
-
-                Spacer(modifier = Modifier.height(16.dp))
-
-                ThemedButton(
-                    text = "Share",
-                    onClick = { shareLocationDetails(context, latitude.text, longitude.text) },
-                    isGauge = isGauge,
-                    skinPref = skinPref
-                )
-
-                Spacer(modifier = Modifier.height(16.dp))
-
-                ThemedButton(
-                    text = "Navigate to Location",
-                    onClick = { navController.navigate("navigator/${location.id}/${location.name}") },
-                    isGauge = isGauge,
-                    skinPref = skinPref
-                )
-
-                Spacer(modifier = Modifier.height(16.dp))
-
-                ThemedButton(
-                    text = "Back",
-                    onClick = { navController.popBackStack() },
-                    isGauge = isGauge,
-                    skinPref = skinPref
-                )
+                    }
+                }
             }
         }
-    }
-}
-
-fun saveImageToInternalStorage(context: Context, uri: Uri): String? {
-    try {
-        val inputStream = context.contentResolver.openInputStream(uri)
-        val file = File(context.filesDir, "location_${System.currentTimeMillis()}.jpg")
-        val outputStream = FileOutputStream(file)
-        inputStream?.copyTo(outputStream)
-        inputStream?.close()
-        outputStream.close()
-        return file.absolutePath
-    } catch (e: Exception) {
-        e.printStackTrace()
-    }
-    return null
-}
-
-fun downloadImage(context: Context, filePath: String) {
-    try {
-        val file = File(filePath)
-        val downloadDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
-        val newFile = File(downloadDir, file.name)
-
-        file.copyTo(newFile, overwrite = true)
-
-        val uri = FileProvider.getUriForFile(context, "${context.packageName}.provider", newFile)
-        val intent = Intent(Intent.ACTION_VIEW).apply {
-            setDataAndType(uri, "image/*")
-            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-        }
-        context.startActivity(intent)
-
-        Toast.makeText(context, "Photo downloaded to Downloads folder", Toast.LENGTH_SHORT).show()
-    } catch (e: Exception) {
-        Toast.makeText(context, "Failed to download photo", Toast.LENGTH_SHORT).show()
-        e.printStackTrace()
     }
 }
 
@@ -383,187 +343,243 @@ private fun shareLocationDetails(context: Context, latitude: String, longitude: 
 }
 
 @Composable
-fun StyledOutlinedTextField(
+private fun PlainTextField(
+    @Suppress("SameParameterValue") label: String,
     value: TextFieldValue,
     onValueChange: (TextFieldValue) -> Unit,
-    label: String,
-    keyboardType: KeyboardType = KeyboardType.Text,
-    isGauge: Boolean,
-    skinPref: Int
+    focusManager: FocusManager       // we’ll pass this in
 ) {
-    Box(
+    OutlinedTextField(
+        value = value,
+        onValueChange = onValueChange,
+        label = { Text(label) },
+        placeholder = { Text("Enter $label", fontSize = 12.sp) },
         modifier = Modifier
             .fillMaxWidth()
-            .then(
-                if (isGauge && skinPref == UserPreferences.SKIN_NEON_GAUGE) {
-                    Modifier.background(Color.Black.copy(alpha = 0.3f), RoundedCornerShape(4.dp))
-                } else Modifier
-            )
-    ) {
-        OutlinedTextField(
-            value = value,
-            onValueChange = onValueChange,
-            label = {
-                Text(
-                    label,
-                    color = getLabelColor(skinPref, isGauge)
-                )
-            },
-            placeholder = {
-                Text(
-                    "Enter $label",
-                    fontSize = 12.sp,
-                    color = getLabelColor(skinPref, isGauge).copy(alpha = 0.5f)
-                )
-            },
-            modifier = Modifier.fillMaxWidth(),
-            keyboardOptions = KeyboardOptions.Default.copy(keyboardType = keyboardType),
-            colors = getTextFieldColors(skinPref, isGauge)
-        )
-    }
-}
-
-// Function to determine label color based on skin
-@Composable
-fun getLabelColor(skinPref: Int, isGauge: Boolean): Color {
-    return if (!isGauge) {
-        Color.Black // Always black if not gauge
-    } else {
-        when (skinPref) {
-            UserPreferences.SKIN_NEON_GAUGE -> Color.Cyan
-            UserPreferences.SKIN_MINIMAL_GAUGE -> Color.White
-            else -> Color.Black // Classic or No skin
-        }
-    }
-}
-
-// Function to get the correct colors based on the selected skin
-@Composable
-fun getTextFieldColors(skinPref: Int, isGauge: Boolean): TextFieldColors {
-    return if (!isGauge) {
-        // Non-gauge: White background, black text, default Material UI
-        TextFieldDefaults.colors(
-            focusedContainerColor = Color.Transparent,
+            .padding(vertical = 4.dp),
+        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Text),
+        keyboardActions = KeyboardActions(
+            onDone = { focusManager.clearFocus() }   // hide keyboard when user presses “Done”
+        ),
+        singleLine = true,
+        colors = TextFieldDefaults.colors(
+            focusedIndicatorColor   = Color.Black,      // or Black, whatever you use
+            unfocusedIndicatorColor = Color.Black,
+            disabledIndicatorColor  = Color.Black,
+            focusedContainerColor   = Color.Transparent,   // ← make box clear
             unfocusedContainerColor = Color.Transparent,
-            focusedTextColor = Color.Black,
-            unfocusedTextColor = Color.Black,
-            cursorColor = Color.Black,
-            focusedIndicatorColor = Color.Gray,
-            unfocusedIndicatorColor = Color.Gray,
-            focusedLabelColor = Color.Black,
-            unfocusedLabelColor = Color.Black
+            disabledContainerColor  = Color.Transparent
         )
-    } else {
-        // Gauge: Apply skin-based styles
-        when (skinPref) {
-            UserPreferences.SKIN_CLASSIC_GAUGE -> TextFieldDefaults.colors(
-                focusedContainerColor = Color.Transparent,
-                unfocusedContainerColor = Color.Transparent,
-                focusedTextColor = Color.Black,
-                unfocusedTextColor = Color.Black,
-                cursorColor = Color.Black,
-                focusedIndicatorColor = Color(0xFF546E7A),
-                unfocusedIndicatorColor = Color(0xFF546E7A),
-                focusedLabelColor = Color.Black,
-                unfocusedLabelColor = Color.Black
-            )
+    )
+}
 
-            UserPreferences.SKIN_NEON_GAUGE -> TextFieldDefaults.colors(
-                focusedContainerColor = Color.Transparent,
-                unfocusedContainerColor = Color.Transparent,
-                focusedTextColor = Color.Cyan,
-                unfocusedTextColor = Color.Cyan,
-                cursorColor = Color.Cyan,
-                focusedIndicatorColor = Color.Cyan,
-                unfocusedIndicatorColor = Color.Cyan,
-                focusedLabelColor = Color.Cyan,
-                unfocusedLabelColor = Color.Cyan
-            )
+@Composable
+private fun ActionButton(text: String, onClick: () -> Unit) {
+    Button(onClick = onClick) { Text(text) }
+}
 
-            UserPreferences.SKIN_MINIMAL_GAUGE -> TextFieldDefaults.colors(
-                focusedContainerColor = Color.Transparent,
-                unfocusedContainerColor = Color.Transparent,
-                focusedTextColor = Color.White,
-                unfocusedTextColor = Color.White,
-                cursorColor = Color.White,
-                focusedIndicatorColor = Color.Transparent,
-                unfocusedIndicatorColor = Color.Transparent,
-                focusedLabelColor = Color.White,
-                unfocusedLabelColor = Color.White
-            )
-
-            else -> TextFieldDefaults.colors(
-                focusedContainerColor = Color.Transparent,
-                unfocusedContainerColor = Color.Transparent,
-                focusedTextColor = Color.Black,
-                unfocusedTextColor = Color.Black,
-                cursorColor = Color.Black,
-                focusedIndicatorColor = Color.Gray,
-                unfocusedIndicatorColor = Color.Gray,
-                focusedLabelColor = Color.Black,
-                unfocusedLabelColor = Color.Black
-            )
+@Composable
+private fun LatLonCard(lat: String, lon: String) {
+    OutlinedCard(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 8.dp),
+        shape  = RoundedCornerShape(4.dp),
+        border = BorderStroke(1.dp, Color.Black),                                // ← black outline
+        colors = CardDefaults.outlinedCardColors(containerColor = Color.Transparent) // ← transparent fill
+    ) {
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .padding(vertical = 12.dp),
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            LatLonColumn("Latitude",  lat)
+            LatLonColumn("Longitude", lon)
         }
     }
 }
 
 @Composable
-fun ThemedButton(
-    text: String,
-    onClick: () -> Unit,
-    isGauge: Boolean,
-    skinPref: Int
-) {
-    if (isGauge) {
-        when (skinPref) {
-            UserPreferences.SKIN_CLASSIC_GAUGE -> {
-                Button(
-                    onClick = onClick,
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = Color.Transparent,
-                        contentColor = Color.Black
-                    ),
-                    border = BorderStroke(1.dp, Color(0xFF546E7A))
-                ) {
-                    Text(text)
-                }
-            }
+private fun RowScope.LatLonColumn(label: String, value: String) {
+    Column(
+        modifier = Modifier.weight(1f),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Text(label, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+        Spacer(Modifier.height(4.dp))
+        LocationInfoChip(
+            icon = Icons.Filled.LocationOn,
+            value = if (value.isEmpty()) "Initializing…" else formatCoordinate(value),
+            iconColor = Color.Blue,
+            textColor = Color.Black
+        )
+    }
+}
 
-            UserPreferences.SKIN_NEON_GAUGE -> {
-                OutlinedButton(
-                    onClick = onClick,
-                    border = BorderStroke(1.dp, Color.Cyan),
-                    colors = ButtonDefaults.outlinedButtonColors(
-                        containerColor = Color.Black.copy(alpha = 0.3f),
-                        contentColor = Color.Cyan
-                    )
-                ) {
-                    Text(text)
-                }
-            }
+@SuppressLint("Recycle")
+private suspend fun fetchNearbyImages(
+    context: Context,
+    lat: Double,
+    lon: Double,
+    radiusM: Double
+): List<Uri> = withContext(Dispatchers.IO) {
+    val out = mutableListOf<Uri>()
+    val projection = arrayOf(
+        MediaStore.Images.Media._ID,
+        MediaStore.Images.Media.DATE_TAKEN,
+        MediaStore.Images.Media.DATA
+    )
 
-            UserPreferences.SKIN_MINIMAL_GAUGE -> {
-                OutlinedButton(
-                    onClick = onClick,
-                    border = BorderStroke(1.dp, Color.Transparent),
-                    colors = ButtonDefaults.outlinedButtonColors(
-                        containerColor = Color.Transparent,
-                        contentColor = Color.White
+    context.contentResolver.query(
+        MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
+        projection,
+        null,
+        null,
+        "${MediaStore.Images.Media.DATE_TAKEN} DESC"
+    )?.use { c ->
+        val idCol = c.getColumnIndexOrThrow(MediaStore.Images.Media._ID)
+        val pathCol = c.getColumnIndexOrThrow(MediaStore.Images.Media.DATA)
+
+        while (c.moveToNext() && out.size < 3) {
+            val path = c.getString(pathCol) ?: continue
+            val exif = try { ExifInterface(path) } catch (_: Exception) { null } ?: continue
+
+            getLatLongFromExif(exif)?.let { (imgLat, imgLon) ->
+                val d = haversine(imgLat, imgLon, lat, lon)
+                if (d <= radiusM) {
+                    val uri = ContentUris.withAppendedId(
+                        MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
+                        c.getLong(idCol)
                     )
-                ) {
-                    Text(text)
+                    out += uri
                 }
             }
         }
-    } else {
-        Button(
-            onClick = onClick,
-            colors = ButtonDefaults.buttonColors(
-                containerColor = Color(0xFF3F51B5), // Default Material Blue
-                contentColor = Color.White
+    }
+    out
+}
+
+/** Simple Haversine distance (metres) */
+private fun haversine(lat1: Double, lon1: Double, lat2: Double, lon2: Double): Double {
+    val r = 6_371_000.0
+    val dLat = Math.toRadians(lat2 - lat1)
+    val dLon = Math.toRadians(lon2 - lon1)
+    val a = sin(dLat / 2).pow(2) +
+            cos(Math.toRadians(lat1)) *
+            cos(Math.toRadians(lat2)) *
+            sin(dLon / 2).pow(2)
+    val c = 2 * atan2(sqrt(a), sqrt(1 - a))
+    return r * c
+}
+
+private fun getLatLongFromExif(exif: ExifInterface): Pair<Double, Double>? {
+    // Retrieve GPS data from EXIF tags
+    val latStr = exif.getAttribute(ExifInterface.TAG_GPS_LATITUDE)
+    val latRef = exif.getAttribute(ExifInterface.TAG_GPS_LATITUDE_REF)
+    val lonStr = exif.getAttribute(ExifInterface.TAG_GPS_LONGITUDE)
+    val lonRef = exif.getAttribute(ExifInterface.TAG_GPS_LONGITUDE_REF)
+
+    // Check if any data is missing
+    if (latStr == null || latRef == null || lonStr == null || lonRef == null) {
+        return null
+    }
+
+    // Parse latitude and longitude
+    val lat = parseGpsValue(latStr, latRef)
+    val lon = parseGpsValue(lonStr, lonRef)
+
+    // Return the coordinates as a Pair, or null if parsing fails
+    return if (lat != null && lon != null) Pair(lat, lon) else null
+}
+
+private fun parseGpsValue(value: String, ref: String): Double? {
+    val parts = value.split(',').map { it.trim() }
+    if (parts.size != 3) return null
+
+    fun parseRational(rational: String): Double? {
+        val fraction = rational.split('/').map { it.trim() }
+        if (fraction.size != 2) return null
+        val num = fraction[0].toDoubleOrNull() ?: return null
+        val denom = fraction[1].toDoubleOrNull() ?: return null
+        if (denom == 0.0) return null
+        return num / denom
+    }
+
+    val degrees = parseRational(parts[0]) ?: return null
+    val minutes = parseRational(parts[1]) ?: return null
+    val seconds = parseRational(parts[2]) ?: return null
+
+    val decimal = degrees + (minutes / 60.0) + (seconds / 3600.0)
+    return if (ref == "S" || ref == "W") -decimal else decimal
+}
+
+@Composable
+fun ScrollThumbLocationDetails(
+    listState      : LazyListState,
+    modifier       : Modifier = Modifier,
+    thumbColor     : Color     = Color.Black.copy(alpha = 0.3f),
+    trackColor     : Color     = Color.LightGray.copy(alpha = .25f),
+    minThumbHeight : Dp = 14.dp,
+    thumbWidth     : Dp        = 4.dp
+) {
+    BoxWithConstraints(
+        modifier               // ←– your width / height
+            .zIndex(1f)        // ✱ keep thumb above list
+    ) {
+
+        /* show thumb only when list is longer than viewport */
+        val showThumb by remember {
+            derivedStateOf {
+                val total   = listState.layoutInfo.totalItemsCount
+                val visible = listState.layoutInfo.visibleItemsInfo.size
+                total > 0 && visible < total
+            }
+        }
+
+        /* progress & thumb height */
+        val metrics by remember {
+            derivedStateOf {
+                val total   = listState.layoutInfo.totalItemsCount
+                val visible = listState.layoutInfo.visibleItemsInfo.size
+
+                val firstIndex  = listState.firstVisibleItemIndex.toFloat()
+                val firstOffset = listState.firstVisibleItemScrollOffset
+                val itemHeight  = listState.layoutInfo.visibleItemsInfo
+                    .firstOrNull()?.size ?: 1
+                val progress = ((firstIndex + firstOffset / itemHeight) /
+                        (total - visible).coerceAtLeast(1)).coerceIn(0f, 1f)
+
+                val ratio   = visible.toFloat() / total
+                val rawH    = maxHeight * ratio
+                val thumbH  = maxOf(rawH, minThumbHeight)
+
+                progress to thumbH
+            }
+        }
+
+        /* drawing */
+        val density        = LocalDensity.current
+        val trackHeightPx  = with(density) { maxHeight.toPx() }
+        val thumbHeightPx  = with(density) { metrics.second.toPx() }
+        val yOffsetPx      = (trackHeightPx - thumbHeightPx) * metrics.first
+
+        Box(
+            Modifier
+                .fillMaxSize()
+                .background(trackColor)
+        )
+
+        /* draw thumb only when needed */
+        if (showThumb) {
+            Box(
+                Modifier
+                    .offset { IntOffset(0, yOffsetPx.roundToInt()) }
+                    .width(thumbWidth)
+                    .height(metrics.second)
+                    .clip(RoundedCornerShape(percent = 50))
+                    .background(thumbColor)
             )
-        ) {
-            Text(text)
         }
     }
 }

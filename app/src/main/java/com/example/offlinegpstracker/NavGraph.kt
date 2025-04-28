@@ -1,12 +1,16 @@
 package com.example.offlinegpstracker
 
+import android.app.Application
 import android.os.Build
 import androidx.annotation.RequiresApi
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.PagerState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
@@ -17,7 +21,6 @@ fun NavGraph(
     navController: NavHostController,
     locationViewModel: LocationViewModel,
     routeTrackerVM: RouteTrackerViewModel,
-    userPreferences: UserPreferences,
     modifier: Modifier = Modifier,
     pagerState: PagerState,
     locations: List<Location>
@@ -26,12 +29,14 @@ fun NavGraph(
         composable("main") {
             HorizontalPager(state = pagerState) { page ->
                 when (page) {
-                    0 -> GPSTrackerScreen(locationViewModel)
-                    1 -> LocationsScreen(
-                        navController = navController,
+                    0 -> GPSTrackerScreen(              // ← needs skins
+                        locationViewModel = locationViewModel
+                    )
+
+                    1 -> LocationsScreen(                // ← neutral UI
+                        navController     = navController,
                         locationViewModel = locationViewModel,
-                        locations = locations,
-                        userPreferences = userPreferences
+                        locations         = locations
                     )
 
                     2 -> RouteTrackerScreen(viewModel = routeTrackerVM)
@@ -67,6 +72,24 @@ fun NavGraph(
                     locationName = locationName
                 )
             }
+        }
+        composable("view_route/{routeId}") { backStackEntry ->
+            val routeId   = backStackEntry.arguments?.getString("routeId")?.toIntOrNull() ?: return@composable
+            val context   = LocalContext.current
+            val app       = context.applicationContext as MyApplication
+
+            /* share the same LocationViewModel that NavGraph already owns */
+            val routeVM = remember {
+                RouteTrackerViewModel(
+                    routeRepository = app.routeRepository,
+                    application     = context.applicationContext as Application,
+                    locationViewModel = locationViewModel
+                )
+            }
+
+            LaunchedEffect(routeId) { routeVM.selectRoute(routeId) }
+
+            RouteTrackerScreen(viewModel = routeVM)
         }
     }
 }

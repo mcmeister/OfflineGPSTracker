@@ -7,7 +7,6 @@ import androidx.activity.compose.setContent
 import androidx.activity.viewModels
 import androidx.annotation.RequiresApi
 import androidx.appcompat.app.AppCompatActivity
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
@@ -30,8 +29,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
 import androidx.core.view.WindowCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -70,36 +67,36 @@ class MainActivity : AppCompatActivity() {
         setContent {
             OfflineGPSTrackerTheme {
                 val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
-                CompositionLocalProvider(
-                    androidx.lifecycle.compose.LocalLifecycleOwner provides lifecycleOwner
-                ) {
-                    val navController = rememberNavController()
-                    val scope = rememberCoroutineScope()
+                CompositionLocalProvider(androidx.lifecycle.compose.LocalLifecycleOwner provides lifecycleOwner) {
 
-                    // Observe skin & compass type
-                    val currentSkin by userPreferences.compassSkin
+                    /* ─── state ─── */
+                    val navController = rememberNavController()
+                    val scope         = rememberCoroutineScope()
+
+                    // skin / type
+                    val currentSkin  by userPreferences.compassSkin
                         .collectAsStateWithLifecycle(initialValue = UserPreferences.SKIN_CLASSIC_GAUGE)
-                    val compassType by userPreferences.compassType
+                    val compassType  by userPreferences.compassType
                         .collectAsStateWithLifecycle(initialValue = 0)
 
-                    // Observe locations
-                    val locations by locationViewModel.locations
+                    // locations list
+                    val locations    by locationViewModel.locations
                         .collectAsStateWithLifecycle(lifecycleOwner.lifecycle)
 
-                    // Create/remember pagerState (2 pages: GPSTrackerScreen + LocationsScreen)
-                    val pagerState = rememberPagerState { 3 }
+                    // pages (0 GPS, 1 Locations, 2 Route)
+                    val pagerState   = rememberPagerState { 3 }
 
-                    RequestLocationPermission {
-                        locationViewModel.startLocationUpdates()
-                    }
+                    /* request location permission once */
+                    RequestLocationPermission { locationViewModel.startLocationUpdates() }
 
+                    /* pre-download map tiles (unchanged) */
                     LaunchedEffect(Unit) {
                         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
                             routeTrackerViewModel.tryDownloadTilesForAllRoutes()
                         }
                     }
 
-                    // Handle Back
+                    /* back-handler (unchanged) */
                     BackHandler {
                         if (locations.isNotEmpty()) {
                             when (navController.currentDestination?.route) {
@@ -114,167 +111,132 @@ class MainActivity : AppCompatActivity() {
                                 "location_details/{locationId}" -> navController.navigate("main") {
                                     popUpTo("main") { inclusive = true }
                                 }
-                                "navigator/{locationId}" -> navController.navigate("main") {
+                                "navigator/{locationId}"       -> navController.navigate("main") {
                                     popUpTo("main") { inclusive = true }
                                 }
                             }
                         }
                     }
 
-                    // Scaffold with a transparent NavigationBar
+                    /* is user **currently** on GPS tab + Gauge view ? */
+                    val gaugeOnGpsTab = pagerState.currentPage == 0 && compassType == 2
+
+                    /* nav-bar colours (skin only when above is true) */
+                    val (unSel, _, sel) = if (gaugeOnGpsTab)
+                        getNavBarColors(currentSkin, 2)
+                    else
+                        Triple(
+                            MaterialTheme.colorScheme.onBackground,
+                            MaterialTheme.colorScheme.onBackground,
+                            MaterialTheme.colorScheme.primary
+                        )
+
+                    /* ─── UI  ─── */
                     Scaffold(
                         bottomBar = {
-                            val (unselectedColor, _, selectedItemColor) = getNavBarColors(currentSkin, compassType)
                             NavigationBar(
-                                containerColor = Color.Transparent,
+                                containerColor = if (gaugeOnGpsTab) Color.Transparent
+                                else MaterialTheme.colorScheme.surface,
                                 tonalElevation = 0.dp
                             ) {
+                                /* GPS Tracker */
                                 NavigationBarItem(
                                     selected = pagerState.currentPage == 0,
-                                    onClick = {
-                                        if (navController.currentDestination?.route == "main") {
-                                            scope.launch {
-                                                withContext(Dispatchers.Main.immediate) {
-                                                    pagerState.animateScrollToPage(0)
-                                                }
-                                            }
-                                        } else {
-                                            navController.navigate("main") {
-                                                popUpTo("main") { inclusive = true }
-                                            }
-                                            scope.launch {
-                                                withContext(Dispatchers.Main.immediate) {
-                                                    pagerState.animateScrollToPage(0)
-                                                }
-                                            }
+                                    onClick  = {
+                                        if (navController.currentDestination?.route == "main")
+                                            scope.launch { pagerState.animateScrollToPage(0) }
+                                        else {
+                                            navController.navigate("main") { popUpTo("main") { inclusive = true } }
+                                            scope.launch { pagerState.animateScrollToPage(0) }
                                         }
                                     },
-                                    label = {
-                                        Text(
-                                            "GPS Tracker",
-                                            color = if (pagerState.currentPage == 0)
-                                                selectedItemColor
-                                            else
-                                                unselectedColor
-                                        )
-                                    },
-                                    icon = {
-                                        Icon(
-                                            imageVector = Icons.Default.LocationOn,
-                                            contentDescription = null,
-                                            tint = if (pagerState.currentPage == 0)
-                                                selectedItemColor
-                                            else
-                                                unselectedColor
-                                        )
-                                    }
+                                    label = { Text("GPS Tracker",  color = if (pagerState.currentPage == 0) sel else unSel) },
+                                    icon  = { Icon(Icons.Default.LocationOn, null,
+                                        tint = if (pagerState.currentPage == 0) sel else unSel) }
                                 )
+
+                                /* Locations */
                                 NavigationBarItem(
                                     selected = pagerState.currentPage == 1,
-                                    onClick = {
+                                    onClick  = {
+                                        if (navController.currentDestination?.route == "main")
+                                            scope.launch { pagerState.animateScrollToPage(1) }
+                                        else {
+                                            navController.navigate("main") { popUpTo("main") { inclusive = true } }
+                                            scope.launch { pagerState.animateScrollToPage(1) }
+                                        }
+                                    },
+                                    label = { Text("Locations",   color = if (pagerState.currentPage == 1) sel else unSel) },
+                                    icon  = { Icon(Icons.AutoMirrored.Filled.List, null,
+                                        tint = if (pagerState.currentPage == 1) sel else unSel) }
+                                )
+
+                                /* Route Tracker */
+                                NavigationBarItem(
+                                    selected = pagerState.currentPage == 2,
+                                    onClick  = {
                                         if (navController.currentDestination?.route == "main") {
+                                            // already on Main → just flip the pager
                                             scope.launch {
                                                 withContext(Dispatchers.Main.immediate) {
-                                                    pagerState.animateScrollToPage(1)
+                                                    pagerState.animateScrollToPage(2)
                                                 }
                                             }
                                         } else {
-                                            navController.navigate("main") {
-                                                popUpTo("main") { inclusive = true }
-                                            }
+                                            // first pop back to Main, then flip the pager
+                                            navController.navigate("main") { popUpTo("main") { inclusive = true } }
                                             scope.launch {
                                                 withContext(Dispatchers.Main.immediate) {
-                                                    pagerState.animateScrollToPage(1)
+                                                    pagerState.animateScrollToPage(2)
                                                 }
                                             }
                                         }
                                     },
                                     label = {
                                         Text(
-                                            "Locations",
-                                            color = if (pagerState.currentPage == 1)
-                                                selectedItemColor
-                                            else
-                                                unselectedColor
+                                            "Route Tracker",
+                                            color = if (pagerState.currentPage == 2) sel else unSel
                                         )
                                     },
-                                    icon = {
+                                    icon  = {
                                         Icon(
-                                            imageVector = Icons.AutoMirrored.Filled.List,
+                                            Icons.AutoMirrored.Filled.DirectionsWalk,
                                             contentDescription = null,
-                                            tint = if (pagerState.currentPage == 1)
-                                                selectedItemColor
-                                            else
-                                                unselectedColor
+                                            tint = if (pagerState.currentPage == 2) sel else unSel
                                         )
                                     }
-                                )
-                                NavigationBarItem(
-                                    selected = pagerState.currentPage == 2,
-                                    onClick = { scope.launch { pagerState.animateScrollToPage(2) } },
-                                    label = { Text("Route Tracker", color = if (pagerState.currentPage == 2) selectedItemColor else unselectedColor) },
-                                    icon = { Icon(Icons.AutoMirrored.Filled.DirectionsWalk, null, tint = if (pagerState.currentPage == 2) selectedItemColor else unselectedColor) }
                                 )
                             }
                         }
                     ) { innerPadding ->
-                        // The background is drawn based on the selected skin.
-                        Box(modifier = Modifier.fillMaxSize()) {
-                            if (compassType == 2) { // Only show a background image if Gauge view is active.
-                                when (currentSkin) {
-                                    UserPreferences.SKIN_CLASSIC_GAUGE -> {
-                                        Image(
-                                            painter = painterResource(id = R.drawable.metallic_background),
-                                            contentDescription = null,
-                                            modifier = Modifier.fillMaxSize(),
-                                            contentScale = ContentScale.Crop
-                                        )
-                                    }
-                                    UserPreferences.SKIN_NEON_GAUGE -> {
-                                        Image(
-                                            painter = painterResource(id = R.drawable.neon_background2),
-                                            contentDescription = null,
-                                            modifier = Modifier.fillMaxSize(),
-                                            contentScale = ContentScale.Crop
-                                        )
-                                    }
-                                    UserPreferences.SKIN_MINIMAL_GAUGE -> {
-                                        Box(modifier = Modifier
-                                            .fillMaxSize()
-                                            .background(Color.Black)
-                                        )
-                                    }
-                                    else -> {
-                                        Box(modifier = Modifier
-                                            .fillMaxSize()
-                                            .background(MaterialTheme.colorScheme.background)
-                                        )
-                                    }
-                                }
-                            } else {
-                                // Not gauge mode: fallback to default background.
-                                Box(modifier = Modifier
-                                    .fillMaxSize()
-                                    .background(MaterialTheme.colorScheme.background)
+
+                        /* root container so we can paint the backdrop underneath Scaffold content */
+                        Box(Modifier.fillMaxSize()) {
+
+                            /* full-screen skin only on GPS + Gauge */
+                            if (gaugeOnGpsTab) {
+                                SkinBackground(
+                                    compassType = 2,
+                                    skin        = currentSkin,
+                                    modifier    = Modifier.fillMaxSize()
                                 )
                             }
 
-                            // Foreground content (NavGraph) with innerPadding so that it is above the nav bar.
-                            Box(
+                            /* foreground screens */
+                            NavGraph(
+                                navController     = navController,
+                                locationViewModel = locationViewModel,
+                                routeTrackerVM    = routeTrackerViewModel,
+                                pagerState        = pagerState,
+                                locations         = locations,
                                 modifier = Modifier
                                     .fillMaxSize()
+                                    .then(
+                                        if (gaugeOnGpsTab) Modifier              // skin already painted
+                                        else Modifier.background(MaterialTheme.colorScheme.background)
+                                    )
                                     .padding(innerPadding)
-                            ) {
-                                NavGraph(
-                                    navController = navController,
-                                    locationViewModel = locationViewModel,
-                                    routeTrackerVM     = routeTrackerViewModel,
-                                    modifier = Modifier.fillMaxSize(),
-                                    pagerState = pagerState,
-                                    locations = locations,
-                                    userPreferences = userPreferences
-                                )
-                            }
+                            )
                         }
                     }
                 }

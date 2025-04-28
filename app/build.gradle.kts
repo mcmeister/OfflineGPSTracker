@@ -79,6 +79,7 @@ dependencies {
     implementation("androidx.room:room-runtime:2.6.1")
     implementation("androidx.room:room-ktx:2.6.1")
     implementation(libs.androidx.tools.core)
+    implementation("androidx.exifinterface:exifinterface:1.4.1")
     kapt("androidx.room:room-compiler:2.6.1")
     implementation("com.google.code.gson:gson:2.10.1")
     implementation("io.coil-kt:coil-compose:2.4.0")
@@ -98,4 +99,11 @@ kapt {
         arg("room.schemaLocation", "$projectDir/schemas")
     }
     correctErrorTypes = true
+}
+
+configurations.all {
+    resolutionStrategy {
+        // make every dependency that asks for ExifInterface take 1.4.1
+        force("androidx.exifinterface:exifinterface:1.4.1")
+    }
 }
