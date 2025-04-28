@@ -4,9 +4,14 @@ import android.annotation.SuppressLint
 import android.content.ContentUris
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.net.Uri
+import android.os.Build
 import android.provider.MediaStore
+import android.util.Log
 import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -76,6 +81,7 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
+import androidx.core.content.ContextCompat
 import androidx.exifinterface.media.ExifInterface
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavHostController
@@ -98,6 +104,27 @@ fun LocationDetailsScreen(
     val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
     val locations by locationViewModel.locations.collectAsStateWithLifecycle(lifecycleOwner.lifecycle)
     val context  = LocalContext.current
+
+    val readImagesPerm = if (Build.VERSION.SDK_INT >= 33)
+        android.Manifest.permission.READ_MEDIA_IMAGES
+    else
+        android.Manifest.permission.READ_EXTERNAL_STORAGE
+
+    var hasGalleryPerm by remember {
+        mutableStateOf(
+            ContextCompat.checkSelfPermission(context, readImagesPerm) ==
+                    PackageManager.PERMISSION_GRANTED
+        )
+    }
+
+    val requestGalleryPerm = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { granted -> hasGalleryPerm = granted }
+
+    // ask once when the screen first opens
+    LaunchedEffect(Unit) {
+        if (!hasGalleryPerm) requestGalleryPerm.launch(readImagesPerm)
+    }
 
     val pagerState = rememberPagerState { locations.size }
 
@@ -125,13 +152,17 @@ fun LocationDetailsScreen(
             val longitude  by remember { mutableStateOf(TextFieldValue(location.longitude.toString())) }
             var galleryImages by remember { mutableStateOf<List<Uri>>(emptyList()) }
 
-            LaunchedEffect(location.id) {
-                galleryImages = fetchNearbyImages(
-                    context = context,
-                    lat     = location.latitude,
-                    lon     = location.longitude,
-                    radiusM = 1_000.0
-                ).take(3)
+            LaunchedEffect(location.id, hasGalleryPerm) {
+                galleryImages = if (hasGalleryPerm) {
+                    fetchNearbyImages(
+                        context  = context,
+                        lat      = location.latitude,
+                        lon      = location.longitude,
+                        radiusM  = 1_000.0
+                    ).take(3)
+                } else {
+                    emptyList()   // permission denied → show placeholders
+                }
             }
 
             Column(                                     // top-level layout of the screen
@@ -424,40 +455,59 @@ private suspend fun fetchNearbyImages(
     lon: Double,
     radiusM: Double
 ): List<Uri> = withContext(Dispatchers.IO) {
-    val out = mutableListOf<Uri>()
+
+    val wanted = mutableListOf<Uri>()
     val projection = arrayOf(
         MediaStore.Images.Media._ID,
-        MediaStore.Images.Media.DATE_TAKEN,
-        MediaStore.Images.Media.DATA
+        MediaStore.Images.Media.DATE_TAKEN
     )
 
-    context.contentResolver.query(
+    val cursor = context.contentResolver.query(
         MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
         projection,
         null,
         null,
         "${MediaStore.Images.Media.DATE_TAKEN} DESC"
-    )?.use { c ->
+    )
+
+    Log.d("GalleryTest", "query returned ${cursor?.count ?: -1} rows")   // ①
+
+    cursor?.use { c ->
         val idCol = c.getColumnIndexOrThrow(MediaStore.Images.Media._ID)
-        val pathCol = c.getColumnIndexOrThrow(MediaStore.Images.Media.DATA)
 
-        while (c.moveToNext() && out.size < 3) {
-            val path = c.getString(pathCol) ?: continue
-            val exif = try { ExifInterface(path) } catch (_: Exception) { null } ?: continue
+        while (c.moveToNext()) {
+            val id  = c.getLong(idCol)
+            val uri = ContentUris.withAppendedId(
+                MediaStore.Images.Media.EXTERNAL_CONTENT_URI, id
+            )
 
-            getLatLongFromExif(exif)?.let { (imgLat, imgLon) ->
-                val d = haversine(imgLat, imgLon, lat, lon)
-                if (d <= radiusM) {
-                    val uri = ContentUris.withAppendedId(
-                        MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
-                        c.getLong(idCol)
-                    )
-                    out += uri
-                }
+            val exif = context.contentResolver.openInputStream(uri)?.use {
+                ExifInterface(it)
+            } ?: continue
+
+            val coords = getLatLongFromExif(exif)
+            if (coords == null) {
+                Log.d("GalleryTest", "   GPS tags missing for $uri")      // ②
+                continue
+            }
+
+            val imgLat = coords.first
+            val imgLon = coords.second
+            val d = haversine(imgLat, imgLon, lat, lon)
+
+            Log.d(                                                // ③
+                "GalleryTest",
+                "img=$imgLat,$imgLon  loc=$lat,$lon  dist=${"%.1f".format(d)} m"
+            )
+
+            if (d <= radiusM) {
+                wanted += uri
+                Log.d("GalleryTest", "   >>> accepted ($d m)")      // ④
+                if (wanted.size == 3) break
             }
         }
     }
-    out
+    wanted
 }
 
 /** Simple Haversine distance (metres) */
@@ -494,6 +544,12 @@ private fun getLatLongFromExif(exif: ExifInterface): Pair<Double, Double>? {
 }
 
 private fun parseGpsValue(value: String, ref: String): Double? {
+    // New fast path – already decimal?
+    value.toDoubleOrNull()?.let { dec ->
+        return if (ref == "S" || ref == "W") -dec else dec
+    }
+
+    // … otherwise fall back to “d/m/s” parsing
     val parts = value.split(',').map { it.trim() }
     if (parts.size != 3) return null
 
