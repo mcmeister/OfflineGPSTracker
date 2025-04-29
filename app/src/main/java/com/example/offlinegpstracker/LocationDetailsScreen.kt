@@ -8,7 +8,6 @@ import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.provider.MediaStore
-import android.util.Log
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -33,6 +32,7 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
@@ -45,8 +45,12 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.Navigation
+import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -64,10 +68,10 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.focus.FocusManager
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
@@ -103,31 +107,76 @@ fun LocationDetailsScreen(
 ) {
     val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
     val locations by locationViewModel.locations.collectAsStateWithLifecycle(lifecycleOwner.lifecycle)
-    val context  = LocalContext.current
+    val context = LocalContext.current
 
+    // Define permissions
     val readImagesPerm = if (Build.VERSION.SDK_INT >= 33)
         android.Manifest.permission.READ_MEDIA_IMAGES
     else
         android.Manifest.permission.READ_EXTERNAL_STORAGE
+    val accessMediaLocationPerm = if (Build.VERSION.SDK_INT >= 29) {
+        android.Manifest.permission.ACCESS_MEDIA_LOCATION
+    } else {
+        ""
+    }
 
+    // Track permission states
     var hasGalleryPerm by remember {
         mutableStateOf(
             ContextCompat.checkSelfPermission(context, readImagesPerm) ==
                     PackageManager.PERMISSION_GRANTED
         )
     }
+    var hasMediaLocationPerm by remember {
+        mutableStateOf(
+            if (Build.VERSION.SDK_INT >= 29) {
+                ContextCompat.checkSelfPermission(context, accessMediaLocationPerm) ==
+                        PackageManager.PERMISSION_GRANTED
+            } else {
+                true
+            }
+        )
+    }
 
-    val requestGalleryPerm = rememberLauncherForActivityResult(
-        ActivityResultContracts.RequestPermission()
-    ) { granted -> hasGalleryPerm = granted }
+    // Permission launcher for both permissions
+    val requestPermissions = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions()
+    ) { permissions ->
+        hasGalleryPerm = permissions[readImagesPerm] ?: false
+        if (Build.VERSION.SDK_INT >= 29) {
+            hasMediaLocationPerm = permissions[accessMediaLocationPerm] ?: false
+        }
+    }
 
-    // ask once when the screen first opens
+    // Request permissions when the screen first opens
     LaunchedEffect(Unit) {
-        if (!hasGalleryPerm) requestGalleryPerm.launch(readImagesPerm)
+        val permissionsToRequest = mutableListOf(readImagesPerm)
+        if (Build.VERSION.SDK_INT >= 29 && !hasMediaLocationPerm) {
+            permissionsToRequest.add(accessMediaLocationPerm)
+        }
+        if (permissionsToRequest.size > 1 || !hasGalleryPerm) {
+            requestPermissions.launch(permissionsToRequest.toTypedArray())
+        }
+    }
+
+    // Monitor permission changes
+    LaunchedEffect(Unit) {
+        snapshotFlow {
+            Pair(
+                ContextCompat.checkSelfPermission(context, readImagesPerm),
+                if (Build.VERSION.SDK_INT >= 29) {
+                    ContextCompat.checkSelfPermission(context, accessMediaLocationPerm)
+                } else {
+                    PackageManager.PERMISSION_GRANTED
+                }
+            )
+        }.collect { (galleryPerm, mediaLocationPerm) ->
+            hasGalleryPerm = galleryPerm == PackageManager.PERMISSION_GRANTED
+            hasMediaLocationPerm = mediaLocationPerm == PackageManager.PERMISSION_GRANTED
+        }
     }
 
     val pagerState = rememberPagerState { locations.size }
-
     val focusManager = LocalFocusManager.current
 
     LaunchedEffect(startIndex) {
@@ -139,7 +188,7 @@ fun LocationDetailsScreen(
         HorizontalPager(state = pagerState) { page ->
             val location = locations[page]
             val routeRepository = (context.applicationContext as MyApplication).routeRepository
-            val allRoutes      by routeRepository.getAllRoutes()
+            val allRoutes by routeRepository.getAllRoutes()
                 .collectAsState(initial = emptyList())
 
             val nearbyRoutes = remember(location.id to allRoutes) {
@@ -147,28 +196,33 @@ fun LocationDetailsScreen(
                     haversine(it.centerLat, it.centerLon, location.latitude, location.longitude) <= 3_000.0
                 }
             }
-            var name       by remember { mutableStateOf(TextFieldValue(location.name)) }
-            val latitude   by remember { mutableStateOf(TextFieldValue(location.latitude.toString())) }
-            val longitude  by remember { mutableStateOf(TextFieldValue(location.longitude.toString())) }
+            var isEditing by remember { mutableStateOf(false) }
+            var name by remember { mutableStateOf(TextFieldValue(location.name)) }
+            val latitude by remember { mutableStateOf(TextFieldValue(location.latitude.toString())) }
+            val longitude by remember { mutableStateOf(TextFieldValue(location.longitude.toString())) }
             var galleryImages by remember { mutableStateOf<List<Uri>>(emptyList()) }
 
-            LaunchedEffect(location.id, hasGalleryPerm) {
-                galleryImages = if (hasGalleryPerm) {
-                    fetchNearbyImages(
-                        context  = context,
-                        lat      = location.latitude,
-                        lon      = location.longitude,
-                        radiusM  = 1_000.0
-                    ).take(3)
-                } else {
-                    emptyList()   // permission denied → show placeholders
+            LaunchedEffect(location.id, hasGalleryPerm, hasMediaLocationPerm) {
+                if (!hasGalleryPerm) {
+                    galleryImages = emptyList()
+                    return@LaunchedEffect
                 }
+                if (Build.VERSION.SDK_INT >= 29 && !hasMediaLocationPerm) {
+                    galleryImages = emptyList()
+                    return@LaunchedEffect
+                }
+
+                galleryImages = fetchNearbyImages(
+                    context,
+                    location.latitude,
+                    location.longitude,
+                    1_000.0
+                )
             }
 
-            Column(                                     // top-level layout of the screen
+            Column(
                 modifier = Modifier
                     .fillMaxSize()
-                    // any tap not consumed by children will clear focus & hide keyboard
                     .clickable(
                         indication = null,
                         interactionSource = remember { MutableInteractionSource() }
@@ -176,10 +230,119 @@ fun LocationDetailsScreen(
                     .verticalScroll(rememberScrollState())
                     .padding(horizontal = 8.dp)
             ) {
-                PlainTextField("Location Name", name, onValueChange = { name = it }, focusManager = focusManager)
+                Spacer(Modifier.height(16.dp))
+
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 8.dp)
+                ) {
+                    /* ───────────────── ICON BAR (only when NOT editing) ───────────────── */
+                    if (!isEditing) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.End,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                imageVector = Icons.Filled.Edit,
+                                contentDescription = "Edit",
+                                modifier = Modifier
+                                    .size(18.dp)
+                                    .clickable { isEditing = true }
+                            )
+                            Spacer(Modifier.width(12.dp))
+
+                            Icon(
+                                imageVector = Icons.Filled.Share,
+                                contentDescription = "Share",
+                                modifier = Modifier
+                                    .size(18.dp)
+                                    .clickable {
+                                        shareLocationDetails(context, latitude.text, longitude.text)
+                                    }
+                            )
+                            Spacer(Modifier.width(12.dp))
+
+                            Icon(
+                                imageVector = Icons.Filled.Delete,
+                                contentDescription = "Delete",
+                                tint = Color.Red,
+                                modifier = Modifier
+                                    .size(18.dp)
+                                    .clickable {
+                                        locationViewModel.updateLocation(location.copy(status = "deleted"))
+                                        Toast.makeText(
+                                            context,
+                                            "Location deleted",
+                                            Toast.LENGTH_SHORT
+                                        ).show()
+                                        navController.popBackStack()
+                                    }
+                            )
+                        }
+                    }
+
+                    /* ───────────────── NAME LINE (always centred) ─────────────────────── */
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = if (isEditing) 0.dp else 4.dp),  // remove extra gap while editing
+                        contentAlignment = Alignment.Center
+                    ) {
+                        if (isEditing) {
+                            /* ---- text-field + save icon overlay ------------------------ */
+                            Box(
+                                modifier = Modifier.widthIn(max = 300.dp)   // keeps overall width predictable
+                            ) {
+                                OutlinedTextField(
+                                    value = name,
+                                    onValueChange = { name = it },
+                                    singleLine = true,
+                                    modifier = Modifier
+                                        .fillMaxWidth(),                     // takes whole box width
+                                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Text),
+                                    keyboardActions = KeyboardActions(onDone = { focusManager.clearFocus() }),
+                                    colors = TextFieldDefaults.colors(
+                                        focusedIndicatorColor = Color.Black,
+                                        unfocusedIndicatorColor = Color.Black,
+                                        disabledIndicatorColor = Color.Black,
+                                        focusedContainerColor = Color.Transparent,
+                                        unfocusedContainerColor = Color.Transparent,
+                                        disabledContainerColor = Color.Transparent
+                                    )
+                                )
+                                /* ✓ save icon sits flush with the right edge */
+                                Icon(
+                                    imageVector = Icons.Filled.Check,
+                                    contentDescription = "Save",
+                                    modifier = Modifier
+                                        .size(24.dp)
+                                        .align(Alignment.CenterEnd)          // <— right on the field border
+                                        .padding(end = 8.dp)                 // tweak if you need tighter fit
+                                        .clickable {
+                                            val updated = location.copy(name = name.text)
+                                            locationViewModel.updateLocation(updated)
+                                            isEditing = false
+                                            focusManager.clearFocus()
+                                        }
+                                )
+                            }
+                        } else {
+                            Text(
+                                text = location.name,
+                                fontSize = 24.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    }
+                }
+
+                Spacer(Modifier.height(16.dp))
+
                 LatLonCard(lat = latitude.text, lon = longitude.text)
 
-                Spacer(Modifier.height(12.dp))
+                Spacer(Modifier.height(16.dp))
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -196,13 +359,13 @@ fun LocationDetailsScreen(
                     Icon(Icons.Filled.Navigation, null, Modifier.padding(start = 4.dp))
                 }
 
-                /* ─────── photo strip ─────── */
                 Spacer(Modifier.height(16.dp))
                 Row(
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier
+                        .fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    repeat(3) { index ->
+                    repeat(4) { index ->              // <- was repeat(3)
                         val uri = galleryImages.getOrNull(index)
                         Box(
                             Modifier
@@ -228,6 +391,7 @@ fun LocationDetailsScreen(
                         }
                     }
 
+                    /* the existing "Go to Gallery" button stays untouched */
                     TextButton(
                         onClick = {
                             galleryImages.firstOrNull()?.let { uri ->
@@ -239,23 +403,7 @@ fun LocationDetailsScreen(
                         },
                         modifier = Modifier.height(80.dp)
                     ) {
-                        Text("Go to\nGallery", fontSize = 12.sp)
-                    }
-                }
-                /* ───────────────────────────────────────── */
-
-                Spacer(Modifier.height(16.dp))
-                Row(
-                    Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceEvenly
-                ) {
-                    ActionButton("Delete") {
-                        locationViewModel.updateLocation(location.copy(status = "deleted"))
-                        Toast.makeText(context, "Location deleted", Toast.LENGTH_SHORT).show()
-                        navController.popBackStack()
-                    }
-                    ActionButton("Share") {
-                        shareLocationDetails(context, latitude.text, longitude.text)
+                        Text("Go\nto\nGallery", fontSize = 12.sp)
                     }
                 }
 
@@ -327,20 +475,15 @@ fun LocationDetailsScreen(
                 Spacer(Modifier.weight(1f))
 
                 Row(
-                    Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.Center
                 ) {
-                    ActionButton("Back") { navController.popBackStack() }
-                    ActionButton("Save") {
-                        val updated = location.copy(
-                            name      = name.text,
-                            latitude  = latitude.text.toDoubleOrNull() ?: 0.0,
-                            longitude = longitude.text.toDoubleOrNull() ?: 0.0
-                        )
-                        locationViewModel.updateLocation(updated)
-                        Toast.makeText(context, "Location updated", Toast.LENGTH_SHORT).show()
+                    Button(onClick = { navController.popBackStack() }) {
+                        Text("Back")
                     }
                 }
+
+                Spacer(Modifier.weight(1f))
             }
         }
     }
@@ -371,42 +514,6 @@ private fun shareLocationDetails(context: Context, latitude: String, longitude: 
     } catch (e: Exception) {
         Toast.makeText(context, "An error occurred while sharing the location", Toast.LENGTH_SHORT).show()
     }
-}
-
-@Composable
-private fun PlainTextField(
-    @Suppress("SameParameterValue") label: String,
-    value: TextFieldValue,
-    onValueChange: (TextFieldValue) -> Unit,
-    focusManager: FocusManager       // we’ll pass this in
-) {
-    OutlinedTextField(
-        value = value,
-        onValueChange = onValueChange,
-        label = { Text(label) },
-        placeholder = { Text("Enter $label", fontSize = 12.sp) },
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(vertical = 4.dp),
-        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Text),
-        keyboardActions = KeyboardActions(
-            onDone = { focusManager.clearFocus() }   // hide keyboard when user presses “Done”
-        ),
-        singleLine = true,
-        colors = TextFieldDefaults.colors(
-            focusedIndicatorColor   = Color.Black,      // or Black, whatever you use
-            unfocusedIndicatorColor = Color.Black,
-            disabledIndicatorColor  = Color.Black,
-            focusedContainerColor   = Color.Transparent,   // ← make box clear
-            unfocusedContainerColor = Color.Transparent,
-            disabledContainerColor  = Color.Transparent
-        )
-    )
-}
-
-@Composable
-private fun ActionButton(text: String, onClick: () -> Unit) {
-    Button(onClick = onClick) { Text(text) }
 }
 
 @Composable
@@ -449,19 +556,21 @@ private fun RowScope.LatLonColumn(label: String, value: String) {
 }
 
 @SuppressLint("Recycle")
+@Suppress("DEPRECATION") // Suppress deprecation warnings for LATITUDE and LONGITUDE
 private suspend fun fetchNearbyImages(
     context: Context,
     lat: Double,
     lon: Double,
     radiusM: Double
 ): List<Uri> = withContext(Dispatchers.IO) {
-
     val wanted = mutableListOf<Uri>()
+
     val projection = arrayOf(
         MediaStore.Images.Media._ID,
-        MediaStore.Images.Media.DATE_TAKEN
+        MediaStore.Images.Media.DATE_TAKEN,
+        MediaStore.Images.Media.LATITUDE,
+        MediaStore.Images.Media.LONGITUDE
     )
-
     val cursor = context.contentResolver.query(
         MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
         projection,
@@ -470,53 +579,46 @@ private suspend fun fetchNearbyImages(
         "${MediaStore.Images.Media.DATE_TAKEN} DESC"
     )
 
-    Log.d("GalleryTest", "query returned ${cursor?.count ?: -1} rows")   // ①
-
     cursor?.use { c ->
         val idCol = c.getColumnIndexOrThrow(MediaStore.Images.Media._ID)
+        val latCol = c.getColumnIndex(MediaStore.Images.Media.LATITUDE)
+        val lonCol = c.getColumnIndex(MediaStore.Images.Media.LONGITUDE)
 
-        while (c.moveToNext()) {
-            val id  = c.getLong(idCol)
+        var processedCount = 0 // Counter to limit processed photos
+        while (c.moveToNext() && processedCount < 100) { // Limit to 100 photos
+            processedCount++ // Increment counter
+
             val uri = ContentUris.withAppendedId(
-                MediaStore.Images.Media.EXTERNAL_CONTENT_URI, id
+                MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
+                c.getLong(idCol)
             )
 
-            val exif = context.contentResolver.openInputStream(uri)?.use {
-                ExifInterface(it)
-            } ?: continue
+            // Try MediaStore first
+            var coords: Pair<Double, Double>? = null
+            val mediaStoreLat = if (latCol != -1) c.getDouble(latCol) else null
+            val mediaStoreLon = if (lonCol != -1) c.getDouble(lonCol) else null
+            if (mediaStoreLat != null && mediaStoreLon != null && mediaStoreLat != 0.0 && mediaStoreLon != 0.0) {
+                coords = Pair(mediaStoreLat, mediaStoreLon)
+            }
 
-            val latTag  = exif.getAttribute(ExifInterface.TAG_GPS_LATITUDE)
-            val latRef  = exif.getAttribute(ExifInterface.TAG_GPS_LATITUDE_REF)
-            val lonTag  = exif.getAttribute(ExifInterface.TAG_GPS_LONGITUDE)
-            val lonRef  = exif.getAttribute(ExifInterface.TAG_GPS_LONGITUDE_REF)
-            Log.d(
-                "GalleryTest",
-                """
-                ── EXIF dump for $uri ──
-                   LAT = $latTag  ($latRef)
-                   LON = $lonTag  ($lonRef)
-                """.trimIndent()
-            )
-
-            val coords = getLatLongFromExif(exif)
+            // If MediaStore fails, fall back to EXIF
             if (coords == null) {
-                Log.d("GalleryTest", "   GPS tags missing for $uri")      // ②
+                val exif = context.contentResolver.openInputStream(uri)?.use { ExifInterface(it) }
+                    ?: continue
+                coords = getLatLongFromExif(exif)
+            }
+
+            // Skip photos with no GPS data from either source
+            if (coords == null) {
                 continue
             }
 
-            val imgLat = coords.first
-            val imgLon = coords.second
-            val d = haversine(imgLat, imgLon, lat, lon)
+            val (imgLat, imgLon) = coords
+            val dist = haversine(imgLat, imgLon, lat, lon)
 
-            Log.d(                                                // ③
-                "GalleryTest",
-                "img=$imgLat,$imgLon  loc=$lat,$lon  dist=${"%.1f".format(d)} m"
-            )
-
-            if (d <= radiusM) {
+            if (dist <= radiusM) {
                 wanted += uri
-                Log.d("GalleryTest", "   >>> accepted ($d m)")      // ④
-                if (wanted.size == 3) break
+                if (wanted.size == 4) break
             }
         }
     }
@@ -537,22 +639,30 @@ private fun haversine(lat1: Double, lon1: Double, lat2: Double, lon2: Double): D
 }
 
 private fun getLatLongFromExif(exif: ExifInterface): Pair<Double, Double>? {
-    // Retrieve GPS data from EXIF tags
+    // Log raw EXIF tags for debugging
     val latStr = exif.getAttribute(ExifInterface.TAG_GPS_LATITUDE)
     val latRef = exif.getAttribute(ExifInterface.TAG_GPS_LATITUDE_REF)
     val lonStr = exif.getAttribute(ExifInterface.TAG_GPS_LONGITUDE)
     val lonRef = exif.getAttribute(ExifInterface.TAG_GPS_LONGITUDE_REF)
+    println("Raw EXIF: lat=$latStr ($latRef), lon=$lonStr ($lonRef)")
 
-    // Check if any data is missing
+    // Use the new getLatLong() method (returns DoubleArray?)
+    val latLong = exif.latLong
+    if (latLong != null) {
+        println("getLatLong success: ${latLong[0]}, ${latLong[1]}")
+        return Pair(latLong[0], latLong[1])
+    }
+
+    // Fallback to manual parsing
     if (latStr == null || latRef == null || lonStr == null || lonRef == null) {
+        println("Manual parsing failed: Missing EXIF tags")
         return null
     }
 
-    // Parse latitude and longitude
     val lat = parseGpsValue(latStr, latRef)
     val lon = parseGpsValue(lonStr, lonRef)
+    println("Manual parsing result: lat=$lat, lon=$lon")
 
-    // Return the coordinates as a Pair, or null if parsing fails
     return if (lat != null && lon != null) Pair(lat, lon) else null
 }
 

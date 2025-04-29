@@ -20,7 +20,6 @@ import com.google.android.gms.location.Priority
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import android.location.Location as AndroidLocation
@@ -76,16 +75,6 @@ class LocationViewModel(application: Application, private val repository: Locati
 
     fun selectLocation(locationId: Int) {
         _selectedLocationId.value = locationId
-    }
-
-    fun updateLocationPhoto(locationId: Int, photoPaths: List<String>) {
-        viewModelScope.launch {
-            val location = repository.getLocationById(locationId).firstOrNull()
-            if (location != null) {
-                val updatedLocation = location.copy(photoPaths = photoPaths)
-                repository.updateLocation(updatedLocation)
-            }
-        }
     }
 
     @SuppressLint("MissingPermission")
