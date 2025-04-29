@@ -353,7 +353,12 @@ fun LocationDetailsScreen(
 
                 Spacer(Modifier.height(16.dp))
 
-                LatLonCard(
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(horizontal = 8.dp) // <-- ONE place to control left/right margins
+                ) {
+                    LatLonCard(
                     lat = latitude.text,
                     lon = longitude.text,
                     onNavigate = {
@@ -361,11 +366,8 @@ fun LocationDetailsScreen(
                     }
                 )
 
-                Spacer(Modifier.height(16.dp))
+                    Spacer(Modifier.height(16.dp))
 
-                // 2) photo‐block label
-                Column(Modifier.padding(12.dp)) {
-                    // ─── PHOTOS SECTION ───────────────────────────────────────────────────
                     PhotosSection(
                         galleryImages = galleryImages,
                         context       = context
@@ -494,7 +496,7 @@ private fun LatLonCard(
         modifier = Modifier
             .fillMaxWidth()
             .padding(vertical = 8.dp),
-        shape = RoundedCornerShape(4.dp),
+        shape = RoundedCornerShape(8.dp),
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
         colors = CardDefaults.outlinedCardColors(containerColor = Color.Transparent)
     ) {
