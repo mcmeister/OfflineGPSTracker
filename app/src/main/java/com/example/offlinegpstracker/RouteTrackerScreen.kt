@@ -1195,7 +1195,7 @@ private fun TileMapOrPlaceholder(
                 drawPath(
                     path = path,
                     color = Color.Red,
-                    style = Stroke(width = 1f)
+                    style = Stroke(width = 0.5f)
                 )
             }
         }
