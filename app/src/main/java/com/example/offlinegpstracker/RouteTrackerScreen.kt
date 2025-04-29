@@ -1184,18 +1184,23 @@ private fun TileMapOrPlaceholder(
                 val scale = tileSize / worldTileSize
                 val (cX, cY) = proj(validCenterLat, validCenterLon, zoomE)
 
-                val path = Path()
-                routePoints.forEachIndexed { i, pt ->
-                    val (xP, yP) = proj(pt.latitude, pt.longitude, zoomE)
-                    val sx = ((xP - cX) * scale + w / 2)
-                    val sy = ((yP - cY) * scale + h / 2)
-                    if (i == 0) path.moveTo(sx, sy) else path.lineTo(sx, sy)
+                // build the path in world‐space
+                val path = Path().apply {
+                    routePoints.forEachIndexed { i, pt ->
+                        val (xP, yP) = proj(pt.latitude, pt.longitude, zoomE)
+                        val sx = ((xP - cX) * scale + w / 2)
+                        val sy = ((yP - cY) * scale + h / 2)
+                        if (i == 0) moveTo(sx, sy) else lineTo(sx, sy)
+                    }
                 }
+
+                // COMPENSATE stroke to stay 1.5px on screen:
+                val deviceStroke = 1.5f / zoomLevel
 
                 drawPath(
                     path = path,
                     color = Color.Red,
-                    style = Stroke(width = 0.5f)
+                    style = Stroke(width = deviceStroke)
                 )
             }
         }
