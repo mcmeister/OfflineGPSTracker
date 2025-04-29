@@ -16,6 +16,7 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -35,6 +36,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.pager.HorizontalPager
@@ -51,10 +53,13 @@ import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.Navigation
 import androidx.compose.material.icons.filled.Share
+import androidx.compose.material3.AssistChip
+import androidx.compose.material3.AssistChipDefaults
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedCard
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
@@ -73,10 +78,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.TextFieldValue
@@ -84,6 +90,8 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import androidx.compose.ui.zIndex
 import androidx.core.content.ContextCompat
 import androidx.exifinterface.media.ExifInterface
@@ -193,11 +201,16 @@ fun LocationDetailsScreen(
 
             val nearbyRoutes = remember(location.id to allRoutes) {
                 allRoutes.filter {
-                    haversine(it.centerLat, it.centerLon, location.latitude, location.longitude) <= 3_000.0
+                    haversine(
+                        it.centerLat,
+                        it.centerLon,
+                        location.latitude,
+                        location.longitude
+                    ) <= 3_000.0
                 }
             }
             var isEditing by remember { mutableStateOf(false) }
-            var name by remember { mutableStateOf(TextFieldValue(location.name)) }
+            var locationName by remember { mutableStateOf(TextFieldValue(location.name)) }
             val latitude by remember { mutableStateOf(TextFieldValue(location.latitude.toString())) }
             val longitude by remember { mutableStateOf(TextFieldValue(location.longitude.toString())) }
             var galleryImages by remember { mutableStateOf<List<Uri>>(emptyList()) }
@@ -248,7 +261,7 @@ fun LocationDetailsScreen(
                                 imageVector = Icons.Filled.Edit,
                                 contentDescription = "Edit",
                                 modifier = Modifier
-                                    .size(18.dp)
+                                    .size(20.dp)
                                     .clickable { isEditing = true }
                             )
                             Spacer(Modifier.width(12.dp))
@@ -257,7 +270,7 @@ fun LocationDetailsScreen(
                                 imageVector = Icons.Filled.Share,
                                 contentDescription = "Share",
                                 modifier = Modifier
-                                    .size(18.dp)
+                                    .size(20.dp)
                                     .clickable {
                                         shareLocationDetails(context, latitude.text, longitude.text)
                                     }
@@ -269,7 +282,7 @@ fun LocationDetailsScreen(
                                 contentDescription = "Delete",
                                 tint = Color.Red,
                                 modifier = Modifier
-                                    .size(18.dp)
+                                    .size(20.dp)
                                     .clickable {
                                         locationViewModel.updateLocation(location.copy(status = "deleted"))
                                         Toast.makeText(
@@ -287,7 +300,7 @@ fun LocationDetailsScreen(
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(top = if (isEditing) 0.dp else 4.dp),  // remove extra gap while editing
+                            .padding(top = if (isEditing) 0.dp else 16.dp),  // remove extra gap while editing
                         contentAlignment = Alignment.Center
                     ) {
                         if (isEditing) {
@@ -296,8 +309,8 @@ fun LocationDetailsScreen(
                                 modifier = Modifier.widthIn(max = 300.dp)   // keeps overall width predictable
                             ) {
                                 OutlinedTextField(
-                                    value = name,
-                                    onValueChange = { name = it },
+                                    value = locationName,
+                                    onValueChange = { locationName = it },
                                     singleLine = true,
                                     modifier = Modifier
                                         .fillMaxWidth(),                     // takes whole box width
@@ -317,11 +330,11 @@ fun LocationDetailsScreen(
                                     imageVector = Icons.Filled.Check,
                                     contentDescription = "Save",
                                     modifier = Modifier
-                                        .size(24.dp)
+                                        .size(26.dp)
                                         .align(Alignment.CenterEnd)          // <— right on the field border
                                         .padding(end = 8.dp)                 // tweak if you need tighter fit
                                         .clickable {
-                                            val updated = location.copy(name = name.text)
+                                            val updated = location.copy(name = locationName.text)
                                             locationViewModel.updateLocation(updated)
                                             isEditing = false
                                             focusManager.clearFocus()
@@ -340,135 +353,90 @@ fun LocationDetailsScreen(
 
                 Spacer(Modifier.height(16.dp))
 
-                LatLonCard(lat = latitude.text, lon = longitude.text)
+                LatLonCard(
+                    lat = latitude.text,
+                    lon = longitude.text,
+                    onNavigate = {
+                        navController.navigate("navigator/${location.id}/${location.name}")
+                    }
+                )
 
                 Spacer(Modifier.height(16.dp))
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable(
-                            indication = null,
-                            interactionSource = remember { MutableInteractionSource() }
+
+                // 2) photo‐block label
+                Column(Modifier.padding(12.dp)) {
+                    // ─── PHOTOS SECTION ───────────────────────────────────────────────────
+                    PhotosSection(
+                        galleryImages = galleryImages,
+                        context       = context
+                    )
+
+                    Spacer(Modifier.height(16.dp))
+
+                    // ─── SAVED ROUTES SECTION ───────────────────────────────────────────────
+                    if (nearbyRoutes.isNotEmpty()) {
+                        Card(
+                            modifier = Modifier
+                                .fillMaxWidth(),
+                            shape  = RoundedCornerShape(8.dp),
+                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
+                            colors = CardDefaults.cardColors(containerColor = Color.Transparent)
                         ) {
-                            navController.navigate("navigator/${location.id}/${location.name}")
-                        },
-                    horizontalArrangement = Arrangement.Center,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text("Navigate to Location", fontSize = 16.sp, fontWeight = FontWeight.Medium)
-                    Icon(Icons.Filled.Navigation, null, Modifier.padding(start = 4.dp))
-                }
-
-                Spacer(Modifier.height(16.dp))
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    repeat(4) { index ->              // <- was repeat(3)
-                        val uri = galleryImages.getOrNull(index)
-                        Box(
-                            Modifier
-                                .size(80.dp)
-                                .clip(RoundedCornerShape(8.dp))
-                                .border(1.dp, Color.Black, RoundedCornerShape(8.dp)),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            if (uri != null) {
-                                Image(
-                                    painter = rememberAsyncImagePainter(uri),
-                                    contentDescription = null,
-                                    modifier = Modifier.fillMaxSize()
+                            Column(Modifier.padding(12.dp)) {
+                                Text(
+                                    "Saved routes within 3 km radius of this Location (${nearbyRoutes.size})",
+                                    fontSize   = 14.sp,
+                                    fontWeight = FontWeight.SemiBold
                                 )
-                            } else {
-                                Icon(
-                                    painterResource(R.drawable.ic_placeholder),
-                                    null,
-                                    tint = Color.Gray,
-                                    modifier = Modifier.size(32.dp)
-                                )
-                            }
-                        }
-                    }
 
-                    /* the existing "Go to Gallery" button stays untouched */
-                    TextButton(
-                        onClick = {
-                            galleryImages.firstOrNull()?.let { uri ->
-                                val view = Intent(Intent.ACTION_VIEW, uri).apply {
-                                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                                }
-                                context.startActivity(view)
-                            } ?: Toast.makeText(context, "No photos to open", Toast.LENGTH_SHORT).show()
-                        },
-                        modifier = Modifier.height(80.dp)
-                    ) {
-                        Text("Go\nto\nGallery", fontSize = 12.sp)
-                    }
-                }
+                                Spacer(Modifier.height(8.dp))
 
-                Spacer(Modifier.weight(1f))
+                                val listState = rememberLazyListState()
 
-                if (nearbyRoutes.isNotEmpty()) {
-
-                    /* ─── styled card wrapper ───────────────────────────────────────── */
-                    Card(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(top = 16.dp),
-                        shape  = RoundedCornerShape(8.dp),
-                        border = BorderStroke(1.dp, Color.Black),                 // ← new black border
-                        colors = CardDefaults.cardColors(containerColor = Color.Transparent) // ← transparent bg
-                    ) {
-
-                        Column(Modifier.padding(12.dp)) {
-
-                            /* title line */
-                            Text(
-                                "Saved routes within 3 km (${nearbyRoutes.size})",
-                                fontSize   = 16.sp,
-                                fontWeight = FontWeight.SemiBold
-                            )
-
-                            Spacer(Modifier.height(8.dp))
-
-                            /* list + thumb side-by-side */
-                            val listState = rememberLazyListState()
-
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .height(200.dp)          // ← FIX: constrain viewport height
-                            ) {
-
-                                /* routes list */
-                                LazyColumn(
-                                    state = listState,
+                                Row(
                                     modifier = Modifier
-                                        .weight(1f)
-                                        .fillMaxHeight()     // take the full 200 dp
+                                        .fillMaxWidth()
+                                        .height(200.dp)
                                 ) {
-                                    items(nearbyRoutes) { r ->
-                                        val displayName = r.routeName?.takeIf { it.isNotBlank() } ?: "Route ${r.id}"
-                                        Text(
-                                            "•  $displayName – ${formatTime(r.startTime)}",
-                                            modifier = Modifier
-                                                .fillMaxWidth()
-                                                .padding(vertical = 4.dp)
-                                                .clickable { navController.navigate("view_route/${r.id}") }
-                                        )
+                                    LazyColumn(
+                                        state    = listState,
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .fillMaxHeight()
+                                    ) {
+                                        items(nearbyRoutes) { r ->
+                                            val routeName      = r.routeName?.takeIf { it.isNotBlank() } ?: "Route ${r.id}"
+                                            val timeLabel = formatTime(r.startTime)
+                                            AssistChip(
+                                                onClick = { navController.navigate("view_route/${r.id}") },
+                                                label   = { Text("$routeName  •  $timeLabel") },
+                                                shape   = RoundedCornerShape(16.dp),
+                                                colors  = AssistChipDefaults.assistChipColors(
+                                                    containerColor = Color.Transparent,
+                                                    labelColor     = MaterialTheme.colorScheme.primary
+                                                ),
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .padding(vertical = 4.dp)
+                                            )
+                                        }
                                     }
-                                }
 
-                                /* scroll thumb */
-                                ScrollThumbLocationDetails(
-                                    listState = listState,
-                                    modifier  = Modifier
-                                        .fillMaxHeight()     // same 200 dp height
-                                        .width(4.dp)
-                                )
+                                    ScrollThumbLocationDetails(
+                                        listState = listState,
+                                        modifier  = Modifier
+                                            .fillMaxHeight()
+                                            .width(4.dp)
+                                    )
+                                }
                             }
                         }
+                    } else {
+                        Text(
+                            text = "No saved routes available for this Location",
+                            fontSize   = 14.sp,
+                            fontWeight = FontWeight.SemiBold
+                        )
                     }
                 }
 
@@ -517,23 +485,56 @@ private fun shareLocationDetails(context: Context, latitude: String, longitude: 
 }
 
 @Composable
-private fun LatLonCard(lat: String, lon: String) {
+private fun LatLonCard(
+    lat: String,
+    lon: String,
+    onNavigate: () -> Unit
+) {
     OutlinedCard(
         modifier = Modifier
             .fillMaxWidth()
             .padding(vertical = 8.dp),
-        shape  = RoundedCornerShape(4.dp),
-        border = BorderStroke(1.dp, Color.Black),                                // ← black outline
-        colors = CardDefaults.outlinedCardColors(containerColor = Color.Transparent) // ← transparent fill
+        shape = RoundedCornerShape(4.dp),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
+        colors = CardDefaults.outlinedCardColors(containerColor = Color.Transparent)
     ) {
-        Row(
+        Column(
             Modifier
                 .fillMaxWidth()
                 .padding(vertical = 12.dp),
-            horizontalArrangement = Arrangement.SpaceBetween
+            horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            LatLonColumn("Latitude",  lat)
-            LatLonColumn("Longitude", lon)
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp),
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                LatLonColumn("Latitude", lat)
+                LatLonColumn("Longitude", lon)
+            }
+
+            Spacer(Modifier.height(12.dp))
+
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { onNavigate() },
+                horizontalArrangement = Arrangement.Center,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    "Navigate to Location",
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.Medium
+                )
+                Icon(
+                    imageVector = Icons.Filled.Navigation,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.padding(start = 4.dp)
+                )
+            }
         }
     }
 }
@@ -618,7 +619,7 @@ private suspend fun fetchNearbyImages(
 
             if (dist <= radiusM) {
                 wanted += uri
-                if (wanted.size == 4) break
+                if (wanted.size == 7) break
             }
         }
     }
@@ -759,5 +760,118 @@ fun ScrollThumbLocationDetails(
                     .background(thumbColor)
             )
         }
+    }
+}
+
+@Composable
+fun PhotosSection(
+    galleryImages: List<Uri>,
+    context: Context
+) {
+    // state to track which image (if any) is in full-screen view
+    var fullscreenUri by remember { mutableStateOf<Uri?>(null) }
+
+    if (galleryImages.isNotEmpty()) {
+        // full-screen preview dialog
+        fullscreenUri?.let { uri ->
+            Dialog(
+                onDismissRequest = { fullscreenUri = null },
+                properties = DialogProperties(usePlatformDefaultWidth = false)
+            ) {
+                Box(
+                    Modifier
+                        .fillMaxSize()
+                        .background(Color.Black)
+                        .clickable { fullscreenUri = null },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Image(
+                        painter = rememberAsyncImagePainter(uri),
+                        contentDescription = null,
+                        modifier = Modifier.fillMaxSize(),
+                        contentScale = ContentScale.Crop
+                    )
+                }
+            }
+        }
+
+        Card(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = 16.dp),
+            shape  = RoundedCornerShape(8.dp),
+            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
+            colors = CardDefaults.cardColors(containerColor = Color.Transparent)
+        ) {
+            Column(Modifier.padding(12.dp)) {
+                Text(
+                    text       = "Photos from gallery within 1 km radius of this Location",
+                    fontSize   = 14.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    modifier   = Modifier.fillMaxWidth()
+                )
+
+                Spacer(Modifier.height(8.dp))
+
+                Box(
+                    Modifier
+                        .fillMaxWidth()
+                        .height(100.dp)
+                        .clip(RoundedCornerShape(8.dp))
+                ) {
+                    LazyRow(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .pointerInput(Unit) { detectHorizontalDragGestures { c, _ -> c.consume() } }
+                            .padding(vertical = 4.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        // only actual photos, up to 7
+                        items(galleryImages.take(7)) { uri ->
+                            Box(
+                                Modifier
+                                    .size(80.dp)
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .border(1.dp, Color.Black, RoundedCornerShape(8.dp))
+                                    .clickable { fullscreenUri = uri },   // <-- open preview
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Image(
+                                    painter      = rememberAsyncImagePainter(uri),
+                                    contentDescription = null,
+                                    modifier     = Modifier.fillMaxSize(),
+                                    contentScale = ContentScale.Crop      // <-- fill box, crop edges
+                                )
+                            }
+                        }
+
+                        // “Go to Gallery” button always last
+                        item {
+                            TextButton(
+                                onClick = {
+                                    galleryImages.firstOrNull()?.let { uri ->
+                                        Intent(Intent.ACTION_VIEW, uri)
+                                            .apply { addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION) }
+                                            .also(context::startActivity)
+                                    } ?: Toast
+                                        .makeText(context, "No photos to open", Toast.LENGTH_SHORT)
+                                        .show()
+                                },
+                                modifier = Modifier.height(80.dp)
+                            ) {
+                                Text("Go\nto\nGallery", fontSize = 12.sp)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    } else {
+        Text(
+            text       = "No photos available in gallery for this Location",
+            fontSize   = 16.sp,
+            fontWeight = FontWeight.SemiBold,
+            modifier   = Modifier.padding(top = 16.dp, bottom = 16.dp)
+        )
     }
 }
