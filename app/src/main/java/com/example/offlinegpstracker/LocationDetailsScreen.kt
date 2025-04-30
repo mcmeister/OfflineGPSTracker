@@ -268,11 +268,16 @@ fun LocationDetailsScreen(
                         ) {
                             // ← Back button on the left
                             Icon(
-                                imageVector = Icons.AutoMirrored.Filled.ArrowBack,     // or any other from the list above
+                                imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                                 contentDescription = "Back",
                                 modifier = Modifier
                                     .size(24.dp)
-                                    .clickable { navController.popBackStack() }
+                                    .clickable(
+                                        indication = null,
+                                        interactionSource = remember { MutableInteractionSource() }
+                                    ) {
+                                        navController.popBackStack()
+                                    }
                             )
 
                             // → Edit / Share / Delete on the right
@@ -292,7 +297,10 @@ fun LocationDetailsScreen(
                                     contentDescription = "Share",
                                     modifier = Modifier
                                         .size(20.dp)
-                                        .clickable {
+                                        .clickable(
+                                            indication = null,
+                                            interactionSource = remember { MutableInteractionSource() }
+                                        ) {
                                             shareLocationDetails(
                                                 context,
                                                 latitude.text,
@@ -300,13 +308,17 @@ fun LocationDetailsScreen(
                                             )
                                         }
                                 )
+
                                 Icon(
                                     imageVector = Icons.Filled.Delete,
                                     contentDescription = "Delete",
                                     tint = Color.Red,
                                     modifier = Modifier
                                         .size(20.dp)
-                                        .clickable {
+                                        .clickable(
+                                            indication = null,
+                                            interactionSource = remember { MutableInteractionSource() }
+                                        ) {
                                             locationViewModel.updateLocation(location.copy(status = "deleted"))
                                             Toast.makeText(
                                                 context,
@@ -324,20 +336,21 @@ fun LocationDetailsScreen(
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(top = if (isEditing) 0.dp else 16.dp),  // remove extra gap while editing
+                            .padding(top = if (isEditing) 0.dp else 16.dp),
                         contentAlignment = Alignment.Center
                     ) {
                         if (isEditing) {
-                            /* ---- text-field + save icon overlay ------------------------ */
-                            Box(
-                                modifier = Modifier.widthIn(max = 300.dp)   // keeps overall width predictable
+                            Row(
+                                modifier = Modifier
+                                    .widthIn(max = 300.dp),            // same max width
+                                verticalAlignment = Alignment.CenterVertically
                             ) {
                                 OutlinedTextField(
                                     value = locationName,
                                     onValueChange = { locationName = it },
                                     singleLine = true,
                                     modifier = Modifier
-                                        .fillMaxWidth(),                     // takes whole box width
+                                        .weight(1f),                  // take all available space
                                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Text),
                                     keyboardActions = KeyboardActions(onDone = { focusManager.clearFocus() }),
                                     colors = TextFieldDefaults.colors(
@@ -349,15 +362,16 @@ fun LocationDetailsScreen(
                                         disabledContainerColor = Color.Transparent
                                     )
                                 )
-                                /* ✓ save icon sits flush with the right edge */
+                                Spacer(Modifier.width(8.dp))
                                 Icon(
                                     imageVector = Icons.Filled.Check,
                                     contentDescription = "Save",
                                     modifier = Modifier
-                                        .size(26.dp)
-                                        .align(Alignment.CenterEnd)          // <— right on the field border
-                                        .padding(end = 8.dp)                 // tweak if you need tighter fit
-                                        .clickable {
+                                        .size(20.dp)
+                                        .clickable(
+                                            indication = null,
+                                            interactionSource = remember { MutableInteractionSource() }
+                                        ) {
                                             val updated = location.copy(name = locationName.text)
                                             locationViewModel.updateLocation(updated)
                                             isEditing = false
@@ -536,20 +550,23 @@ private fun LatLonCard(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clickable { onNavigate() },
+                    .clickable(
+                        indication = null,
+                        interactionSource = remember { MutableInteractionSource() }
+                    ) { onNavigate() },
                 horizontalArrangement = Arrangement.Center,
-                verticalAlignment = Alignment.CenterVertically
+                verticalAlignment   = Alignment.CenterVertically
             ) {
                 Text(
                     "Navigate to Location",
-                    fontSize = 16.sp,
+                    fontSize   = 16.sp,
                     fontWeight = FontWeight.Medium
                 )
                 Icon(
-                    imageVector = Icons.Filled.Navigation,
+                    imageVector        = Icons.Filled.Navigation,
                     contentDescription = null,
-                    tint = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.padding(start = 4.dp)
+                    tint               = MaterialTheme.colorScheme.primary,
+                    modifier           = Modifier.padding(start = 4.dp)
                 )
             }
         }
@@ -824,9 +841,7 @@ fun PhotosSection(
             }
 
             Card(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(top = 16.dp),
+                modifier = Modifier.fillMaxWidth(),
                 shape  = RoundedCornerShape(8.dp),
                 border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
                 colors = CardDefaults.cardColors(containerColor = Color.Transparent)

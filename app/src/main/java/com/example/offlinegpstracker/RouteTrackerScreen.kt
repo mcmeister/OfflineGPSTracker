@@ -4,15 +4,13 @@ import android.annotation.SuppressLint
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.os.Build
-import android.util.Log
 import androidx.annotation.RequiresApi
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.Crossfade
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.Canvas
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
@@ -75,10 +73,8 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.unit.Dp
@@ -242,7 +238,7 @@ fun RouteTrackerScreen(
                                                     zoomLevel.floatValue < base * 1.5f -> base * 1.5f
                                                     zoomLevel.floatValue < base * 3.0f -> base * 3.0f
                                                     zoomLevel.floatValue < base * 6.0f -> base * 6.0f
-                                                    zoomLevel.floatValue < base * 9.0f -> base * 9.0f
+                                                    zoomLevel.floatValue < base * 12.0f -> base * 12.0f
                                                     else -> base
                                                 }
                                             }
@@ -503,7 +499,7 @@ fun RouteTrackerScreen(
                                                 zoomLevel.floatValue < base * 1.5f -> base * 1.5f
                                                 zoomLevel.floatValue < base * 3.0f -> base * 3.0f
                                                 zoomLevel.floatValue < base * 6.0f -> base * 6.0f
-                                                zoomLevel.floatValue < base * 9.0f -> base * 9.0f
+                                                zoomLevel.floatValue < base * 12.0f -> base * 12.0f
                                                 else -> base
                                             }
                                         }
@@ -1084,8 +1080,6 @@ private fun TileMapOrPlaceholder(
     val validCenterLat = if (centerLat == 0.0 || centerLat.isNaN()) 37.7749 else centerLat
     val validCenterLon = if (centerLon == 0.0 || centerLon.isNaN()) -122.4194 else centerLon
 
-    Log.d("TileMapOrPlaceholder", "Center coordinates: lat=$validCenterLat, lon=$validCenterLon (original: lat=$centerLat, lon=$centerLon)")
-
     key(tilesVersion) {
         val context = LocalContext.current
 
@@ -1095,53 +1089,34 @@ private fun TileMapOrPlaceholder(
         }
 
         val wantedZoom = (baseZoom + log2(debouncedZoom).roundToInt()).coerceIn(baseZoom, 22)
-        Log.d("TileMapOrPlaceholder", "Wanted zoom: $wantedZoom, baseZoom: $baseZoom, debouncedZoom: $debouncedZoom")
         var z = wantedZoom
         var tileRoot: File? = null
         while (z >= baseZoom) {
             val folder = File(context.filesDir, "tiles/$z")
-            if (folder.exists() && folder.isDirectory) {
-                val tileFiles = folder.listFiles()
-                if (!tileFiles.isNullOrEmpty()) {
-                    tileRoot = folder
-                    Log.d("TileMapOrPlaceholder", "Selected zoom level $z with ${tileFiles.size} tiles")
-                    break
-                } else {
-                    Log.d("TileMapOrPlaceholder", "Zoom level $z folder exists but contains no tiles")
-                }
-            } else {
-                Log.d("TileMapOrPlaceholder", "Zoom level $z folder does not exist")
+            if (folder.exists() && folder.isDirectory && folder.listFiles()?.isNotEmpty() == true) {
+                tileRoot = folder
+                break
             }
             z--
         }
-        if (tileRoot == null) {
-            Log.w("TileMapOrPlaceholder", "No tiles found for any zoom level from $wantedZoom down to $baseZoom")
-        }
 
-        val tileCache = remember {
+        // <-- tileCache is a MutableMap now -->
+        val tileCache: MutableMap<String, Bitmap> = remember {
             object : LinkedHashMap<String, Bitmap>(100, 0.75f, true) {
-                override fun removeEldestEntry(eldest: Map.Entry<String, Bitmap>?): Boolean {
-                    return size > 100
-                }
+                override fun removeEldestEntry(eldest: Map.Entry<String, Bitmap>?) = size > 100
             }
         }
 
         LaunchedEffect(wantedZoom, validCenterLat, validCenterLon) {
-            val prefetchZoomLevels = listOf(wantedZoom - 1, wantedZoom, wantedZoom + 1)
-            prefetchZoomLevels.forEach { prefetchZ ->
-                if (prefetchZ in baseZoom..22) {
-                    val (tx, ty) = tileXY(validCenterLat, validCenterLon, prefetchZ)
-                    for (dx in -1..1) {
-                        for (dy in -1..1) {
-                            val tileFile = File(context.filesDir, "tiles/$prefetchZ/${tx + dx}-${ty + dy}.png")
-                            if (tileFile.exists() && !tileCache.containsKey(tileFile.path)) {
-                                try {
-                                    val bitmap = BitmapFactory.decodeFile(tileFile.path)
-                                    tileCache[tileFile.path] = bitmap
-                                    Log.d("TileMapOrPlaceholder", "Prefetched tile: ${tileFile.path}")
-                                } catch (e: Exception) {
-                                    Log.e("TileMap", "Failed to load tile ${tileFile.path}", e)
-                                }
+            listOf(wantedZoom - 1, wantedZoom, wantedZoom + 1).forEach { pz ->
+                if (pz in baseZoom..22) {
+                    val (tx, ty) = tileXY(validCenterLat, validCenterLon, pz)
+                    for (dx in -1..1) for (dy in -1..1) {
+                        val f = File(context.filesDir, "tiles/$pz/${tx + dx}-${ty + dy}.png")
+                        if (f.exists() && !tileCache.containsKey(f.path)) {
+                            withContext(Dispatchers.IO) {
+                                BitmapFactory.decodeFile(f.path)
+                                    ?.also { bmp -> tileCache[f.path] = bmp }
                             }
                         }
                     }
@@ -1149,62 +1124,89 @@ private fun TileMapOrPlaceholder(
             }
         }
 
-        val tileConfig: TileConfig? = remember(tileRoot, z) { tileRoot?.let { TileConfig(it, z) } }
+        val tileConfig: TileConfig? = remember(tileRoot, z) {
+            tileRoot?.let { TileConfig(it, z) }
+        }
 
         Box(modifier) {
-            Crossfade(
-                targetState = tileConfig,
-                animationSpec = tween(200),
-                modifier = Modifier.fillMaxSize(),
-                label = ""
-            ) { cfg ->
-                if (cfg != null) {
-                    TileMap(
-                        centerLat = validCenterLat,
-                        centerLon = validCenterLon,
-                        zoom = cfg.zoom,
-                        tileRoot = cfg.tileRoot,
-                        modifier = Modifier.fillMaxSize(),
-                        tileCache = tileCache
-                    )
-                } else {
-                    Image(
-                        painter = painterResource(R.drawable.default_map_placeholder),
-                        contentDescription = "Map Placeholder",
-                        modifier = Modifier.fillMaxSize(),
-                        contentScale = ContentScale.Crop
-                    )
-                }
+            TileMapWithSmoothScale(
+                centerLat   = validCenterLat,
+                centerLon   = validCenterLon,
+                zoomLevel   = zoomLevel,
+                baseZoom    = baseZoom,
+                tileConfig  = tileConfig,
+                tileCache   = tileCache,      // now matches MutableMap<String, Bitmap>
+                routePoints = routePoints,
+                modifier    = Modifier.fillMaxSize()
+            )
+        }
+    }
+}
+
+@Composable
+private fun TileMapWithSmoothScale(
+    centerLat: Double,
+    centerLon: Double,
+    zoomLevel: Float,
+    baseZoom: Int,
+    tileConfig: TileConfig?,
+    tileCache: MutableMap<String, Bitmap>,  // <-- expect MutableMap
+    routePoints: List<RoutePoint>,
+    modifier: Modifier = Modifier
+) {
+    // Animate the raw fractional zoom
+    val animatedZoom by animateFloatAsState(
+        targetValue = zoomLevel,
+        animationSpec = tween(durationMillis = 300), label = ""
+    )
+
+    // Pick the integer zoom folder
+    val intZoom = (baseZoom + log2(animatedZoom.toDouble()).roundToInt())
+        .coerceIn(baseZoom, 22)
+
+    Box(
+        modifier
+            .graphicsLayer {
+                scaleX = animatedZoom
+                scaleY = animatedZoom
             }
-
-            Canvas(Modifier.fillMaxSize()) {
-                val w = size.width
-                val h = size.height
-                val zoomE = tileConfig?.zoom ?: baseZoom
-                val worldTileSize = 256f
-                val tileSize = 512
-                val scale = tileSize / worldTileSize
-                val (cX, cY) = proj(validCenterLat, validCenterLon, zoomE)
-
-                // build the path in world‐space
-                val path = Path().apply {
-                    routePoints.forEachIndexed { i, pt ->
-                        val (xP, yP) = proj(pt.latitude, pt.longitude, zoomE)
-                        val sx = ((xP - cX) * scale + w / 2)
-                        val sy = ((yP - cY) * scale + h / 2)
-                        if (i == 0) moveTo(sx, sy) else lineTo(sx, sy)
-                    }
-                }
-
-                // COMPENSATE stroke to stay 1.5px on screen:
-                val deviceStroke = 2f / zoomLevel
-
-                drawPath(
-                    path = path,
-                    color = Color.Red,
-                    style = Stroke(width = deviceStroke)
+            .fillMaxSize()
+    ) {
+        // Draw tiles at intZoom
+        tileConfig
+            ?.takeIf { it.zoom == intZoom }
+            ?.run {
+                TileMap(
+                    centerLat = centerLat,
+                    centerLon = centerLon,
+                    zoom      = zoom,
+                    tileRoot  = tileRoot,
+                    modifier  = Modifier.matchParentSize(),
+                    tileCache = tileCache      // MutableMap matches
                 )
             }
+
+        // Draw the red route on top
+        Canvas(Modifier.matchParentSize()) {
+            val w = size.width
+            val h = size.height
+            val scale = 512f / (256f * (1 shl intZoom))
+            val (cX, cY) = proj(centerLat, centerLon, intZoom)
+
+            val path = Path().apply {
+                routePoints.forEachIndexed { i, pt ->
+                    val (x, y) = proj(pt.latitude, pt.longitude, intZoom)
+                    val sx = (x - cX) * scale + w / 2
+                    val sy = (y - cY) * scale + h / 2
+                    if (i == 0) moveTo(sx, sy) else lineTo(sx, sy)
+                }
+            }
+
+            drawPath(
+                path  = path,
+                color = Color.Red,
+                style = Stroke(width = 2f / animatedZoom)
+            )
         }
     }
 }
