@@ -998,7 +998,7 @@ fun NearbyRoutesList(
                             label = {
                                 Column {
                                     // line 1
-                                    Text("$routeName  •  $timeLabel")
+                                    Text("$routeName  •  $timeLabel", color = Color.Red.copy(alpha = 0.7f))
                                     // line 2
                                     Text("Distance: $distanceText\nDuration: $durationText\nSpeed: $speedText")
                                 }

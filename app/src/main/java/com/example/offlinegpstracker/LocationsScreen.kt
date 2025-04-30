@@ -136,7 +136,7 @@ fun LocationsScreen(
                         onClick = { locationViewModel.deleteLocation(loc.id) },
                         modifier = Modifier.align(Alignment.CenterVertically)
                     ) {
-                        Icon(Icons.Default.Delete, contentDescription = "Delete", tint = MaterialTheme.colorScheme.error)
+                        Icon(Icons.Default.Delete, contentDescription = "Delete", tint = Color.Red)
                     }
                 }
             }
