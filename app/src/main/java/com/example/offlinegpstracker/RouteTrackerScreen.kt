@@ -123,6 +123,8 @@ fun RouteTrackerScreen(
     var offsetX by remember { mutableFloatStateOf(0f) }
     var offsetY by remember { mutableFloatStateOf(0f) }
 
+    val zoomMultipliers = listOf(1f, 1.5f, 3f, 8f)
+
     val autoZoomApplied = remember { mutableStateOf(false) }
     val lastInteractionTime = remember { mutableLongStateOf(System.currentTimeMillis()) }
 
@@ -223,24 +225,23 @@ fun RouteTrackerScreen(
                                                 lastInteractionTime.longValue = System.currentTimeMillis()
                                             },
                                             onDoubleTap = {
-                                                // 1) suppress info block
                                                 ignoreAutoShow = true
-                                                lastInteractionTime.longValue =
-                                                    System.currentTimeMillis()
+                                                lastInteractionTime.longValue = System.currentTimeMillis()
 
-                                                // 2) recenter the map
+                                                // recenter
                                                 offsetX = 0f
                                                 offsetY = 0f
 
-                                                // 3) cycle through your zoom levels
+                                                // cycle through multipliers instead of a big when
                                                 val base = originalZoom.floatValue
-                                                zoomLevel.floatValue = when {
-                                                    zoomLevel.floatValue < base * 1.5f -> base * 1.5f
-                                                    zoomLevel.floatValue < base * 3.0f -> base * 3.0f
-                                                    zoomLevel.floatValue < base * 6.0f -> base * 6.0f
-                                                    zoomLevel.floatValue < base * 12.0f -> base * 12.0f
-                                                    else -> base
-                                                }
+                                                // find current index
+                                                val curMul = (zoomLevel.floatValue / base)
+                                                    .coerceIn(zoomMultipliers.first(), zoomMultipliers.last())
+                                                val nextIndex = zoomMultipliers.indexOfFirst { it > curMul }
+                                                    .takeIf { it >= 0 } ?: 0
+
+                                                // apply next zoom
+                                                zoomLevel.floatValue = base * zoomMultipliers[nextIndex]
                                             }
                                         )
                                     }
@@ -498,8 +499,7 @@ fun RouteTrackerScreen(
                                             zoomLevel.floatValue = when {
                                                 zoomLevel.floatValue < base * 1.5f -> base * 1.5f
                                                 zoomLevel.floatValue < base * 3.0f -> base * 3.0f
-                                                zoomLevel.floatValue < base * 6.0f -> base * 6.0f
-                                                zoomLevel.floatValue < base * 12.0f -> base * 12.0f
+                                                zoomLevel.floatValue < base * 8.0f -> base * 8.0f
                                                 else -> base
                                             }
                                         }
@@ -1157,7 +1157,7 @@ private fun TileMapWithSmoothScale(
     // 1) Animate fractional zoom
     val animatedZoom by animateFloatAsState(
         targetValue = zoomLevel,
-        animationSpec = tween(durationMillis = 300), label = ""
+        animationSpec = tween(durationMillis = 100), label = ""
     )
 
     // 2) Pick integer zoom folder
@@ -1191,39 +1191,23 @@ private fun TileMapWithSmoothScale(
         Canvas(Modifier.matchParentSize()) {
             val canvasW = size.width
             val canvasH = size.height
-            val tileSize = 512f
-            val worldSize = tileSize * (1 shl intZoom)
 
-            // same projection function as in TileMap:
-            fun project(lat: Double, lon: Double): Pair<Float,Float> {
-                val x = ((lon + 180.0) / 360.0 * worldSize).toFloat()
-                val siny = sin(lat * PI / 180).coerceIn(-0.9999, 0.9999)
-                val y = ((0.5 - ln((1 + siny) / (1 - siny)) / (4 * PI)) * worldSize).toFloat()
-                return x to y
-            }
+            // use the top-level proj instead of duplicating
+            val (cX, cY) = proj(centerLat, centerLon, intZoom)
 
-            // world‐space center
-            val (cX, cY) = project(centerLat, centerLon)
-
-            // build the path
             val path = Path().apply {
                 routePoints.forEachIndexed { i, pt ->
-                    val (x, y) = project(pt.latitude, pt.longitude)
-                    // screen = world-space delta + center of canvas
+                    val (x, y) = proj(pt.latitude, pt.longitude, intZoom)
                     val sx = (x - cX) + canvasW / 2f
                     val sy = (y - cY) + canvasH / 2f
                     if (i == 0) moveTo(sx, sy) else lineTo(sx, sy)
                 }
             }
 
-            // keep stroke 2px on screen (so divide by animatedZoom,
-            // then the graphicsLayer scale brings it back to 2px)
-            val strokeW = 2f / animatedZoom
-
             drawPath(
                 path  = path,
                 color = Color.Red,
-                style = Stroke(width = strokeW)
+                style = Stroke(width = 1.7f / animatedZoom)
             )
         }
     }
