@@ -1150,62 +1150,80 @@ private fun TileMapWithSmoothScale(
     zoomLevel: Float,
     baseZoom: Int,
     tileConfig: TileConfig?,
-    tileCache: MutableMap<String, Bitmap>,  // <-- expect MutableMap
+    tileCache: MutableMap<String, Bitmap>,
     routePoints: List<RoutePoint>,
     modifier: Modifier = Modifier
 ) {
-    // Animate the raw fractional zoom
+    // 1) Animate fractional zoom
     val animatedZoom by animateFloatAsState(
         targetValue = zoomLevel,
         animationSpec = tween(durationMillis = 300), label = ""
     )
 
-    // Pick the integer zoom folder
+    // 2) Pick integer zoom folder
     val intZoom = (baseZoom + log2(animatedZoom.toDouble()).roundToInt())
         .coerceIn(baseZoom, 22)
 
     Box(
         modifier
             .graphicsLayer {
+                // scale both tiles and path together
                 scaleX = animatedZoom
                 scaleY = animatedZoom
             }
             .fillMaxSize()
     ) {
-        // Draw tiles at intZoom
+        // draw tiles at intZoom (exactly as before)
         tileConfig
             ?.takeIf { it.zoom == intZoom }
             ?.run {
                 TileMap(
-                    centerLat = centerLat,
-                    centerLon = centerLon,
-                    zoom      = zoom,
-                    tileRoot  = tileRoot,
-                    modifier  = Modifier.matchParentSize(),
-                    tileCache = tileCache      // MutableMap matches
+                    centerLat  = centerLat,
+                    centerLon  = centerLon,
+                    zoom       = zoom,
+                    tileRoot   = tileRoot,
+                    modifier   = Modifier.matchParentSize(),
+                    tileCache  = tileCache
                 )
             }
 
-        // Draw the red route on top
+        // ─── new Canvas using the same “project()” logic as TileMap ─────────────────
         Canvas(Modifier.matchParentSize()) {
-            val w = size.width
-            val h = size.height
-            val scale = 512f / (256f * (1 shl intZoom))
-            val (cX, cY) = proj(centerLat, centerLon, intZoom)
+            val canvasW = size.width
+            val canvasH = size.height
+            val tileSize = 512f
+            val worldSize = tileSize * (1 shl intZoom)
 
+            // same projection function as in TileMap:
+            fun project(lat: Double, lon: Double): Pair<Float,Float> {
+                val x = ((lon + 180.0) / 360.0 * worldSize).toFloat()
+                val siny = sin(lat * PI / 180).coerceIn(-0.9999, 0.9999)
+                val y = ((0.5 - ln((1 + siny) / (1 - siny)) / (4 * PI)) * worldSize).toFloat()
+                return x to y
+            }
+
+            // world‐space center
+            val (cX, cY) = project(centerLat, centerLon)
+
+            // build the path
             val path = Path().apply {
                 routePoints.forEachIndexed { i, pt ->
-                    val (x, y) = proj(pt.latitude, pt.longitude, intZoom)
-                    val sx = (x - cX) * scale + w / 2
-                    val sy = (y - cY) * scale + h / 2
+                    val (x, y) = project(pt.latitude, pt.longitude)
+                    // screen = world-space delta + center of canvas
+                    val sx = (x - cX) + canvasW / 2f
+                    val sy = (y - cY) + canvasH / 2f
                     if (i == 0) moveTo(sx, sy) else lineTo(sx, sy)
                 }
             }
 
+            // keep stroke 2px on screen (so divide by animatedZoom,
+            // then the graphicsLayer scale brings it back to 2px)
+            val strokeW = 2f / animatedZoom
+
             drawPath(
                 path  = path,
                 color = Color.Red,
-                style = Stroke(width = 2f / animatedZoom)
+                style = Stroke(width = strokeW)
             )
         }
     }
