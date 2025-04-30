@@ -1202,14 +1202,16 @@ private fun TileMapWithSmoothScale(
             drawPath(
                 path  = path,
                 color = Color.Red,
-                style = Stroke(width = 1.7f / animatedZoom)
+                style = Stroke(width = 1.5f / animatedZoom)
             )
         }
     }
 }
 
 private fun proj(lat: Double, lon: Double, zoom: Int): Pair<Float, Float> {
-    val world = 256f * (1 shl zoom) // Mapbox uses 256 pixels per tile in world space
+    // use the same tileSize as TileMap (512px)
+    val tileSize = 512f
+    val world = tileSize * (1 shl zoom)
     val x = ((lon + 180) / 360 * world).toFloat()
     val siny = sin(lat * PI / 180).coerceIn(-0.9999, 0.9999)
     val y = ((0.5 - ln((1 + siny) / (1 - siny)) / (4 * PI)) * world).toFloat()
