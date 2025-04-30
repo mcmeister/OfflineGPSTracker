@@ -47,6 +47,7 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
@@ -55,7 +56,6 @@ import androidx.compose.material.icons.filled.Navigation
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.AssistChipDefaults
-import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
@@ -70,6 +70,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -83,9 +84,11 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.TextFieldValue
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
@@ -99,6 +102,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavHostController
 import coil.compose.rememberAsyncImagePainter
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import kotlin.math.atan2
 import kotlin.math.cos
@@ -214,8 +218,10 @@ fun LocationDetailsScreen(
             val latitude by remember { mutableStateOf(TextFieldValue(location.latitude.toString())) }
             val longitude by remember { mutableStateOf(TextFieldValue(location.longitude.toString())) }
             var galleryImages by remember { mutableStateOf<List<Uri>>(emptyList()) }
+            var isLoading by remember { mutableStateOf(true) }
 
             LaunchedEffect(location.id, hasGalleryPerm, hasMediaLocationPerm) {
+                isLoading = true
                 if (!hasGalleryPerm) {
                     galleryImages = emptyList()
                     return@LaunchedEffect
@@ -231,6 +237,7 @@ fun LocationDetailsScreen(
                     location.longitude,
                     1_000.0
                 )
+                isLoading = false
             }
 
             Column(
@@ -253,46 +260,63 @@ fun LocationDetailsScreen(
                     /* ───────────────── ICON BAR (only when NOT editing) ───────────────── */
                     if (!isEditing) {
                         Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.End,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 8.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
+                            // ← Back button on the left
                             Icon(
-                                imageVector = Icons.Filled.Edit,
-                                contentDescription = "Edit",
+                                imageVector = Icons.AutoMirrored.Filled.ArrowBack,     // or any other from the list above
+                                contentDescription = "Back",
                                 modifier = Modifier
-                                    .size(20.dp)
-                                    .clickable { isEditing = true }
+                                    .size(24.dp)
+                                    .clickable { navController.popBackStack() }
                             )
-                            Spacer(Modifier.width(12.dp))
 
-                            Icon(
-                                imageVector = Icons.Filled.Share,
-                                contentDescription = "Share",
-                                modifier = Modifier
-                                    .size(20.dp)
-                                    .clickable {
-                                        shareLocationDetails(context, latitude.text, longitude.text)
-                                    }
-                            )
-                            Spacer(Modifier.width(12.dp))
-
-                            Icon(
-                                imageVector = Icons.Filled.Delete,
-                                contentDescription = "Delete",
-                                tint = Color.Red,
-                                modifier = Modifier
-                                    .size(20.dp)
-                                    .clickable {
-                                        locationViewModel.updateLocation(location.copy(status = "deleted"))
-                                        Toast.makeText(
-                                            context,
-                                            "Location deleted",
-                                            Toast.LENGTH_SHORT
-                                        ).show()
-                                        navController.popBackStack()
-                                    }
-                            )
+                            // → Edit / Share / Delete on the right
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(12.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Filled.Edit,
+                                    contentDescription = "Edit",
+                                    modifier = Modifier
+                                        .size(20.dp)
+                                        .clickable { isEditing = true }
+                                )
+                                Icon(
+                                    imageVector = Icons.Filled.Share,
+                                    contentDescription = "Share",
+                                    modifier = Modifier
+                                        .size(20.dp)
+                                        .clickable {
+                                            shareLocationDetails(
+                                                context,
+                                                latitude.text,
+                                                longitude.text
+                                            )
+                                        }
+                                )
+                                Icon(
+                                    imageVector = Icons.Filled.Delete,
+                                    contentDescription = "Delete",
+                                    tint = Color.Red,
+                                    modifier = Modifier
+                                        .size(20.dp)
+                                        .clickable {
+                                            locationViewModel.updateLocation(location.copy(status = "deleted"))
+                                            Toast.makeText(
+                                                context,
+                                                "Location deleted",
+                                                Toast.LENGTH_SHORT
+                                            ).show()
+                                            navController.popBackStack()
+                                        }
+                                )
+                            }
                         }
                     }
 
@@ -359,18 +383,19 @@ fun LocationDetailsScreen(
                         .padding(horizontal = 8.dp) // <-- ONE place to control left/right margins
                 ) {
                     LatLonCard(
-                    lat = latitude.text,
-                    lon = longitude.text,
-                    onNavigate = {
-                        navController.navigate("navigator/${location.id}/${location.name}")
-                    }
-                )
+                        lat = latitude.text,
+                        lon = longitude.text,
+                        onNavigate = {
+                            navController.navigate("navigator/${location.id}/${location.name}")
+                        }
+                    )
 
                     Spacer(Modifier.height(16.dp))
 
                     PhotosSection(
                         galleryImages = galleryImages,
-                        context       = context
+                        isLoading = isLoading,
+                        context = LocalContext.current
                     )
 
                     Spacer(Modifier.height(16.dp))
@@ -380,14 +405,14 @@ fun LocationDetailsScreen(
                         Card(
                             modifier = Modifier
                                 .fillMaxWidth(),
-                            shape  = RoundedCornerShape(8.dp),
+                            shape = RoundedCornerShape(8.dp),
                             border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
                             colors = CardDefaults.cardColors(containerColor = Color.Transparent)
                         ) {
                             Column(Modifier.padding(12.dp)) {
                                 Text(
                                     "Saved routes within 3 km radius of this Location (${nearbyRoutes.size})",
-                                    fontSize   = 14.sp,
+                                    fontSize = 14.sp,
                                     fontWeight = FontWeight.SemiBold
                                 )
 
@@ -401,21 +426,22 @@ fun LocationDetailsScreen(
                                         .height(200.dp)
                                 ) {
                                     LazyColumn(
-                                        state    = listState,
+                                        state = listState,
                                         modifier = Modifier
                                             .weight(1f)
                                             .fillMaxHeight()
                                     ) {
                                         items(nearbyRoutes) { r ->
-                                            val routeName      = r.routeName?.takeIf { it.isNotBlank() } ?: "Route ${r.id}"
+                                            val routeName = r.routeName?.takeIf { it.isNotBlank() }
+                                                ?: "Route ${r.id}"
                                             val timeLabel = formatTime(r.startTime)
                                             AssistChip(
                                                 onClick = { navController.navigate("view_route/${r.id}") },
-                                                label   = { Text("$routeName  •  $timeLabel") },
-                                                shape   = RoundedCornerShape(16.dp),
-                                                colors  = AssistChipDefaults.assistChipColors(
+                                                label = { Text("$routeName  •  $timeLabel") },
+                                                shape = RoundedCornerShape(16.dp),
+                                                colors = AssistChipDefaults.assistChipColors(
                                                     containerColor = Color.Transparent,
-                                                    labelColor     = MaterialTheme.colorScheme.primary
+                                                    labelColor = MaterialTheme.colorScheme.primary
                                                 ),
                                                 modifier = Modifier
                                                     .fillMaxWidth()
@@ -426,7 +452,7 @@ fun LocationDetailsScreen(
 
                                     ScrollThumbLocationDetails(
                                         listState = listState,
-                                        modifier  = Modifier
+                                        modifier = Modifier
                                             .fillMaxHeight()
                                             .width(4.dp)
                                     )
@@ -436,20 +462,9 @@ fun LocationDetailsScreen(
                     } else {
                         Text(
                             text = "No saved routes available for this Location",
-                            fontSize   = 14.sp,
+                            fontSize = 14.sp,
                             fontWeight = FontWeight.SemiBold
                         )
-                    }
-                }
-
-                Spacer(Modifier.weight(1f))
-
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.Center
-                ) {
-                    Button(onClick = { navController.popBackStack() }) {
-                        Text("Back")
                     }
                 }
 
@@ -768,112 +783,152 @@ fun ScrollThumbLocationDetails(
 @Composable
 fun PhotosSection(
     galleryImages: List<Uri>,
+    isLoading: Boolean,
     context: Context
 ) {
-    // state to track which image (if any) is in full-screen view
     var fullscreenUri by remember { mutableStateOf<Uri?>(null) }
 
-    if (galleryImages.isNotEmpty()) {
-        // full-screen preview dialog
-        fullscreenUri?.let { uri ->
-            Dialog(
-                onDismissRequest = { fullscreenUri = null },
-                properties = DialogProperties(usePlatformDefaultWidth = false)
-            ) {
-                Box(
-                    Modifier
-                        .fillMaxSize()
-                        .background(Color.Black)
-                        .clickable { fullscreenUri = null },
-                    contentAlignment = Alignment.Center
-                ) {
-                    Image(
-                        painter = rememberAsyncImagePainter(uri),
-                        contentDescription = null,
-                        modifier = Modifier.fillMaxSize(),
-                        contentScale = ContentScale.Crop
-                    )
-                }
-            }
+    when {
+        // 1) Still loading:
+        isLoading -> {
+            AnimatedLoadingText(
+                baseText = "Looking for photos in gallery",
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 16.dp)
+            )
         }
 
-        Card(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(top = 16.dp),
-            shape  = RoundedCornerShape(8.dp),
-            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
-            colors = CardDefaults.cardColors(containerColor = Color.Transparent)
-        ) {
-            Column(Modifier.padding(12.dp)) {
-                Text(
-                    text       = "Photos from gallery within 1 km radius of this Location",
-                    fontSize   = 14.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    modifier   = Modifier.fillMaxWidth()
-                )
-
-                Spacer(Modifier.height(8.dp))
-
-                Box(
-                    Modifier
-                        .fillMaxWidth()
-                        .height(100.dp)
-                        .clip(RoundedCornerShape(8.dp))
+        // 2) Loaded & found images:
+        galleryImages.isNotEmpty() -> {
+            fullscreenUri?.let { uri ->
+                Dialog(
+                    onDismissRequest = { fullscreenUri = null },
+                    properties = DialogProperties(usePlatformDefaultWidth = false)
                 ) {
-                    LazyRow(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .pointerInput(Unit) { detectHorizontalDragGestures { c, _ -> c.consume() } }
-                            .padding(vertical = 4.dp),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    Box(
+                        Modifier
+                            .fillMaxSize()
+                            .background(Color.Black)
+                            .clickable { fullscreenUri = null },
+                        contentAlignment = Alignment.Center
                     ) {
-                        // only actual photos, up to 7
-                        items(galleryImages.take(7)) { uri ->
-                            Box(
-                                Modifier
-                                    .size(80.dp)
-                                    .clip(RoundedCornerShape(8.dp))
-                                    .border(1.dp, Color.Black, RoundedCornerShape(8.dp))
-                                    .clickable { fullscreenUri = uri },   // <-- open preview
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Image(
-                                    painter      = rememberAsyncImagePainter(uri),
-                                    contentDescription = null,
-                                    modifier     = Modifier.fillMaxSize(),
-                                    contentScale = ContentScale.Crop      // <-- fill box, crop edges
-                                )
-                            }
-                        }
+                        Image(
+                            painter      = rememberAsyncImagePainter(uri),
+                            contentDescription = null,
+                            modifier     = Modifier.fillMaxSize(),
+                            contentScale = ContentScale.Crop
+                        )
+                    }
+                }
+            }
 
-                        // “Go to Gallery” button always last
-                        item {
-                            TextButton(
-                                onClick = {
-                                    galleryImages.firstOrNull()?.let { uri ->
-                                        Intent(Intent.ACTION_VIEW, uri)
-                                            .apply { addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION) }
-                                            .also(context::startActivity)
-                                    } ?: Toast
-                                        .makeText(context, "No photos to open", Toast.LENGTH_SHORT)
-                                        .show()
-                                },
-                                modifier = Modifier.height(80.dp)
-                            ) {
-                                Text("Go\nto\nGallery", fontSize = 12.sp)
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 16.dp),
+                shape  = RoundedCornerShape(8.dp),
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
+                colors = CardDefaults.cardColors(containerColor = Color.Transparent)
+            ) {
+                Column(Modifier.padding(12.dp)) {
+                    Text(
+                        text       = "Photos from gallery within 1 km radius of this Location",
+                        fontSize   = 14.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        modifier   = Modifier.fillMaxWidth()
+                    )
+
+                    Spacer(Modifier.height(8.dp))
+
+                    Box(
+                        Modifier
+                            .fillMaxWidth()
+                            .height(100.dp)
+                            .clip(RoundedCornerShape(8.dp))
+                    ) {
+                        LazyRow(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .pointerInput(Unit) { detectHorizontalDragGestures { c, _ -> c.consume() } }
+                                .padding(vertical = 4.dp),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            items(galleryImages.take(7)) { uri ->
+                                Box(
+                                    Modifier
+                                        .size(80.dp)
+                                        .clip(RoundedCornerShape(8.dp))
+                                        .border(1.dp, Color.Black, RoundedCornerShape(8.dp))
+                                        .clickable { fullscreenUri = uri },
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Image(
+                                        painter      = rememberAsyncImagePainter(uri),
+                                        contentDescription = null,
+                                        modifier     = Modifier.fillMaxSize(),
+                                        contentScale = ContentScale.Crop
+                                    )
+                                }
+                            }
+
+                            item {
+                                TextButton(
+                                    onClick = {
+                                        galleryImages.firstOrNull()?.let { uri ->
+                                            Intent(Intent.ACTION_VIEW, uri)
+                                                .apply { addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION) }
+                                                .also(context::startActivity)
+                                        } ?: Toast
+                                            .makeText(context, "No photos to open", Toast.LENGTH_SHORT)
+                                            .show()
+                                    },
+                                    modifier = Modifier.height(80.dp)
+                                ) {
+                                    Text("Go\nto\nGallery", fontSize = 12.sp)
+                                }
                             }
                         }
                     }
                 }
             }
         }
-    } else {
-        Text(
-            text       = "No photos available in gallery for this Location",
-            fontSize   = 16.sp,
-            fontWeight = FontWeight.SemiBold,
-            modifier   = Modifier.padding(top = 16.dp, bottom = 16.dp)
-        )
+
+        // 3) Loaded but empty:
+        else -> {
+            Text(
+                text       = "No photos available in gallery for this Location",
+                fontSize   = 16.sp,
+                fontWeight = FontWeight.SemiBold,
+                modifier   = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 16.dp),
+                textAlign  = TextAlign.Center
+            )
+        }
     }
+}
+
+@Composable
+fun AnimatedLoadingText(
+    modifier: Modifier = Modifier,
+    baseText: String,
+    maxDots: Int = 3,
+    intervalMs: Long = 500L,
+    textStyle: TextStyle = TextStyle(fontSize = 16.sp, fontWeight = FontWeight.SemiBold),
+    textAlign: TextAlign = TextAlign.Center
+) {
+    var dotCount by remember { mutableIntStateOf(0) }
+    LaunchedEffect(Unit) {
+        while (true) {
+            delay(intervalMs)
+            dotCount = (dotCount + 1) % (maxDots + 1)
+        }
+    }
+    Text(
+        text      = baseText + ".".repeat(dotCount),
+        modifier  = modifier,
+        style     = textStyle,
+        textAlign = textAlign
+    )
 }
