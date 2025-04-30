@@ -71,8 +71,10 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
@@ -103,6 +105,7 @@ import androidx.navigation.NavHostController
 import coil.compose.rememberAsyncImagePainter
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlin.math.atan2
 import kotlin.math.cos
@@ -416,63 +419,11 @@ fun LocationDetailsScreen(
 
                     // ─── SAVED ROUTES SECTION ───────────────────────────────────────────────
                     if (nearbyRoutes.isNotEmpty()) {
-                        Card(
-                            modifier = Modifier
-                                .fillMaxWidth(),
-                            shape = RoundedCornerShape(8.dp),
-                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
-                            colors = CardDefaults.cardColors(containerColor = Color.Transparent)
-                        ) {
-                            Column(Modifier.padding(12.dp)) {
-                                Text(
-                                    "Saved routes within 3 km radius of this Location (${nearbyRoutes.size})",
-                                    fontSize = 14.sp,
-                                    fontWeight = FontWeight.SemiBold
-                                )
-
-                                Spacer(Modifier.height(8.dp))
-
-                                val listState = rememberLazyListState()
-
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .height(200.dp)
-                                ) {
-                                    LazyColumn(
-                                        state = listState,
-                                        modifier = Modifier
-                                            .weight(1f)
-                                            .fillMaxHeight()
-                                    ) {
-                                        items(nearbyRoutes) { r ->
-                                            val routeName = r.routeName?.takeIf { it.isNotBlank() }
-                                                ?: "Route ${r.id}"
-                                            val timeLabel = formatTime(r.startTime)
-                                            AssistChip(
-                                                onClick = { navController.navigate("view_route/${r.id}") },
-                                                label = { Text("$routeName  •  $timeLabel") },
-                                                shape = RoundedCornerShape(16.dp),
-                                                colors = AssistChipDefaults.assistChipColors(
-                                                    containerColor = Color.Transparent,
-                                                    labelColor = MaterialTheme.colorScheme.primary
-                                                ),
-                                                modifier = Modifier
-                                                    .fillMaxWidth()
-                                                    .padding(vertical = 4.dp)
-                                            )
-                                        }
-                                    }
-
-                                    ScrollThumbLocationDetails(
-                                        listState = listState,
-                                        modifier = Modifier
-                                            .fillMaxHeight()
-                                            .width(4.dp)
-                                    )
-                                }
-                            }
-                        }
+                        NearbyRoutesList(
+                            nearbyRoutes     = nearbyRoutes,
+                            routeRepository  = routeRepository,
+                            navController    = navController
+                        )
                     } else {
                         Text(
                             text = "No saved routes available for this Location",
@@ -946,4 +897,132 @@ fun AnimatedLoadingText(
         style     = textStyle,
         textAlign = textAlign
     )
+}
+
+fun formatDistance(meters: Float): String =
+    if (meters >= 1_000f) {
+        // 1 km or more → show in km (two decimals)
+        "%.2fkm".format(meters / 1_000f)
+    } else {
+        // less than 1 km → whole meters
+        "${meters.toInt()}m"
+    }
+
+fun formatDuration(start: Long, end: Long?): String {
+    val elapsedMs    = (end ?: System.currentTimeMillis()) - start
+    val totalMins    = (elapsedMs / 1_000L / 60L).toInt()
+    return if (totalMins < 60) {
+        // less than 1 h → show minutes
+        "$totalMins min"
+    } else {
+        // 1 h or more → show hours with two decimals
+        val hours = elapsedMs.toDouble() / (1_000.0 * 60.0 * 60.0)
+        "%.2f hr".format(hours)
+    }
+}
+
+fun formatSpeed(meters: Float, start: Long, end: Long?): String {
+    val seconds = ((end ?: System.currentTimeMillis()) - start) / 1_000f
+    return if (seconds > 0f) {
+        val kmh = (meters / seconds) * 3.6f
+        "%.2fkm/hr".format(kmh)
+    } else {
+        "0km/hr"
+    }
+}
+
+@Composable
+fun NearbyRoutesList(
+    nearbyRoutes: List<Route>,
+    routeRepository: RouteRepository,
+    navController: NavHostController
+) {
+    val scope = rememberCoroutineScope()
+    // ① create a scroll state for both list + thumb
+    val listState = rememberLazyListState()
+
+    // ② cache your points for distance calc
+    val pointsMap = remember { mutableStateMapOf<Int, List<RoutePoint>>() }
+    LaunchedEffect(nearbyRoutes) {
+        nearbyRoutes.forEach { r ->
+            if (!pointsMap.containsKey(r.id)) {
+                scope.launch {
+                    routeRepository.getPointsForRoute(r.id)
+                        .collect { pts -> pointsMap[r.id] = pts }
+                }
+            }
+        }
+    }
+
+    // ③ same container height you had before (200.dp), with list + thumb
+    Card(
+        modifier = Modifier
+            .fillMaxWidth(),
+        shape = RoundedCornerShape(8.dp),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
+        colors = CardDefaults.cardColors(containerColor = Color.Transparent)
+    ) {
+        Column(Modifier.padding(12.dp)) {
+            Text(
+                "Saved routes within 3 km radius of this Location (${nearbyRoutes.size})",
+                fontSize = 14.sp,
+                fontWeight = FontWeight.SemiBold
+            )
+
+            Spacer(Modifier.height(8.dp))
+
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(200.dp)
+            ) {
+                LazyColumn(
+                    state = listState,
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxHeight()
+                        .padding(end = 8.dp)
+                ) {
+                    items(nearbyRoutes) { r ->
+                        val routeName = r.routeName?.takeIf { it.isNotBlank() } ?: "Route ${r.id}"
+                        val timeLabel = formatTime(r.startTime)
+
+                        val pts = pointsMap[r.id] ?: emptyList()
+                        val totalDist = calculateDistance(pts)
+                        val distanceText = formatDistance(totalDist)
+                        val durationText = formatDuration(r.startTime, r.endTime)
+                        val speedText = formatSpeed(totalDist, r.startTime, r.endTime)
+
+                        AssistChip(
+                            onClick = { navController.navigate("view_route/${r.id}") },
+                            label = {
+                                Column {
+                                    // line 1
+                                    Text("$routeName  •  $timeLabel")
+                                    // line 2
+                                    Text("Distance: $distanceText\nDuration: $durationText\nSpeed: $speedText")
+                                }
+                            },
+                            shape = RoundedCornerShape(16.dp),
+                            colors = AssistChipDefaults.assistChipColors(
+                                containerColor = Color.Transparent,
+                                labelColor = MaterialTheme.colorScheme.primary
+                            ),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 4.dp)
+                        )
+                    }
+                }
+
+                // your thumb, driven by the same listState
+                ScrollThumbLocationDetails(
+                    listState = listState,
+                    modifier = Modifier
+                        .fillMaxHeight()
+                        .width(4.dp)
+                )
+            }
+        }
+    }
 }
