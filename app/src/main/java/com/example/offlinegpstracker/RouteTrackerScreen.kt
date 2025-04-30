@@ -242,6 +242,7 @@ fun RouteTrackerScreen(
                                                     zoomLevel.floatValue < base * 1.5f -> base * 1.5f
                                                     zoomLevel.floatValue < base * 3.0f -> base * 3.0f
                                                     zoomLevel.floatValue < base * 6.0f -> base * 6.0f
+                                                    zoomLevel.floatValue < base * 9.0f -> base * 9.0f
                                                     else -> base
                                                 }
                                             }
@@ -502,6 +503,7 @@ fun RouteTrackerScreen(
                                                 zoomLevel.floatValue < base * 1.5f -> base * 1.5f
                                                 zoomLevel.floatValue < base * 3.0f -> base * 3.0f
                                                 zoomLevel.floatValue < base * 6.0f -> base * 6.0f
+                                                zoomLevel.floatValue < base * 9.0f -> base * 9.0f
                                                 else -> base
                                             }
                                         }
@@ -1195,7 +1197,7 @@ private fun TileMapOrPlaceholder(
                 }
 
                 // COMPENSATE stroke to stay 1.5px on screen:
-                val deviceStroke = 1.5f / zoomLevel
+                val deviceStroke = 2f / zoomLevel
 
                 drawPath(
                     path = path,
