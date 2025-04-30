@@ -125,6 +125,11 @@ fun RouteTrackerScreen(
 
     val zoomMultipliers = listOf(1f, 1.5f, 3f, 8f)
 
+    val animatedZoom by animateFloatAsState(
+        targetValue = zoomLevel.floatValue,
+        animationSpec = tween(durationMillis = 300), label = "" // shorten if you like
+    )
+
     val autoZoomApplied = remember { mutableStateOf(false) }
     val lastInteractionTime = remember { mutableLongStateOf(System.currentTimeMillis()) }
 
@@ -248,36 +253,26 @@ fun RouteTrackerScreen(
 
                                     // ── PINCH-ZOOM & PAN ───────────────────────────────────────────────────
                                     .pointerInput(Unit) {
-                                        detectTransformGestures { centroid, pan, pinch, _ ->
-                                            /* ---------- ZOOM ---------- */
-                                            val oldZoom = zoomLevel.floatValue
-                                            val newZoom =
-                                                (oldZoom * pinch).coerceIn(minZoom, maxZoom)
+                                        detectTransformGestures(panZoomLock = false) { centroid, pan, pinch, _ ->
+                                            val cw = size.width.toFloat()
+                                            val ch = size.height.toFloat()
 
-                                            /* ---------- PANNING RULES ---------- */
-                                            val canPan = newZoom > 1f
-                                            val panX = if (canPan) pan.x else 0f
-                                            val panY = if (canPan) pan.y else 0f
+                                            // 2) use animatedZoom for “before”
+                                            val oldZ = animatedZoom
+                                            val newZ = (oldZ * pinch).coerceIn(minZoom, maxZoom)
+                                            zoomLevel.floatValue = newZ
 
-                                            // viewport (box) size
-                                            val cw = this.size.width.toFloat()
-                                            val ch = this.size.height.toFloat()
+                                            // 3) world-coords & offset math off animated values
+                                            val worldX = (centroid.x - cw/2 - offsetX) / oldZ
+                                            val worldY = (centroid.y - ch/2 - offsetY) / oldZ
 
-                                            /* ---------- KEEP TOUCH-POINT FIXED WHILE ZOOMING ---------- */
-                                            // Adjust offsets to keep the touch point fixed
-                                            val worldX = (centroid.x - cw / 2 - offsetX) / oldZoom
-                                            val worldY = (centroid.y - ch / 2 - offsetY) / oldZoom
-
-                                            zoomLevel.floatValue = newZoom
-
-                                            val sx = worldX * newZoom + cw / 2 + offsetX
-                                            val sy = worldY * newZoom + ch / 2 + offsetY
+                                            val sx = worldX*newZ + cw/2 + offsetX
+                                            val sy = worldY*newZ + ch/2 + offsetY
                                             offsetX += centroid.x - sx
                                             offsetY += centroid.y - sy
 
-                                            // Apply panning
-                                            offsetX += panX
-                                            offsetY += panY
+                                            offsetX += pan.x
+                                            offsetY += pan.y
 
                                             /* ---------- VISIBILITY TIMER ---------- */
                                             if (showInfo) showInfo = false
@@ -1157,7 +1152,7 @@ private fun TileMapWithSmoothScale(
     // 1) Animate fractional zoom
     val animatedZoom by animateFloatAsState(
         targetValue = zoomLevel,
-        animationSpec = tween(durationMillis = 100), label = ""
+        animationSpec = tween(durationMillis = 300), label = ""
     )
 
     // 2) Pick integer zoom folder
