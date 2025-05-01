@@ -20,6 +20,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
@@ -86,7 +87,6 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
@@ -252,285 +252,170 @@ fun LocationDetailsScreen(
                 isLoading = false
             }
 
-            Column(
+            Box(
                 modifier = Modifier
                     .fillMaxSize()
+                    // Clear focus when tapping anywhere outside
                     .clickable(
                         indication = null,
                         interactionSource = remember { MutableInteractionSource() }
                     ) { focusManager.clearFocus() }
-                    .verticalScroll(rememberScrollState())
-                    .padding(horizontal = 8.dp)
             ) {
-                Spacer(Modifier.height(16.dp))
-
+                // ─── A) Scrollable header ───────────────────────────────────────────────
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
+                        .verticalScroll(rememberScrollState())
                         .padding(horizontal = 8.dp)
                 ) {
-                    /* ───────────────── ICON BAR (only when NOT editing) ───────────────── */
-                    if (!isEditing) {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = 8.dp),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            // ← Back button on the left
-                            Icon(
-                                imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                                contentDescription = "Back",
-                                modifier = Modifier
-                                    .size(24.dp)
-                                    .clickable(
-                                        indication = null,
-                                        interactionSource = remember { MutableInteractionSource() }
-                                    ) {
-                                        navController.popBackStack()
-                                    }
-                            )
+                    Spacer(Modifier.height(16.dp))
 
-                            // → Edit / Share / Delete on the right
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(12.dp)
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Filled.Edit,
-                                    contentDescription = "Edit",
-                                    modifier = Modifier
-                                        .size(20.dp)
-                                        .clickable { isEditing = true }
-                                )
-                                Icon(
-                                    imageVector = Icons.Filled.Share,
-                                    contentDescription = "Share",
-                                    modifier = Modifier
-                                        .size(20.dp)
-                                        .clickable(
-                                            indication = null,
-                                            interactionSource = remember { MutableInteractionSource() }
-                                        ) {
-                                            shareLocationDetails(
-                                                context,
-                                                latitude.text,
-                                                longitude.text
-                                            )
-                                        }
-                                )
-
-                                Icon(
-                                    imageVector = Icons.Filled.Delete,
-                                    contentDescription = "Delete",
-                                    tint = Color.Red,
-                                    modifier = Modifier
-                                        .size(20.dp)
-                                        .clickable {
-                                            // ── 2) Don’t delete immediately, just show the dialog ──
-                                            showDeleteDialog = true
-                                        }
-                                )
-                            }
-                        }
-                    }
-
-                    if (showDeleteDialog) {
-                        AlertDialog(
-                            onDismissRequest = { showDeleteDialog = false },
-                            title = { Text("Delete ${location.name}?") },
-                            confirmButton = {
-                                TextButton(onClick = {
-                                    // same delete logic as before
-                                    locationViewModel.updateLocation(location.copy(status = "deleted"))
-                                    Toast.makeText(context, "Location deleted", Toast.LENGTH_SHORT).show()
-                                    navController.popBackStack()
-                                    showDeleteDialog = false
-                                }) {
-                                    Text("Yes")
-                                }
-                            },
-                            dismissButton = {
-                                TextButton(onClick = { showDeleteDialog = false }) {
-                                    Text("No")
-                                }
-                            }
-                        )
-                    }
-
-                    /* ───────────────── NAME LINE (always centred) ─────────────────────── */
-                    Box(
+                    // ── ICON BAR + DELETE DIALOG + NAME LINE ───────────────────────────────
+                    Column(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(top = if (isEditing) 0.dp else 16.dp),
-                        contentAlignment = Alignment.Center
+                            .padding(horizontal = 8.dp)
                     ) {
-                        if (isEditing) {
+                        if (!isEditing) {
                             Row(
                                 modifier = Modifier
-                                    .widthIn(max = 300.dp),            // same max width
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 8.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                OutlinedTextField(
-                                    value = locationName,
-                                    onValueChange = { locationName = it },
-                                    singleLine = true,
-                                    modifier = Modifier
-                                        .weight(1f),                  // take all available space
-                                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Text),
-                                    keyboardActions = KeyboardActions(onDone = { focusManager.clearFocus() }),
-                                    colors = TextFieldDefaults.colors(
-                                        focusedIndicatorColor = Color.Black,
-                                        unfocusedIndicatorColor = Color.Black,
-                                        disabledIndicatorColor = Color.Black,
-                                        focusedContainerColor = Color.Transparent,
-                                        unfocusedContainerColor = Color.Transparent,
-                                        disabledContainerColor = Color.Transparent
-                                    )
-                                )
-                                Spacer(Modifier.width(8.dp))
+                                // ◀ Back
                                 Icon(
-                                    imageVector = Icons.Filled.Check,
-                                    contentDescription = "Save",
+                                    imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                                    contentDescription = "Back",
                                     modifier = Modifier
-                                        .size(20.dp)
-                                        .clickable(
-                                            indication = null,
-                                            interactionSource = remember { MutableInteractionSource() }
-                                        ) {
-                                            val updated = location.copy(name = locationName.text)
-                                            locationViewModel.updateLocation(updated)
-                                            isEditing = false
-                                            focusManager.clearFocus()
-                                        }
+                                        .size(24.dp)
+                                        .clickable { navController.popBackStack() }
                                 )
+                                // ✎ Edit, ⇪ Share, 🗑 Delete
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                                ) {
+                                    Icon(
+                                        Icons.Filled.Edit,
+                                        "Edit",
+                                        Modifier.size(20.dp).clickable { isEditing = true }
+                                    )
+                                    Icon(
+                                        Icons.Filled.Share,
+                                        "Share",
+                                        Modifier.size(20.dp).clickable {
+                                            shareLocationDetails(context, latitude.text, longitude.text)
+                                        }
+                                    )
+                                    Icon(
+                                        Icons.Filled.Delete,
+                                        "Delete",
+                                        tint = Color.Red,
+                                        modifier = Modifier.size(20.dp).clickable { showDeleteDialog = true }
+                                    )
+                                }
                             }
-                        } else {
-                            Text(
-                                text = location.name,
-                                fontSize = 24.sp,
-                                fontWeight = FontWeight.Bold
+                        }
+
+                        if (showDeleteDialog) {
+                            AlertDialog(
+                                onDismissRequest = { showDeleteDialog = false },
+                                title = { Text("Delete ${location.name}?") },
+                                confirmButton = {
+                                    TextButton(onClick = {
+                                        locationViewModel.updateLocation(location.copy(status = "deleted"))
+                                        Toast.makeText(context, "Location deleted", Toast.LENGTH_SHORT).show()
+                                        navController.popBackStack()
+                                        showDeleteDialog = false
+                                    }) { Text("Yes") }
+                                },
+                                dismissButton = {
+                                    TextButton(onClick = { showDeleteDialog = false }) { Text("No") }
+                                }
                             )
                         }
-                    }
-                }
 
-                Spacer(Modifier.height(16.dp))
-
-                Column(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(horizontal = 8.dp) // <-- ONE place to control left/right margins
-                ) {
-                    LatLonCard(
-                        lat = latitude.text,
-                        lon = longitude.text,
-                        onNavigate = {
-                            navController.navigate("navigator/${location.id}/${location.name}")
-                        }
-                    )
-
-                    Spacer(Modifier.height(16.dp))
-
-                    PhotosSection(
-                        galleryImages = galleryImages,
-                        isLoading = isLoading,
-                        context = LocalContext.current
-                    )
-
-                    Spacer(Modifier.height(16.dp))
-
-                    val pullUpDistance = 220.dp
-                    val density        = LocalDensity.current
-                    val pullUpPx       = with(density) { pullUpDistance.toPx() }
-
-                    var isRoutesExpanded by remember { mutableStateOf(false) }
-                    var isDragging       by remember { mutableStateOf(false) }
-                    var dragOffsetPx     by remember { mutableFloatStateOf(0f) }
-
-                    // animate our Y-offset between 0 and –pullUpPx
-                    val animatedOffsetPx by animateFloatAsState(
-                        targetValue = when {
-                            isDragging            -> dragOffsetPx
-                            isRoutesExpanded      -> -pullUpPx
-                            else                  -> 0f
-                        },
-                        animationSpec = tween(durationMillis = 300), label = ""
-                    )
-
-                    // animate height from 200.dp to full screen
-                    val screenHeightDp = LocalConfiguration.current.screenHeightDp.dp
-                    val targetHeight   = if (isRoutesExpanded) screenHeightDp else 200.dp
-                    val animatedHeightDp by animateDpAsState(
-                        targetValue   = targetHeight,
-                        animationSpec = tween(durationMillis = 300), label = ""
-                    )
-                    // ────────────────────────────────────────────────────────────────────
-
-                    // ─── SAVED ROUTES SECTION ───────────────────────────────────────────────
-                    if (nearbyRoutes.isNotEmpty()) {
                         Box(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .zIndex(1f)
-                                .height(animatedHeightDp)
-                                .offset { IntOffset(x = 0, y = animatedOffsetPx.roundToInt()) }
+                                .padding(top = if (isEditing) 0.dp else 16.dp),
+                            contentAlignment = Alignment.Center
                         ) {
-                            // cover everything behind with solid bg when expanded
-                            Box(
-                                Modifier
-                                    .matchParentSize()
-                                    .background(MaterialTheme.colorScheme.background)
-                            )
-
-                            // ── the draggable “pill” ──
-                            Box(
-                                modifier = Modifier
-                                    .align(Alignment.TopCenter)
-                                    .padding(vertical = 8.dp)
-                                    .size(width = 40.dp, height = 4.dp)
-                                    .clip(RoundedCornerShape(2.dp))
-                                    .background(Color.LightGray)
-                                    .pointerInput(Unit) {
-                                        detectVerticalDragGestures(
-                                            onDragStart = { _: Offset ->
-                                                isDragging = true
-                                            },
-                                            onVerticalDrag = { change, dragAmount ->
-                                                change.consume()
-                                                dragOffsetPx = (dragOffsetPx + dragAmount)
-                                                    .coerceIn(-pullUpPx, 0f)
-                                            },
-                                            onDragEnd = {
-                                                isDragging = false
-                                                // if more than halfway pulled, expand; else snap closed
-                                                isRoutesExpanded = dragOffsetPx < -pullUpPx/2
-                                                dragOffsetPx     = 0f
-                                            }
+                            if (isEditing) {
+                                Row(
+                                    modifier = Modifier.widthIn(max = 300.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    OutlinedTextField(
+                                        value = locationName,
+                                        onValueChange = { locationName = it },
+                                        singleLine = true,
+                                        modifier = Modifier.weight(1f),
+                                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Text),
+                                        keyboardActions = KeyboardActions(onDone = { focusManager.clearFocus() }),
+                                        colors = TextFieldDefaults.colors(
+                                            focusedContainerColor = Color.Transparent,
+                                            unfocusedContainerColor = Color.Transparent
                                         )
-                                    }
-                            )
+                                    )
+                                    Spacer(Modifier.width(8.dp))
+                                    Icon(
+                                        Icons.Filled.Check,
+                                        "Save",
+                                        Modifier.size(20.dp).clickable {
+                                            locationViewModel.updateLocation(location.copy(name = locationName.text))
+                                            isEditing = false
+                                            focusManager.clearFocus()
+                                        }
+                                    )
+                                }
+                            } else {
+                                Text(
+                                    location.name,
+                                    fontSize = 24.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+                        }
+                    }
 
-                            NearbyRoutesList(
-                                nearbyRoutes    = nearbyRoutes,
+                    Spacer(Modifier.height(16.dp))
+
+                    // ── LAT/LON, PHOTOS, AND SAVED ROUTES ───────────────────────────────────
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 8.dp)
+                    ) {
+                        LatLonCard(
+                            lat = latitude.text,
+                            lon = longitude.text,
+                            onNavigate = { navController.navigate("navigator/${location.id}/${location.name}") }
+                        )
+                        Spacer(Modifier.height(16.dp))
+                        PhotosSection(galleryImages, isLoading, context)
+                        Spacer(Modifier.height(16.dp))
+                        // Saved Routes Drawer placed here within the scrollable Column
+                        if (nearbyRoutes.isNotEmpty()) {
+                            SavedRoutesDrawer(
+                                nearbyRoutes = nearbyRoutes,
                                 routeRepository = routeRepository,
-                                navController   = navController,
-                                modifier        = Modifier
-                                    .fillMaxSize()
-                                    .padding(top = 16.dp)  // leave room for the handle
+                                navController = navController,
+                                pullUpDistance = 220.dp
+                            )
+                        } else {
+                            Text(
+                                text = "No saved routes available for this Location",
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                modifier = Modifier
+                                    .padding(top = 16.dp)
                             )
                         }
-                    } else {
-                        Text(
-                            text = "No saved routes available for this Location",
-                            fontSize = 14.sp,
-                            fontWeight = FontWeight.SemiBold
-                        )
                     }
                 }
-
-                Spacer(Modifier.weight(1f))
             }
         }
     }
@@ -1121,5 +1006,100 @@ fun NearbyRoutesList(
                 )
             }
         }
+    }
+}
+
+@Composable
+fun SavedRoutesDrawer(
+    nearbyRoutes: List<Route>,
+    routeRepository: RouteRepository,
+    navController: NavHostController,
+    pullUpDistance: Dp
+) {
+    val density = LocalDensity.current
+    val pullUpPx = with(density) { pullUpDistance.toPx() }
+    val screenHeight = LocalConfiguration.current.screenHeightDp.dp
+    val navigationBarHeight = 56.dp // Approximate height of bottom navigation bar
+    val headerHeight = 250.dp // Approximate height of content above (Location Name, Lat/Lon, Photos)
+    val collapsedHeight = screenHeight - headerHeight - navigationBarHeight - 16.dp // Fill to 16dp above bottom nav bar
+    val maxHeight = screenHeight - navigationBarHeight - 16.dp // Max height when expanded
+
+    var isExpanded by remember { mutableStateOf(false) } // Initially collapsed
+    var isDragging by remember { mutableStateOf(false) }
+    var dragOffsetPx by remember { mutableFloatStateOf(0f) }
+
+    // Determine if the drawer can be expanded (more than 3 routes)
+    val canExpand = nearbyRoutes.size > 3
+
+    // Animate Y offset (only if expandable)
+    val animatedOffsetPx by animateFloatAsState(
+        targetValue = when {
+            !canExpand -> 0f // No dragging if not expandable
+            isDragging -> dragOffsetPx
+            isExpanded -> -pullUpPx
+            else -> 0f
+        },
+        animationSpec = tween(300), label = ""
+    )
+
+    // Animate height
+    val targetH = if (isExpanded && canExpand) maxHeight else collapsedHeight
+    val animatedH by animateDpAsState(targetValue = targetH, animationSpec = tween(300), label = "")
+
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(animatedH)
+            .offset { IntOffset(0, animatedOffsetPx.roundToInt()) }
+            // Add tap gesture to toggle expand/collapse (only if expandable)
+            .pointerInput(Unit) {
+                if (canExpand) {
+                    detectTapGestures(
+                        onTap = {
+                            isExpanded = !isExpanded // Toggle expand/collapse on tap
+                        }
+                    )
+                }
+            }
+    ) {
+        // Hide underlying content
+        Box(Modifier.matchParentSize().background(MaterialTheme.colorScheme.background))
+
+        // The draggable pill (only visible if expandable)
+        if (canExpand) {
+            Box(
+                Modifier
+                    .align(Alignment.TopCenter)
+                    .padding(vertical = 8.dp)
+                    .size(40.dp, 4.dp)
+                    .clip(RoundedCornerShape(2.dp))
+                    .background(Color.LightGray)
+                    .pointerInput(Unit) {
+                        detectVerticalDragGestures(
+                            onDragStart = { isDragging = true },
+                            onVerticalDrag = { ch, dy ->
+                                ch.consume()
+                                dragOffsetPx = (dragOffsetPx + dy).coerceIn(-pullUpPx, 0f)
+                            },
+                            onDragEnd = {
+                                isDragging = false
+                                isExpanded = dragOffsetPx < -pullUpPx / 2
+                                dragOffsetPx = 0f
+                            }
+                        )
+                    }
+            )
+        }
+
+        // The list with matching width
+        NearbyRoutesList(
+            nearbyRoutes = nearbyRoutes,
+            routeRepository = routeRepository,
+            navController = navController,
+            modifier = Modifier
+                .fillMaxWidth() // Ensure width matches LatLonCard and PhotosSection
+                .padding(top = if (canExpand) 16.dp else 0.dp) // Adjust padding based on pill visibility
+                .height(if (canExpand) animatedH - 16.dp else animatedH) // Adjust height to account for pill if present
+        )
     }
 }
