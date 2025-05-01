@@ -266,7 +266,7 @@ fun LocationDetailsScreen(
                         indication = null,
                         interactionSource = remember { MutableInteractionSource() }
                     ) { focusManager.clearFocus() }
-                    .padding(bottom = 56.dp)
+                    .padding(bottom = 60.dp)
             ) {
                 // ─── A) Scrollable header ───────────────────────────────────────────────
                 Column(
