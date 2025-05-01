@@ -921,10 +921,10 @@ fun NearbyRoutesList(
     modifier: Modifier = Modifier
 ) {
     val scope = rememberCoroutineScope()
-    // ① create a scroll state for both list + thumb
+    // Create a scroll state for both list + thumb
     val listState = rememberLazyListState()
 
-    // ② cache your points for distance calc
+    // Cache your points for distance calc
     val pointsMap = remember { mutableStateMapOf<Int, List<RoutePoint>>() }
     LaunchedEffect(nearbyRoutes) {
         nearbyRoutes.forEach { r ->
@@ -937,14 +937,17 @@ fun NearbyRoutesList(
         }
     }
 
-    // ③ same container height you had before (200.dp), with list + thumb
     Card(
         modifier = modifier.fillMaxHeight(),
         shape = RoundedCornerShape(8.dp),
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
         colors = CardDefaults.cardColors(containerColor = Color.Transparent)
     ) {
-        Column(Modifier.fillMaxHeight().padding(12.dp)) {
+        Column(
+            Modifier
+                .fillMaxHeight()
+                .padding(12.dp)
+        ) {
             Text(
                 "Saved routes within 3 km radius of this Location (${nearbyRoutes.size})",
                 fontSize = 14.sp,
@@ -956,14 +959,15 @@ fun NearbyRoutesList(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .weight(1f)
+                    .fillMaxHeight() // Ensure the Row fills the remaining height
+                    .weight(1f) // Take up all available space after the title and spacer
             ) {
                 LazyColumn(
                     state = listState,
                     modifier = Modifier
-                        .weight(1f)
-                        .fillMaxHeight()
-                        .padding(end = 8.dp)
+                        .weight(1f) // Ensure LazyColumn takes up all available space in the Row
+                        .fillMaxHeight() // Fill the height of the Row
+                        .padding(end = 8.dp) // Only padding on the end for the scrollbar
                 ) {
                     items(nearbyRoutes) { r ->
                         val routeName = r.routeName?.takeIf { it.isNotBlank() } ?: "Route ${r.id}"
@@ -997,7 +1001,7 @@ fun NearbyRoutesList(
                     }
                 }
 
-                // your thumb, driven by the same listState
+                // Your thumb, driven by the same listState
                 ScrollThumbLocationDetails(
                     listState = listState,
                     modifier = Modifier
@@ -1099,7 +1103,7 @@ fun SavedRoutesDrawer(
             modifier = Modifier
                 .fillMaxWidth() // Ensure width matches LatLonCard and PhotosSection
                 .padding(top = if (canExpand) 16.dp else 0.dp) // Adjust padding based on pill visibility
-                .height(if (canExpand) animatedH - 16.dp else animatedH) // Adjust height to account for pill if present
+                .fillMaxHeight() // Ensure the list fills the entire height of the drawer
         )
     }
 }
