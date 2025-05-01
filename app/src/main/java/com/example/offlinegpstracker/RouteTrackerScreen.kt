@@ -125,11 +125,6 @@ fun RouteTrackerScreen(
 
     val zoomMultipliers = listOf(1f, 1.5f, 3f, 8f)
 
-    val animatedZoom by animateFloatAsState(
-        targetValue = zoomLevel.floatValue,
-        animationSpec = tween(durationMillis = 300), label = "" // shorten if you like
-    )
-
     val autoZoomApplied = remember { mutableStateOf(false) }
     val lastInteractionTime = remember { mutableLongStateOf(System.currentTimeMillis()) }
 
@@ -258,21 +253,25 @@ fun RouteTrackerScreen(
                                             val ch = size.height.toFloat()
 
                                             // 2) use animatedZoom for “before”
-                                            val oldZ = animatedZoom
+                                            val oldZ = zoomLevel.floatValue
                                             val newZ = (oldZ * pinch).coerceIn(minZoom, maxZoom)
                                             zoomLevel.floatValue = newZ
 
                                             // 3) world-coords & offset math off animated values
-                                            val worldX = (centroid.x - cw/2 - offsetX) / oldZ
-                                            val worldY = (centroid.y - ch/2 - offsetY) / oldZ
+                                            val worldX = (centroid.x - cw / 2 - offsetX) / oldZ
+                                            val worldY = (centroid.y - ch / 2 - offsetY) / oldZ
 
-                                            val sx = worldX*newZ + cw/2 + offsetX
-                                            val sy = worldY*newZ + ch/2 + offsetY
+                                            val sx = worldX * newZ + cw / 2 + offsetX
+                                            val sy = worldY * newZ + ch / 2 + offsetY
                                             offsetX += centroid.x - sx
                                             offsetY += centroid.y - sy
 
-                                            offsetX += pan.x
-                                            offsetY += pan.y
+                                            val canPan =
+                                                newZ > 1f               // same rule as saved-route branch
+                                            if (canPan) {
+                                                offsetX += pan.x
+                                                offsetY += pan.y
+                                            }
 
                                             /* ---------- VISIBILITY TIMER ---------- */
                                             if (showInfo) showInfo = false
