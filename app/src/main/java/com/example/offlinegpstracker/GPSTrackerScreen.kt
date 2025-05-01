@@ -77,6 +77,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.navigation.NavHostController
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -244,7 +245,9 @@ fun formatCoordinate(value: String): String {
 
 @SuppressLint("DefaultLocale")
 @Composable
-fun GPSTrackerScreen(locationViewModel: LocationViewModel = viewModel()) {
+fun GPSTrackerScreen(
+    navController: NavHostController,
+    locationViewModel: LocationViewModel = viewModel()) {
     var name by remember { mutableStateOf("") }
     val latitude by locationViewModel.latitude.observeAsState("")
     val longitude by locationViewModel.longitude.observeAsState("")
@@ -252,6 +255,8 @@ fun GPSTrackerScreen(locationViewModel: LocationViewModel = viewModel()) {
 
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
+
+    val locations by locationViewModel.locations.collectAsState(initial = emptyList())
 
     // Sensor setup
     val sensorManager =
@@ -701,6 +706,8 @@ fun GPSTrackerScreen(locationViewModel: LocationViewModel = viewModel()) {
                                                     altitude,
                                                     locationViewModel
                                                 )
+                                                val newIndex = locations.size
+                                                navController.navigate("location_details/$newIndex")
                                             }
                                         } else {
                                             Toast.makeText(context, "Invalid coordinates", Toast.LENGTH_SHORT).show()
@@ -714,6 +721,8 @@ fun GPSTrackerScreen(locationViewModel: LocationViewModel = viewModel()) {
                                             altitude,
                                             locationViewModel
                                         )
+                                        val newIndex = locations.size
+                                        navController.navigate("location_details/$newIndex")
                                     }
                                 },
                                 colors = ButtonDefaults.buttonColors(
@@ -753,6 +762,8 @@ fun GPSTrackerScreen(locationViewModel: LocationViewModel = viewModel()) {
                                                     altitude,
                                                     locationViewModel
                                                 )
+                                                val newIndex = locations.size
+                                                navController.navigate("location_details/$newIndex")
                                             }
                                         } else {
                                             Toast.makeText(context, "Invalid coordinates", Toast.LENGTH_SHORT).show()
@@ -766,6 +777,8 @@ fun GPSTrackerScreen(locationViewModel: LocationViewModel = viewModel()) {
                                             altitude,
                                             locationViewModel
                                         )
+                                        val newIndex = locations.size
+                                        navController.navigate("location_details/$newIndex")
                                     }
                                 },
                                 border = BorderStroke(1.dp, Color.Cyan),
@@ -805,6 +818,8 @@ fun GPSTrackerScreen(locationViewModel: LocationViewModel = viewModel()) {
                                                     altitude,
                                                     locationViewModel
                                                 )
+                                                val newIndex = locations.size
+                                                navController.navigate("location_details/$newIndex")
                                             }
                                         } else {
                                             Toast.makeText(context, "Invalid coordinates", Toast.LENGTH_SHORT).show()
@@ -818,6 +833,8 @@ fun GPSTrackerScreen(locationViewModel: LocationViewModel = viewModel()) {
                                             altitude,
                                             locationViewModel
                                         )
+                                        val newIndex = locations.size
+                                        navController.navigate("location_details/$newIndex")
                                     }
                                 },
                                 border = BorderStroke(1.dp, Color.White),
@@ -855,6 +872,8 @@ fun GPSTrackerScreen(locationViewModel: LocationViewModel = viewModel()) {
                                             altitude,
                                             locationViewModel
                                         )
+                                        val newIndex = locations.size
+                                        navController.navigate("location_details/$newIndex")
                                     }
                                 } else {
                                     Toast.makeText(context, "Invalid coordinates", Toast.LENGTH_SHORT).show()
@@ -868,6 +887,8 @@ fun GPSTrackerScreen(locationViewModel: LocationViewModel = viewModel()) {
                                     altitude,
                                     locationViewModel
                                 )
+                                val newIndex = locations.size
+                                navController.navigate("location_details/$newIndex")
                             }
                         },
                         colors = navButtonColors

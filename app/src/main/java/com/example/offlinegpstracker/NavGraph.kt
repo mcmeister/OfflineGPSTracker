@@ -29,14 +29,15 @@ fun NavGraph(
         composable("main") {
             HorizontalPager(state = pagerState) { page ->
                 when (page) {
-                    0 -> GPSTrackerScreen(              // ← needs skins
+                    0 -> GPSTrackerScreen(
+                        navController = navController,
                         locationViewModel = locationViewModel
                     )
 
                     1 -> LocationsScreen(                // ← neutral UI
-                        navController     = navController,
+                        navController = navController,
                         locationViewModel = locationViewModel,
-                        locations         = locations
+                        locations = locations
                     )
 
                     2 -> RouteTrackerScreen(viewModel = routeTrackerVM)

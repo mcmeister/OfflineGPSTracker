@@ -16,6 +16,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
@@ -23,6 +24,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -52,6 +54,7 @@ fun LocationsScreen(
     val shown = remember(query, active) {
         if (query.isBlank()) active else active.filter { it.name.contains(query, true) }
     }
+    var locationToDelete by remember { mutableStateOf<Location?>(null) }
 
     /* ---------- focus controller ---------- */
     val focusManager = LocalFocusManager.current
@@ -73,30 +76,34 @@ fun LocationsScreen(
                 .fillMaxWidth()
                 .padding(bottom = 12.dp)
                 .background(
-                    color  = Color.Transparent,
-                    shape  = MaterialTheme.shapes.small
+                    color = Color.Transparent,
+                    shape = MaterialTheme.shapes.small
                 )
         ) {
             OutlinedTextField(
                 value = query,
                 onValueChange = { query = it },
-                singleLine   = true,
-                placeholder  = { Text("Search locations…", color = Color.Black) },
-                leadingIcon  = { Icon(Icons.Default.Search, null, tint = Color.Black) },
+                singleLine = true,
+                placeholder = { Text("Search locations…", color = Color.Black) },
+                leadingIcon = { Icon(Icons.Default.Search, null, tint = Color.Black) },
                 trailingIcon = {
                     if (query.isNotBlank()) {
                         IconButton(onClick = { query = "" }) {
-                            Icon(Icons.Default.Close, contentDescription = "Clear", tint = Color.Black)
+                            Icon(
+                                Icons.Default.Close,
+                                contentDescription = "Clear",
+                                tint = Color.Black
+                            )
                         }
                     }
                 },
                 colors = TextFieldDefaults.colors(
-                    focusedContainerColor   = Color.Transparent,
+                    focusedContainerColor = Color.Transparent,
                     unfocusedContainerColor = Color.Transparent,
-                    focusedIndicatorColor   = Color.Black,
+                    focusedIndicatorColor = Color.Black,
                     unfocusedIndicatorColor = Color.Black.copy(alpha = 0.5f),
-                    focusedTextColor        = Color.Black,
-                    unfocusedTextColor      = Color.Black
+                    focusedTextColor = Color.Black,
+                    unfocusedTextColor = Color.Black
                 ),
                 modifier = Modifier.fillMaxWidth()
             )
@@ -117,7 +124,7 @@ fun LocationsScreen(
                     .fillMaxWidth()
                     .padding(vertical = 4.dp),
                 elevation = CardDefaults.elevatedCardElevation(4.dp),
-                colors    = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
             ) {
                 Row(
                     Modifier
@@ -125,15 +132,18 @@ fun LocationsScreen(
                         .padding(12.dp)
                         .clickable {
                             focusManager.clearFocus()
-                            navController.navigate("location_details/$index") },
+                            navController.navigate("location_details/$index")
+                        },
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
-                    Text("${index + 1}. ${loc.name}",
+                    Text(
+                        "${index + 1}. ${loc.name}",
                         style = MaterialTheme.typography.bodyLarge,
                         modifier = Modifier.weight(1f)
                     )
                     IconButton(
-                        onClick = { locationViewModel.deleteLocation(loc.id) },
+                        // ── 2) Don’t delete immediately, just set the dialog state ──
+                        onClick = { locationToDelete = loc },
                         modifier = Modifier.align(Alignment.CenterVertically)
                     ) {
                         Icon(Icons.Default.Delete, contentDescription = "Delete", tint = Color.Red)
@@ -143,9 +153,32 @@ fun LocationsScreen(
         }
 
         if (shown.isEmpty()) {
-            Text("No locations available.",
+            Text(
+                "No locations available.",
                 color = Color.Black,
-                modifier = Modifier.padding(top = 24.dp))
+                modifier = Modifier.padding(top = 24.dp)
+            )
+        }
+
+        locationToDelete?.let { loc ->
+            AlertDialog(
+                onDismissRequest = { locationToDelete = null },
+                title = { Text("Delete ${loc.name}?") },
+                confirmButton = {
+                    TextButton(onClick = {
+                        locationViewModel.deleteLocation(loc.id)
+                        locationToDelete = null
+                    }) {
+                        Text("Yes")
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { locationToDelete = null }) {
+                        Text("No")
+                    }
+                }
+            )
         }
     }
 }
+

@@ -11,12 +11,16 @@ import android.provider.MediaStore
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -54,6 +58,7 @@ import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.Navigation
 import androidx.compose.material.icons.filled.Share
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.AssistChipDefaults
 import androidx.compose.material3.Card
@@ -70,6 +75,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
@@ -80,9 +86,11 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
@@ -123,6 +131,7 @@ fun LocationDetailsScreen(
     val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
     val locations by locationViewModel.locations.collectAsStateWithLifecycle(lifecycleOwner.lifecycle)
     val context = LocalContext.current
+    var showDeleteDialog by remember { mutableStateOf(false) }
 
     // Define permissions
     val readImagesPerm = if (Build.VERSION.SDK_INT >= 33)
@@ -318,21 +327,36 @@ fun LocationDetailsScreen(
                                     tint = Color.Red,
                                     modifier = Modifier
                                         .size(20.dp)
-                                        .clickable(
-                                            indication = null,
-                                            interactionSource = remember { MutableInteractionSource() }
-                                        ) {
-                                            locationViewModel.updateLocation(location.copy(status = "deleted"))
-                                            Toast.makeText(
-                                                context,
-                                                "Location deleted",
-                                                Toast.LENGTH_SHORT
-                                            ).show()
-                                            navController.popBackStack()
+                                        .clickable {
+                                            // ── 2) Don’t delete immediately, just show the dialog ──
+                                            showDeleteDialog = true
                                         }
                                 )
                             }
                         }
+                    }
+
+                    if (showDeleteDialog) {
+                        AlertDialog(
+                            onDismissRequest = { showDeleteDialog = false },
+                            title = { Text("Delete ${location.name}?") },
+                            confirmButton = {
+                                TextButton(onClick = {
+                                    // same delete logic as before
+                                    locationViewModel.updateLocation(location.copy(status = "deleted"))
+                                    Toast.makeText(context, "Location deleted", Toast.LENGTH_SHORT).show()
+                                    navController.popBackStack()
+                                    showDeleteDialog = false
+                                }) {
+                                    Text("Yes")
+                                }
+                            },
+                            dismissButton = {
+                                TextButton(onClick = { showDeleteDialog = false }) {
+                                    Text("No")
+                                }
+                            }
+                        )
                     }
 
                     /* ───────────────── NAME LINE (always centred) ─────────────────────── */
@@ -417,13 +441,86 @@ fun LocationDetailsScreen(
 
                     Spacer(Modifier.height(16.dp))
 
+                    val pullUpDistance = 220.dp
+                    val density        = LocalDensity.current
+                    val pullUpPx       = with(density) { pullUpDistance.toPx() }
+
+                    var isRoutesExpanded by remember { mutableStateOf(false) }
+                    var isDragging       by remember { mutableStateOf(false) }
+                    var dragOffsetPx     by remember { mutableFloatStateOf(0f) }
+
+                    // animate our Y-offset between 0 and –pullUpPx
+                    val animatedOffsetPx by animateFloatAsState(
+                        targetValue = when {
+                            isDragging            -> dragOffsetPx
+                            isRoutesExpanded      -> -pullUpPx
+                            else                  -> 0f
+                        },
+                        animationSpec = tween(durationMillis = 300), label = ""
+                    )
+
+                    // animate height from 200.dp to full screen
+                    val screenHeightDp = LocalConfiguration.current.screenHeightDp.dp
+                    val targetHeight   = if (isRoutesExpanded) screenHeightDp else 200.dp
+                    val animatedHeightDp by animateDpAsState(
+                        targetValue   = targetHeight,
+                        animationSpec = tween(durationMillis = 300), label = ""
+                    )
+                    // ────────────────────────────────────────────────────────────────────
+
                     // ─── SAVED ROUTES SECTION ───────────────────────────────────────────────
                     if (nearbyRoutes.isNotEmpty()) {
-                        NearbyRoutesList(
-                            nearbyRoutes     = nearbyRoutes,
-                            routeRepository  = routeRepository,
-                            navController    = navController
-                        )
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .zIndex(1f)
+                                .height(animatedHeightDp)
+                                .offset { IntOffset(x = 0, y = animatedOffsetPx.roundToInt()) }
+                        ) {
+                            // cover everything behind with solid bg when expanded
+                            Box(
+                                Modifier
+                                    .matchParentSize()
+                                    .background(MaterialTheme.colorScheme.background)
+                            )
+
+                            // ── the draggable “pill” ──
+                            Box(
+                                modifier = Modifier
+                                    .align(Alignment.TopCenter)
+                                    .padding(vertical = 8.dp)
+                                    .size(width = 40.dp, height = 4.dp)
+                                    .clip(RoundedCornerShape(2.dp))
+                                    .background(Color.LightGray)
+                                    .pointerInput(Unit) {
+                                        detectVerticalDragGestures(
+                                            onDragStart = { _: Offset ->
+                                                isDragging = true
+                                            },
+                                            onVerticalDrag = { change, dragAmount ->
+                                                change.consume()
+                                                dragOffsetPx = (dragOffsetPx + dragAmount)
+                                                    .coerceIn(-pullUpPx, 0f)
+                                            },
+                                            onDragEnd = {
+                                                isDragging = false
+                                                // if more than halfway pulled, expand; else snap closed
+                                                isRoutesExpanded = dragOffsetPx < -pullUpPx/2
+                                                dragOffsetPx     = 0f
+                                            }
+                                        )
+                                    }
+                            )
+
+                            NearbyRoutesList(
+                                nearbyRoutes    = nearbyRoutes,
+                                routeRepository = routeRepository,
+                                navController   = navController,
+                                modifier        = Modifier
+                                    .fillMaxSize()
+                                    .padding(top = 16.dp)  // leave room for the handle
+                            )
+                        }
                     } else {
                         Text(
                             text = "No saved routes available for this Location",
@@ -935,7 +1032,8 @@ fun formatSpeed(meters: Float, start: Long, end: Long?): String {
 fun NearbyRoutesList(
     nearbyRoutes: List<Route>,
     routeRepository: RouteRepository,
-    navController: NavHostController
+    navController: NavHostController,
+    modifier: Modifier = Modifier
 ) {
     val scope = rememberCoroutineScope()
     // ① create a scroll state for both list + thumb
@@ -956,13 +1054,12 @@ fun NearbyRoutesList(
 
     // ③ same container height you had before (200.dp), with list + thumb
     Card(
-        modifier = Modifier
-            .fillMaxWidth(),
+        modifier = modifier.fillMaxHeight(),
         shape = RoundedCornerShape(8.dp),
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
         colors = CardDefaults.cardColors(containerColor = Color.Transparent)
     ) {
-        Column(Modifier.padding(12.dp)) {
+        Column(Modifier.fillMaxHeight().padding(12.dp)) {
             Text(
                 "Saved routes within 3 km radius of this Location (${nearbyRoutes.size})",
                 fontSize = 14.sp,
@@ -974,7 +1071,7 @@ fun NearbyRoutesList(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(200.dp)
+                    .weight(1f)
             ) {
                 LazyColumn(
                     state = listState,
