@@ -36,7 +36,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
 import androidx.core.view.WindowCompat
-import androidx.core.view.WindowInsetsControllerCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.compose.rememberNavController
 import com.example.offlinegpstracker.ui.theme.OfflineGPSTrackerTheme
@@ -67,8 +66,8 @@ class MainActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         // Enable edge-to-edge drawing and set system nav bar transparent.
         WindowCompat.setDecorFitsSystemWindows(window, false)
-        WindowInsetsControllerCompat(window, window.decorView)
-            .isAppearanceLightStatusBars = true
+        //WindowInsetsControllerCompat(window, window.decorView)
+        //    .isAppearanceLightStatusBars = true
 
         setContent {
             OfflineGPSTrackerTheme {

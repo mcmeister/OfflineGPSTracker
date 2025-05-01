@@ -74,6 +74,7 @@ fun LocationsScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(16.dp)
+                .padding(bottom = 56.dp)
                 .pointerInput(Unit) {
                     detectTapGestures(onTap = { focusManager.clearFocus() })
                 }

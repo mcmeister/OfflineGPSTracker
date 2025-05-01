@@ -384,7 +384,7 @@ fun GPSTrackerScreen(
 
         Column(
             modifier = screenModifier,
-            horizontalAlignment = Alignment.CenterHorizontally
+            horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             // Top Title
             Box(

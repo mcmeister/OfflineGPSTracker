@@ -52,7 +52,7 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ArrowBackIos
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Directions
@@ -266,6 +266,7 @@ fun LocationDetailsScreen(
                         indication = null,
                         interactionSource = remember { MutableInteractionSource() }
                     ) { focusManager.clearFocus() }
+                    .padding(bottom = 56.dp)
             ) {
                 // ─── A) Scrollable header ───────────────────────────────────────────────
                 Column(
@@ -292,10 +293,10 @@ fun LocationDetailsScreen(
                             ) {
                                 // ◀ Back
                                 Icon(
-                                    imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                                    imageVector = Icons.AutoMirrored.Filled.ArrowBackIos,
                                     contentDescription = "Back",
                                     modifier = Modifier
-                                        .size(24.dp)
+                                        .size(20.dp)
                                         .clickable(indication = null,
                                             interactionSource = remember { MutableInteractionSource() }
                                         )

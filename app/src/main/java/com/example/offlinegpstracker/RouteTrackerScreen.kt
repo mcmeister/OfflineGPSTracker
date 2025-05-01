@@ -185,6 +185,7 @@ fun RouteTrackerScreen(
             Box(
                 modifier = modifier
                     .padding(padding) // Apply padding to content only
+                    .padding(bottom = 56.dp)
                     .fillMaxSize()
             ) {
                 when {

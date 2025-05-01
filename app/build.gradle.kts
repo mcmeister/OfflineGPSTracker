@@ -89,6 +89,8 @@ dependencies {
     androidTestImplementation("androidx.test.ext:junit:1.2.1")
     androidTestImplementation("androidx.test.espresso:espresso-core:3.6.1")
 
+    implementation("com.google.accompanist:accompanist-systemuicontroller:0.30.1")
+
     // Jetpack Compose Testing
     androidTestImplementation("androidx.compose.ui:ui-test-junit4:1.7.8")
     debugImplementation("androidx.compose.ui:ui-tooling:1.7.8")
