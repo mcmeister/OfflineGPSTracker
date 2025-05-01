@@ -64,6 +64,7 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
@@ -345,21 +346,6 @@ fun GPSTrackerScreen(
 
     val screenModifier = Modifier
         .fillMaxSize()
-        .then(
-            when {
-                isGauge && currentSkin == UserPreferences.SKIN_CLASSIC_GAUGE -> Modifier.background(
-                    Color.Transparent
-                ) // Handled by Box with Image
-                isGauge && currentSkin == UserPreferences.SKIN_NEON_GAUGE -> Modifier.background(
-                    Color.Transparent
-                ) // Background handled by Image
-                isGauge && currentSkin == UserPreferences.SKIN_MINIMAL_GAUGE -> Modifier.background(
-                    Color.Transparent
-                )
-
-                else -> Modifier.background(MaterialTheme.colorScheme.background)
-            }
-        )
         .verticalScroll(rememberScrollState())
         .padding(16.dp)
 
@@ -373,13 +359,28 @@ fun GPSTrackerScreen(
     } else MaterialTheme.colorScheme.onBackground
 
     Box(
-        modifier = Modifier.fillMaxSize()
+        modifier = Modifier
+            .fillMaxSize()
+            .then(
+                if (isGauge) {
+                    Modifier.background(Color.Transparent) // Let SkinBackground handle gauge backgrounds
+                } else {
+                    Modifier.background(
+                        Brush.verticalGradient(
+                            colors = listOf(Color(0xFFF5F7FA), Color(0xFFE0E7FF))
+                        )
+                    )
+                }
+            )
     ) {
-        SkinBackground(
-            compassType = if (compassViewType == 2) 2 else 0,   // gauge or not
-            skin        = currentSkin,                          // resolved skin
-            modifier    = Modifier.fillMaxSize()
-        )
+        // Only apply SkinBackground for gauge modes
+        if (isGauge) {
+            SkinBackground(
+                compassType = 2, // Gauge mode
+                skin = currentSkin,
+                modifier = Modifier.fillMaxSize()
+            )
+        }
 
         Column(
             modifier = screenModifier,

@@ -64,6 +64,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.FilterQuality
 import androidx.compose.ui.graphics.ImageBitmap
@@ -140,11 +141,11 @@ fun RouteTrackerScreen(
 
     LaunchedEffect(selectedRoute, isRecording) {
         if (selectedRoute != null && !isRecording) {
-            zoomLevel.floatValue     = 1f          // reset scale
-            originalZoom.floatValue  = 1f
+            zoomLevel.floatValue = 1f          // reset scale
+            originalZoom.floatValue = 1f
             offsetX = 0f                           // ⬅︎ NEW
             offsetY = 0f                           // ⬅︎ NEW
-            autoZoomApplied.value    = false
+            autoZoomApplied.value = false
             lastInteractionTime.longValue = System.currentTimeMillis()
         }
     }
@@ -169,42 +170,328 @@ fun RouteTrackerScreen(
 
     val debugInfo = viewModel.debugInfoText.value
 
-    Scaffold { padding ->
-        Box(modifier = modifier.padding(padding).fillMaxSize()) {
-            when {
-                isRecording && currentRouteId != null -> {
-                    val route by produceState<Route?>(initialValue = null) {
-                        value = viewModel.routeRepository.getRoute(currentRouteId!!)
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(
+                brush = Brush.verticalGradient(
+                    colors = listOf(Color(0xFFF5F7FA), Color(0xFFE0E7FF))
+                )
+            )
+    ) {
+        Scaffold(
+            containerColor = Color.Transparent
+        ) { padding ->
+            Box(
+                modifier = modifier
+                    .padding(padding) // Apply padding to content only
+                    .fillMaxSize()
+            ) {
+                when {
+                    isRecording && currentRouteId != null -> {
+                        val route by produceState<Route?>(initialValue = null) {
+                            value = viewModel.routeRepository.getRoute(currentRouteId!!)
+                        }
+
+                        if (route == null) {
+                            Box(
+                                modifier = Modifier.fillMaxSize(),
+                                contentAlignment = Alignment.Center
+                            ) { Text("Loading…", color = Color.White, fontSize = 16.sp) }
+                        } else {
+                            val r = route!!
+                            val distance = calculateDistance(routePoints)
+
+                            // ★ Visibility state for debug info
+                            var showInfo by remember { mutableStateOf(true) }
+                            var ignoreAutoShow by remember { mutableStateOf(false) }
+
+                            // ★ Re-show 500ms after lastInteractionTime stops changing
+                            LaunchedEffect(Unit) {
+                                snapshotFlow { lastInteractionTime.longValue }
+                                    .debounce(500L)
+                                    .collect {
+                                        if (!ignoreAutoShow) showInfo = true
+                                    }
+                            }
+
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                            ) {
+                                /* ── fixed-size clipped viewport ────────── */
+                                val aspectRatio = r.width.toFloat() / r.height.toFloat()
+
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .aspectRatio(aspectRatio)
+                                        .clipToBounds()
+                                        .align(Alignment.Center)
+
+                                        // ── SINGLE‐ & DOUBLE‐TAP ─────────────────────────────────────────────
+                                        .pointerInput(Unit) {
+                                            detectTapGestures(
+                                                onTap = {
+                                                    // toggles info
+                                                    val willBeVisible = !showInfo
+                                                    showInfo = willBeVisible
+                                                    // if we just hid, suppress auto-re-show; if we just showed, allow it
+                                                    ignoreAutoShow = !willBeVisible
+                                                    lastInteractionTime.longValue =
+                                                        System.currentTimeMillis()
+                                                },
+                                                onDoubleTap = {
+                                                    ignoreAutoShow = true
+                                                    lastInteractionTime.longValue =
+                                                        System.currentTimeMillis()
+
+                                                    // recenter
+                                                    offsetX = 0f
+                                                    offsetY = 0f
+
+                                                    // cycle through multipliers instead of a big when
+                                                    val base = originalZoom.floatValue
+                                                    // find current index
+                                                    val curMul = (zoomLevel.floatValue / base)
+                                                        .coerceIn(
+                                                            zoomMultipliers.first(),
+                                                            zoomMultipliers.last()
+                                                        )
+                                                    val nextIndex =
+                                                        zoomMultipliers.indexOfFirst { it > curMul }
+                                                            .takeIf { it >= 0 } ?: 0
+
+                                                    // apply next zoom
+                                                    zoomLevel.floatValue =
+                                                        base * zoomMultipliers[nextIndex]
+                                                }
+                                            )
+                                        }
+
+                                        // ── PINCH-ZOOM & PAN ───────────────────────────────────────────────────
+                                        .pointerInput(Unit) {
+                                            detectTransformGestures(panZoomLock = false) { centroid, pan, pinch, _ ->
+                                                val cw = size.width.toFloat()
+                                                val ch = size.height.toFloat()
+
+                                                // 2) use animatedZoom for “before”
+                                                val oldZ = zoomLevel.floatValue
+                                                val newZ = (oldZ * pinch).coerceIn(minZoom, maxZoom)
+                                                zoomLevel.floatValue = newZ
+
+                                                // 3) world-coords & offset math off animated values
+                                                val worldX = (centroid.x - cw / 2 - offsetX) / oldZ
+                                                val worldY = (centroid.y - ch / 2 - offsetY) / oldZ
+
+                                                val sx = worldX * newZ + cw / 2 + offsetX
+                                                val sy = worldY * newZ + ch / 2 + offsetY
+                                                offsetX += centroid.x - sx
+                                                offsetY += centroid.y - sy
+
+                                                val canPan =
+                                                    newZ > 1f               // same rule as saved-route branch
+                                                if (canPan) {
+                                                    offsetX += pan.x
+                                                    offsetY += pan.y
+                                                }
+
+                                                /* ---------- VISIBILITY TIMER ---------- */
+                                                if (showInfo) showInfo = false
+                                                lastInteractionTime.longValue =
+                                                    System.currentTimeMillis()
+                                            }
+                                        }
+                                ) {
+                                    Box(
+                                        modifier = Modifier
+                                            .fillMaxSize()
+                                            .clipToBounds()
+                                    ) {
+                                        TileMapOrPlaceholder(
+                                            centerLat = r.centerLat,
+                                            centerLon = r.centerLon,
+                                            baseZoom = r.zoom,
+                                            zoomLevel = zoomLevel.floatValue,
+                                            tilesVersion = tilesVersion,
+                                            routePoints = routePoints,
+                                            modifier = Modifier
+                                                .fillMaxSize()
+                                                .graphicsLayer(
+                                                    scaleX = zoomLevel.floatValue,
+                                                    scaleY = zoomLevel.floatValue,
+                                                    translationX = offsetX,
+                                                    translationY = offsetY
+                                                )
+                                        )
+                                    }
+
+                                    LaunchedEffect(routePoints, zoomLevel.floatValue, isPaused) {
+                                        if (routePoints.isNotEmpty()) {
+                                            val first = routePoints.first()
+                                            val last = routePoints.last()
+                                            val distanceMeters = calculateDistance(routePoints)
+                                            val durationMs = last.timestamp - first.timestamp
+                                            val durationMin = durationMs / 60_000.0
+                                            val durationHr = durationMs / 3_600_000.0
+                                            val avgSpeedKmH =
+                                                if (durationHr > 0) (distanceMeters / 1000.0) / durationHr else 0.0
+                                            val paceMinPerKm = if (distanceMeters >= 50)
+                                                durationMin / (distanceMeters / 1000.0) else -1.0
+
+                                            val paceDisplay = if (paceMinPerKm > 0)
+                                                "%d:%02d min/km".format(
+                                                    paceMinPerKm.toInt(),
+                                                    ((paceMinPerKm % 1) * 60).toInt()
+                                                )
+                                            else "Walk ≥ 50m to see pace"
+
+                                            val distDisplay = if (distanceMeters < 1000)
+                                                "${distanceMeters.toInt()} m"
+                                            else "%.2f km".format(distanceMeters / 1000.0)
+
+                                            // ← here’s the only real change:
+                                            val nameLine = if (isPaused) "Paused" else "Recording…"
+
+                                            viewModel.updateDebugInfo(
+                                                listOf(
+                                                    nameLine,
+                                                    "Route points: ${routePoints.size}",
+                                                    "Zoom: %.2f".format(zoomLevel.floatValue),
+                                                    "Distance: $distDisplay",
+                                                    "Avg speed: %.2f km/h".format(avgSpeedKmH),
+                                                    "Pace: $paceDisplay"
+                                                ).joinToString("\n")
+                                            )
+                                        } else {
+                                            // also respect isPaused when there are no points yet
+                                            viewModel.updateDebugInfo(
+                                                if (isPaused) "Paused" else "Recording…"
+                                            )
+                                        }
+                                    }
+
+                                    /* ─────────── stylised overlay – debug info block with fade logic ─────────── */
+                                    val pillShape = RoundedCornerShape(4.dp)
+                                    val pillBackground = Color.Black.copy(alpha = 0.60f)
+                                    val chipModifier = Modifier
+                                        .padding(vertical = 2.dp)
+                                        .background(pillBackground, pillShape)
+                                        .padding(horizontal = 6.dp, vertical = 4.dp)
+
+                                    AnimatedVisibility(
+                                        visible = showInfo,
+                                        enter = fadeIn(tween(300)),
+                                        exit = fadeOut(tween(300)),
+                                        modifier = Modifier
+                                            .align(Alignment.TopStart)
+                                            .padding(16.dp)
+                                    ) {
+                                        Column {
+                                            debugInfo
+                                                .lines()
+                                                .filter { it.isNotBlank() }
+                                                .forEach { line ->
+                                                    Text(
+                                                        text = line.trim(),
+                                                        color = Color.White,
+                                                        fontSize = 14.sp,
+                                                        modifier = chipModifier
+                                                    )
+                                                }
+                                        }
+                                    }
+                                }
+
+                                val distanceDisplay = if (distance < 1000)
+                                    "${distance.toInt()} m"
+                                else
+                                    "%.2f km".format(distance / 1000.0)
+
+                                Column(
+                                    modifier = Modifier
+                                        .align(Alignment.BottomCenter)
+                                        .padding(bottom = 16.dp),
+                                    horizontalAlignment = Alignment.CenterHorizontally
+                                ) {
+                                    // ← define exactly the same chip modifier you use for debug-info
+                                    val pillShape = RoundedCornerShape(4.dp)
+                                    val pillBackground = Color.Black.copy(alpha = 0.60f)
+                                    val chipModifier = Modifier
+                                        .padding(vertical = 2.dp)
+                                        .background(pillBackground, pillShape)
+                                        .padding(horizontal = 6.dp, vertical = 4.dp)
+
+                                    Text(
+                                        text = "Total Distance: $distanceDisplay",
+                                        color = Color.White,
+                                        fontSize = 14.sp,
+                                        modifier = chipModifier
+                                    )
+
+                                    Spacer(modifier = Modifier.height(12.dp))
+
+                                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                        Button(onClick = {
+                                            if (isPaused) viewModel.resumeRecording() else viewModel.pauseRecording()
+                                        }) {
+                                            Text(if (isPaused) "Resume" else "Pause")
+                                        }
+                                        Button(
+                                            onClick = { viewModel.stopRecording() },
+                                            colors = ButtonDefaults.buttonColors(containerColor = Color.Red)
+                                        ) {
+                                            Text("Stop")
+                                        }
+                                    }
+                                }
+                            }
+                        }
                     }
 
-                    if (route == null) {
-                        Box(
-                            modifier = Modifier.fillMaxSize(),
-                            contentAlignment = Alignment.Center
-                        ) { Text("Loading…", color = Color.White, fontSize = 16.sp) }
-                    } else {
-                        val r = route!!
-                        val distance = calculateDistance(routePoints)
+                    !isRecording && selectedRoute != null -> {
+                        val route = selectedRoute!!
 
-                        // ★ Visibility state for debug info
+                        /* ── helper numbers for the info chips ─────────────────────────────── */
+                        val distanceMeters = calculateDistance(routePoints)                // meters
+                        val durationMinutes =
+                            ((route.endTime ?: route.startTime) - route.startTime) / (1000.0 * 60)
+
+                        val paceMinPerKm = if (distanceMeters >= 50)
+                            durationMinutes / (distanceMeters / 1000.0)
+                        else 0.0
+
+                        val paceDisplay = if (paceMinPerKm > 0)
+                            "${paceMinPerKm.toInt()}:${
+                                ((paceMinPerKm % 1) * 60)
+                                    .toInt().toString().padStart(2, '0')
+                            } min/km"
+                        else "Less than 50m walked"
+
+                        val distanceDisplay = if (distanceMeters < 1000)
+                            "${distanceMeters.toInt()} m"
+                        else "%.2f km".format(distanceMeters / 1000.0)
+
+                        // ★ Visibility state
                         var showInfo by remember { mutableStateOf(true) }
                         var ignoreAutoShow by remember { mutableStateOf(false) }
 
-                        // ★ Re-show 500ms after lastInteractionTime stops changing
+                        // ★ Debounced re‑show 500ms after lastInteractionTime updates
                         LaunchedEffect(Unit) {
                             snapshotFlow { lastInteractionTime.longValue }
                                 .debounce(500L)
                                 .collect {
-                                    if (!ignoreAutoShow) showInfo = true
+                                    if (!ignoreAutoShow) {
+                                        showInfo = true
+                                    }
                                 }
                         }
 
+                        // ─────────── merged gesture detector ───────────
                         Box(
-                            modifier = Modifier
-                                .fillMaxSize()
+                            modifier = modifier.fillMaxSize()
                         ) {
-                            /* ── fixed-size clipped viewport ────────── */
-                            val aspectRatio = r.width.toFloat() / r.height.toFloat()
+                            val aspectRatio = route.width.toFloat() / route.height.toFloat()
 
                             Box(
                                 modifier = Modifier
@@ -212,66 +499,62 @@ fun RouteTrackerScreen(
                                     .aspectRatio(aspectRatio)
                                     .clipToBounds()
                                     .align(Alignment.Center)
-
-                                    // ── SINGLE‐ & DOUBLE‐TAP ─────────────────────────────────────────────
                                     .pointerInput(Unit) {
                                         detectTapGestures(
                                             onTap = {
-                                                // toggles info
                                                 val willBeVisible = !showInfo
                                                 showInfo = willBeVisible
-                                                // if we just hid, suppress auto-re-show; if we just showed, allow it
                                                 ignoreAutoShow = !willBeVisible
-                                                lastInteractionTime.longValue = System.currentTimeMillis()
+                                                lastInteractionTime.longValue =
+                                                    System.currentTimeMillis()
                                             },
                                             onDoubleTap = {
                                                 ignoreAutoShow = true
-                                                lastInteractionTime.longValue = System.currentTimeMillis()
-
-                                                // recenter
+                                                lastInteractionTime.longValue =
+                                                    System.currentTimeMillis()
                                                 offsetX = 0f
                                                 offsetY = 0f
-
-                                                // cycle through multipliers instead of a big when
                                                 val base = originalZoom.floatValue
-                                                // find current index
-                                                val curMul = (zoomLevel.floatValue / base)
-                                                    .coerceIn(zoomMultipliers.first(), zoomMultipliers.last())
-                                                val nextIndex = zoomMultipliers.indexOfFirst { it > curMul }
-                                                    .takeIf { it >= 0 } ?: 0
-
-                                                // apply next zoom
-                                                zoomLevel.floatValue = base * zoomMultipliers[nextIndex]
+                                                zoomLevel.floatValue = when {
+                                                    zoomLevel.floatValue < base * 1.5f -> base * 1.5f
+                                                    zoomLevel.floatValue < base * 3.0f -> base * 3.0f
+                                                    zoomLevel.floatValue < base * 8.0f -> base * 8.0f
+                                                    else -> base
+                                                }
                                             }
                                         )
                                     }
-
-                                    // ── PINCH-ZOOM & PAN ───────────────────────────────────────────────────
                                     .pointerInput(Unit) {
-                                        detectTransformGestures(panZoomLock = false) { centroid, pan, pinch, _ ->
-                                            val cw = size.width.toFloat()
-                                            val ch = size.height.toFloat()
+                                        detectTransformGestures { centroid, pan, pinch, _ ->
+                                            /* ---------- ZOOM ---------- */
+                                            val oldZoom = zoomLevel.floatValue
+                                            val newZoom =
+                                                (oldZoom * pinch).coerceIn(minZoom, maxZoom)
 
-                                            // 2) use animatedZoom for “before”
-                                            val oldZ = zoomLevel.floatValue
-                                            val newZ = (oldZ * pinch).coerceIn(minZoom, maxZoom)
-                                            zoomLevel.floatValue = newZ
+                                            /* ---------- PANNING RULES ---------- */
+                                            val canPan = newZoom > 1f
+                                            val panX = if (canPan) pan.x else 0f
+                                            val panY = if (canPan) pan.y else 0f
 
-                                            // 3) world-coords & offset math off animated values
-                                            val worldX = (centroid.x - cw / 2 - offsetX) / oldZ
-                                            val worldY = (centroid.y - ch / 2 - offsetY) / oldZ
+                                            // viewport (box) size
+                                            val cw = this.size.width.toFloat()
+                                            val ch = this.size.height.toFloat()
 
-                                            val sx = worldX * newZ + cw / 2 + offsetX
-                                            val sy = worldY * newZ + ch / 2 + offsetY
+                                            /* ---------- KEEP TOUCH-POINT FIXED WHILE ZOOMING ---------- */
+                                            // Adjust offsets to keep the touch point fixed
+                                            val worldX = (centroid.x - cw / 2 - offsetX) / oldZoom
+                                            val worldY = (centroid.y - ch / 2 - offsetY) / oldZoom
+
+                                            zoomLevel.floatValue = newZoom
+
+                                            val sx = worldX * newZoom + cw / 2 + offsetX
+                                            val sy = worldY * newZoom + ch / 2 + offsetY
                                             offsetX += centroid.x - sx
                                             offsetY += centroid.y - sy
 
-                                            val canPan =
-                                                newZ > 1f               // same rule as saved-route branch
-                                            if (canPan) {
-                                                offsetX += pan.x
-                                                offsetY += pan.y
-                                            }
+                                            // Apply panning
+                                            offsetX += panX
+                                            offsetY += panY
 
                                             /* ---------- VISIBILITY TIMER ---------- */
                                             if (showInfo) showInfo = false
@@ -286,9 +569,9 @@ fun RouteTrackerScreen(
                                         .clipToBounds()
                                 ) {
                                     TileMapOrPlaceholder(
-                                        centerLat = r.centerLat,
-                                        centerLon = r.centerLon,
-                                        baseZoom = r.zoom,
+                                        centerLat = route.centerLat,
+                                        centerLon = route.centerLon,
+                                        baseZoom = route.zoom,
                                         zoomLevel = zoomLevel.floatValue,
                                         tilesVersion = tilesVersion,
                                         routePoints = routePoints,
@@ -303,567 +586,315 @@ fun RouteTrackerScreen(
                                     )
                                 }
 
-                                LaunchedEffect(routePoints, zoomLevel.floatValue, isPaused) {
-                                    if (routePoints.isNotEmpty()) {
-                                        val first = routePoints.first()
-                                        val last = routePoints.last()
-                                        val distanceMeters = calculateDistance(routePoints)
-                                        val durationMs = last.timestamp - first.timestamp
-                                        val durationMin = durationMs / 60_000.0
-                                        val durationHr = durationMs / 3_600_000.0
-                                        val avgSpeedKmH =
-                                            if (durationHr > 0) (distanceMeters / 1000.0) / durationHr else 0.0
-                                        val paceMinPerKm = if (distanceMeters >= 50)
-                                            durationMin / (distanceMeters / 1000.0) else -1.0
-
-                                        val paceDisplay = if (paceMinPerKm > 0)
-                                            "%d:%02d min/km".format(
-                                                paceMinPerKm.toInt(),
-                                                ((paceMinPerKm % 1) * 60).toInt()
-                                            )
-                                        else "Walk ≥ 50m to see pace"
-
-                                        val distDisplay = if (distanceMeters < 1000)
-                                            "${distanceMeters.toInt()} m"
-                                        else "%.2f km".format(distanceMeters / 1000.0)
-
-                                        // ← here’s the only real change:
-                                        val nameLine = if (isPaused) "Paused" else "Recording…"
-
-                                        viewModel.updateDebugInfo(
-                                            listOf(
-                                                nameLine,
-                                                "Route points: ${routePoints.size}",
-                                                "Zoom: %.2f".format(zoomLevel.floatValue),
-                                                "Distance: $distDisplay",
-                                                "Avg speed: %.2f km/h".format(avgSpeedKmH),
-                                                "Pace: $paceDisplay"
-                                            ).joinToString("\n")
-                                        )
-                                    } else {
-                                        // also respect isPaused when there are no points yet
-                                        viewModel.updateDebugInfo(
-                                            if (isPaused) "Paused" else "Recording…"
-                                        )
-                                    }
-                                }
-
-                                /* ─────────── stylised overlay – debug info block with fade logic ─────────── */
-                                val pillShape = RoundedCornerShape(4.dp)
-                                val pillBackground = Color.Black.copy(alpha = 0.60f)
-                                val chipModifier = Modifier
-                                    .padding(vertical = 2.dp)
-                                    .background(pillBackground, pillShape)
-                                    .padding(horizontal = 6.dp, vertical = 4.dp)
-
+                                /* ─────────── overlay: inline‑chip info block ──────────────── */
                                 AnimatedVisibility(
                                     visible = showInfo,
                                     enter = fadeIn(tween(300)),
                                     exit = fadeOut(tween(300)),
                                     modifier = Modifier
-                                        .align(Alignment.TopStart)
+                                        .align(Alignment.BottomStart)
                                         .padding(16.dp)
+                                        .widthIn(max = 200.dp)
                                 ) {
-                                    Column {
-                                        debugInfo
-                                            .lines()
-                                            .filter { it.isNotBlank() }
-                                            .forEach { line ->
+                                    Column(Modifier.fillMaxWidth()) {
+                                        val chipModifier = Modifier
+                                            .padding(vertical = 2.dp)
+                                            .background(
+                                                color = Color.Black.copy(alpha = 0.60f),
+                                                shape = RoundedCornerShape(4.dp)
+                                            )
+                                            .padding(horizontal = 6.dp, vertical = 4.dp)
+
+                                        val displayName = route.routeName ?: "Route ${route.id}"
+                                        val densityRouteName = LocalDensity.current
+                                        val textMeasurer = rememberTextMeasurer()
+
+                                        /* Measure the text once per name‑change (and density change) */
+                                        val minNameWidth by remember(
+                                            displayName,
+                                            densityRouteName
+                                        ) {
+                                            mutableStateOf(
+                                                with(densityRouteName) {
+                                                    textMeasurer
+                                                        .measure(
+                                                            text = displayName,
+                                                            style = TextStyle(fontSize = 14.sp)
+                                                        )
+                                                        .size.width.toDp()
+                                                } + 6.dp
+                                            )
+                                        }
+
+                                        /* ───── name / edit chip ───── */
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            modifier = chipModifier
+                                        ) {
+                                            if (isEditingName) {
+                                                BasicTextField(
+                                                    value = editedName,
+                                                    onValueChange = { editedName = it },
+                                                    singleLine = true,
+                                                    textStyle = LocalTextStyle.current.copy(
+                                                        color = Color.White,
+                                                        fontSize = 14.sp
+                                                    ),
+                                                    cursorBrush = SolidColor(Color.White),
+                                                    modifier = Modifier
+                                                        .widthIn(min = minNameWidth, max = 160.dp)
+                                                        .weight(1f, fill = false)
+                                                        .padding(end = 6.dp)
+                                                )
+                                                Icon(
+                                                    imageVector = Icons.Default.Check,
+                                                    contentDescription = "Save",
+                                                    tint = Color.White,
+                                                    modifier = Modifier
+                                                        .size(18.dp)
+                                                        .clickable {
+                                                            isEditingName = false
+                                                            viewModel.updateRouteName(
+                                                                route.id,
+                                                                editedName.trim()
+                                                            )
+                                                        }
+                                                )
+                                            } else {
                                                 Text(
-                                                    text = line.trim(),
+                                                    text = displayName,
                                                     color = Color.White,
                                                     fontSize = 14.sp,
-                                                    modifier = chipModifier
+                                                    modifier = Modifier
+                                                        .widthIn(min = minNameWidth)
+                                                        .weight(1f, fill = false)
+                                                        .padding(end = 6.dp)
+                                                )
+                                                Icon(
+                                                    imageVector = Icons.Default.Edit,
+                                                    contentDescription = "Edit",
+                                                    tint = Color.White,
+                                                    modifier = Modifier
+                                                        .size(18.dp)
+                                                        .clickable {
+                                                            editedName = displayName
+                                                            isEditingName = true
+                                                        }
                                                 )
                                             }
+                                        }
+
+                                        /* ───── single‑line info chips ───── */
+                                        Text(
+                                            text = "Start: ${formatTime(route.startTime)}",
+                                            color = Color.White,
+                                            fontSize = 14.sp,
+                                            modifier = chipModifier
+                                        )
+
+                                        Text(
+                                            text = "End: ${route.endTime?.let { formatTime(it) } ?: "N/A"}",
+                                            color = Color.White,
+                                            fontSize = 14.sp,
+                                            modifier = chipModifier
+                                        )
+
+                                        Text(
+                                            text = "Total Distance: $distanceDisplay",
+                                            color = Color.White,
+                                            fontSize = 14.sp,
+                                            modifier = chipModifier
+                                        )
+
+                                        route.averageSpeed?.let {
+                                            Text(
+                                                text = "Avg Speed: %.2f km/h".format(it),
+                                                color = Color.White,
+                                                fontSize = 14.sp,
+                                                modifier = chipModifier
+                                            )
+                                            Text(
+                                                text = "Pace: $paceDisplay",
+                                                color = Color.White,
+                                                fontSize = 14.sp,
+                                                modifier = chipModifier
+                                            )
+                                        }
                                     }
                                 }
                             }
+                        }
+                    }
+                }
 
-                            val distanceDisplay = if (distance < 1000)
-                                "${distance.toInt()} m"
-                            else
-                                "%.2f km".format(distance / 1000.0)
+                if (!isRecording) {
+                    Column(
+                        modifier = Modifier
+                            .align(Alignment.BottomCenter)
+                            .padding(bottom = 16.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Button(
+                                onClick = {
+                                    if (selectedRoute != null) {
+                                        showRecordingChoiceDialog.value = true
+                                    } else {
+                                        // Reset zoom and offsets before starting recording
+                                        zoomLevel.floatValue = 1f
+                                        offsetX = 0f
+                                        offsetY = 0f
+                                        viewModel.startRecording()
+                                    }
+                                },
+                                colors = ButtonDefaults.buttonColors(containerColor = Color.Red)
+                            ) {
+                                Text("Record")
+                            }
+
+                            if (showRecordingChoiceDialog.value) {
+                                AlertDialog(
+                                    onDismissRequest = { showRecordingChoiceDialog.value = false },
+                                    title = { Text("Recording Options") },
+                                    text = { Text("Do you want to continue recording for the selected route or start new recording?") },
+                                    confirmButton = {
+                                        Button(onClick = {
+                                            // Reset zoom and offsets before continuing recording
+                                            zoomLevel.floatValue = 1f
+                                            offsetX = 0f
+                                            offsetY = 0f
+                                            showRecordingChoiceDialog.value = false
+                                            viewModel.continueRecordingFromSelectedRoute()
+                                        }) {
+                                            Text("Continue Recording")
+                                        }
+                                    },
+                                    dismissButton = {
+                                        Button(onClick = {
+                                            // Reset zoom and offsets before starting new recording
+                                            zoomLevel.floatValue = 1f
+                                            offsetX = 0f
+                                            offsetY = 0f
+                                            showRecordingChoiceDialog.value = false
+                                            viewModel.startRecording() // this will clear selectedRoute
+                                        }) {
+                                            Text("New Recording")
+                                        }
+                                    }
+                                )
+                            }
+                        }
+                    }
+                }
+
+                if (!isRecording) {
+
+                    /* visual constants */
+                    val pillShape = RoundedCornerShape(4.dp)
+                    val pillBackground = Color.Black.copy(alpha = 0.60f)
+
+                    /* composable helpers (✓) */
+                    val densitySavedRoutes = LocalDensity.current
+                    val textMeasurer = rememberTextMeasurer()
+
+                    /* width of the pill text – measured once */
+                    val pillWidthDp by remember {
+                        mutableStateOf(
+                            with(densitySavedRoutes) {
+                                val w = textMeasurer
+                                    .measure("Saved Routes", TextStyle(fontSize = 16.sp))
+                                    .size.width
+                                (w + 16).toDp()           // 8dp start + 8dp end
+                            }
+                        )
+                    }
+
+                    /* width of the longest list item – recomputed only while open */
+                    val listWidthDp by remember(isDropdownExpanded, savedRoutes) {
+                        derivedStateOf {
+                            if (!isDropdownExpanded) 0.dp
+                            else {
+                                val longestPx = savedRoutes.maxOfOrNull { r ->
+                                    textMeasurer
+                                        .measure(
+                                            "${r.routeName ?: "Route ${r.id}"} (${formatTime(r.startTime)})",
+                                            TextStyle(fontSize = 14.sp)
+                                        ).size.width
+                                } ?: 0
+                                with(densitySavedRoutes) { (longestPx + 16).toDp() } // 8dp + 8dp padding
+                            }
+                        }
+                    }
+
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.TopEnd)
+                            .padding(16.dp)
+                    ) {
+
+                        /* ───────── toggle pill ───────── */
+                        Box(
+                            modifier = Modifier
+                                .clip(pillShape)
+                                .background(pillBackground)
+                                .clickable { isDropdownExpanded = !isDropdownExpanded }
+                                .padding(horizontal = 8.dp, vertical = 4.dp)
+                                .align(Alignment.TopEnd)
+                        ) {
+                            Text("Saved Routes", color = Color.White, fontSize = 16.sp)
+                        }
+
+                        /* ───────── dropdown panel ───────── */
+                        if (isDropdownExpanded) {
+
+                            val fixedWidth = maxOf(listWidthDp, pillWidthDp)
+                            val listState =
+                                rememberLazyListState()          // we need this for the thumb
 
                             Column(
                                 modifier = Modifier
-                                    .align(Alignment.BottomCenter)
-                                    .padding(bottom = 16.dp),
-                                horizontalAlignment = Alignment.CenterHorizontally
+                                    .align(Alignment.TopEnd)
+                                    .offset(y = 32.5.dp)                       // right below the pill
+                                    .width(fixedWidth)
+                                    .clip(pillShape)
+                                    .background(pillBackground)
                             ) {
-                                // ← define exactly the same chip modifier you use for debug-info
-                                val pillShape = RoundedCornerShape(4.dp)
-                                val pillBackground = Color.Black.copy(alpha = 0.60f)
-                                val chipModifier = Modifier
-                                    .padding(vertical = 2.dp)
-                                    .background(pillBackground, pillShape)
-                                    .padding(horizontal = 6.dp, vertical = 4.dp)
+                                Row {                                        // list + thumb side‑by‑side
 
-                                Text(
-                                    text = "Total Distance: $distanceDisplay",
-                                    color = Color.White,
-                                    fontSize = 14.sp,
-                                    modifier = chipModifier
-                                )
-
-                                Spacer(modifier = Modifier.height(12.dp))
-
-                                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                    Button(onClick = {
-                                        if (isPaused) viewModel.resumeRecording() else viewModel.pauseRecording()
-                                    }) {
-                                        Text(if (isPaused) "Resume" else "Pause")
-                                    }
-                                    Button(
-                                        onClick = { viewModel.stopRecording() },
-                                        colors = ButtonDefaults.buttonColors(containerColor = Color.Red)
+                                    /* ---------- list ---------- */
+                                    LazyColumn(
+                                        state = listState,
+                                        modifier = Modifier
+                                            .weight(1f)                      // take all remaining width
+                                            .heightIn(max = 200.dp)
+                                            .padding(horizontal = 8.dp, vertical = 4.dp)
                                     ) {
-                                        Text("Stop")
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-
-                !isRecording && selectedRoute != null -> {
-                    val route = selectedRoute!!
-
-                    /* ── helper numbers for the info chips ─────────────────────────────── */
-                    val distanceMeters = calculateDistance(routePoints)                // meters
-                    val durationMinutes =
-                        ((route.endTime ?: route.startTime) - route.startTime) / (1000.0 * 60)
-
-                    val paceMinPerKm = if (distanceMeters >= 50)
-                        durationMinutes / (distanceMeters / 1000.0)
-                    else 0.0
-
-                    val paceDisplay = if (paceMinPerKm > 0)
-                        "${paceMinPerKm.toInt()}:${
-                            ((paceMinPerKm % 1) * 60)
-                                .toInt().toString().padStart(2, '0')
-                        } min/km"
-                    else "Less than 50m walked"
-
-                    val distanceDisplay = if (distanceMeters < 1000)
-                        "${distanceMeters.toInt()} m"
-                    else "%.2f km".format(distanceMeters / 1000.0)
-
-                    // ★ Visibility state
-                    var showInfo by remember { mutableStateOf(true) }
-                    var ignoreAutoShow by remember { mutableStateOf(false) }
-
-                    // ★ Debounced re‑show 500ms after lastInteractionTime updates
-                    LaunchedEffect(Unit) {
-                        snapshotFlow { lastInteractionTime.longValue }
-                            .debounce(500L)
-                            .collect {
-                                if (!ignoreAutoShow) {
-                                    showInfo = true
-                                }
-                            }
-                    }
-
-                    // ─────────── merged gesture detector ───────────
-                    Box(
-                        modifier = modifier.fillMaxSize()
-                    ) {
-                        val aspectRatio = route.width.toFloat() / route.height.toFloat()
-
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .aspectRatio(aspectRatio)
-                                .clipToBounds()
-                                .align(Alignment.Center)
-                                .pointerInput(Unit) {
-                                    detectTapGestures(
-                                        onTap = {
-                                            val willBeVisible = !showInfo
-                                            showInfo = willBeVisible
-                                            ignoreAutoShow = !willBeVisible
-                                            lastInteractionTime.longValue = System.currentTimeMillis()
-                                        },
-                                        onDoubleTap = {
-                                            ignoreAutoShow = true
-                                            lastInteractionTime.longValue = System.currentTimeMillis()
-                                            offsetX = 0f
-                                            offsetY = 0f
-                                            val base = originalZoom.floatValue
-                                            zoomLevel.floatValue = when {
-                                                zoomLevel.floatValue < base * 1.5f -> base * 1.5f
-                                                zoomLevel.floatValue < base * 3.0f -> base * 3.0f
-                                                zoomLevel.floatValue < base * 8.0f -> base * 8.0f
-                                                else -> base
-                                            }
-                                        }
-                                    )
-                                }
-                                .pointerInput(Unit) {
-                                    detectTransformGestures { centroid, pan, pinch, _ ->
-                                        /* ---------- ZOOM ---------- */
-                                        val oldZoom = zoomLevel.floatValue
-                                        val newZoom = (oldZoom * pinch).coerceIn(minZoom, maxZoom)
-
-                                        /* ---------- PANNING RULES ---------- */
-                                        val canPan = newZoom > 1f
-                                        val panX = if (canPan) pan.x else 0f
-                                        val panY = if (canPan) pan.y else 0f
-
-                                        // viewport (box) size
-                                        val cw = this.size.width.toFloat()
-                                        val ch = this.size.height.toFloat()
-
-                                        /* ---------- KEEP TOUCH-POINT FIXED WHILE ZOOMING ---------- */
-                                        // Adjust offsets to keep the touch point fixed
-                                        val worldX = (centroid.x - cw / 2 - offsetX) / oldZoom
-                                        val worldY = (centroid.y - ch / 2 - offsetY) / oldZoom
-
-                                        zoomLevel.floatValue = newZoom
-
-                                        val sx = worldX * newZoom + cw / 2 + offsetX
-                                        val sy = worldY * newZoom + ch / 2 + offsetY
-                                        offsetX += centroid.x - sx
-                                        offsetY += centroid.y - sy
-
-                                        // Apply panning
-                                        offsetX += panX
-                                        offsetY += panY
-
-                                        /* ---------- VISIBILITY TIMER ---------- */
-                                        if (showInfo) showInfo = false
-                                        lastInteractionTime.longValue = System.currentTimeMillis()
-                                    }
-                                }
-                        ) {
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxSize()
-                                    .clipToBounds()
-                            ) {
-                                TileMapOrPlaceholder(
-                                    centerLat = route.centerLat,
-                                    centerLon = route.centerLon,
-                                    baseZoom = route.zoom,
-                                    zoomLevel = zoomLevel.floatValue,
-                                    tilesVersion = tilesVersion,
-                                    routePoints = routePoints,
-                                    modifier = Modifier
-                                        .fillMaxSize()
-                                        .graphicsLayer(
-                                            scaleX = zoomLevel.floatValue,
-                                            scaleY = zoomLevel.floatValue,
-                                            translationX = offsetX,
-                                            translationY = offsetY
-                                        )
-                                )
-                            }
-
-                            /* ─────────── overlay: inline‑chip info block ──────────────── */
-                            AnimatedVisibility(
-                                visible = showInfo,
-                                enter = fadeIn(tween(300)),
-                                exit = fadeOut(tween(300)),
-                                modifier = Modifier
-                                    .align(Alignment.BottomStart)
-                                    .padding(16.dp)
-                                    .widthIn(max = 200.dp)
-                            ) {
-                                Column(Modifier.fillMaxWidth()) {
-                                    val chipModifier = Modifier
-                                        .padding(vertical = 2.dp)
-                                        .background(
-                                            color = Color.Black.copy(alpha = 0.60f),
-                                            shape = RoundedCornerShape(4.dp)
-                                        )
-                                        .padding(horizontal = 6.dp, vertical = 4.dp)
-
-                                    val displayName = route.routeName ?: "Route ${route.id}"
-                                    val densityRouteName = LocalDensity.current
-                                    val textMeasurer = rememberTextMeasurer()
-
-                                    /* Measure the text once per name‑change (and density change) */
-                                    val minNameWidth by remember(displayName, densityRouteName) {
-                                        mutableStateOf(
-                                            with(densityRouteName) {
-                                                textMeasurer
-                                                    .measure(
-                                                        text = displayName,
-                                                        style = TextStyle(fontSize = 14.sp)
-                                                    )
-                                                    .size.width.toDp()
-                                            } + 6.dp
-                                        )
-                                    }
-
-                                    /* ───── name / edit chip ───── */
-                                    Row(
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        modifier = chipModifier
-                                    ) {
-                                        if (isEditingName) {
-                                            BasicTextField(
-                                                value = editedName,
-                                                onValueChange = { editedName = it },
-                                                singleLine = true,
-                                                textStyle = LocalTextStyle.current.copy(
-                                                    color = Color.White,
-                                                    fontSize = 14.sp
-                                                ),
-                                                cursorBrush = SolidColor(Color.White),
-                                                modifier = Modifier
-                                                    .widthIn(min = minNameWidth, max = 160.dp)
-                                                    .weight(1f, fill = false)
-                                                    .padding(end = 6.dp)
-                                            )
-                                            Icon(
-                                                imageVector = Icons.Default.Check,
-                                                contentDescription = "Save",
-                                                tint = Color.White,
-                                                modifier = Modifier
-                                                    .size(18.dp)
-                                                    .clickable {
-                                                        isEditingName = false
-                                                        viewModel.updateRouteName(
-                                                            route.id,
-                                                            editedName.trim()
-                                                        )
-                                                    }
-                                            )
-                                        } else {
+                                        items(savedRoutes) { savedRoute ->
+                                            val selected = savedRoute == selectedRoute
                                             Text(
-                                                text = displayName,
-                                                color = Color.White,
+                                                text = "${savedRoute.routeName ?: "Route ${savedRoute.id}"} " +
+                                                        "(${formatTime(savedRoute.startTime)})",
+                                                color = if (selected) Color.Yellow else Color.White,
                                                 fontSize = 14.sp,
                                                 modifier = Modifier
-                                                    .widthIn(min = minNameWidth)
-                                                    .weight(1f, fill = false)
-                                                    .padding(end = 6.dp)
-                                            )
-                                            Icon(
-                                                imageVector = Icons.Default.Edit,
-                                                contentDescription = "Edit",
-                                                tint = Color.White,
-                                                modifier = Modifier
-                                                    .size(18.dp)
+                                                    .padding(vertical = 2.dp)
                                                     .clickable {
-                                                        editedName = displayName
-                                                        isEditingName = true
+                                                        viewModel.selectRoute(savedRoute.id)
+                                                        isDropdownExpanded = false
                                                     }
                                             )
                                         }
                                     }
 
-                                    /* ───── single‑line info chips ───── */
-                                    Text(
-                                        text = "Start: ${formatTime(route.startTime)}",
-                                        color = Color.White,
-                                        fontSize = 14.sp,
-                                        modifier = chipModifier
+                                    /* ---------- vertical thumb ---------- */
+                                    ScrollThumb(
+                                        listState = listState,
+                                        modifier = Modifier
+                                            .heightIn(max = 200.dp)
+                                            .width(4.dp)
+                                            .padding(vertical = 4.dp)        // little air top/bottom
                                     )
-
-                                    Text(
-                                        text = "End: ${route.endTime?.let { formatTime(it) } ?: "N/A"}",
-                                        color = Color.White,
-                                        fontSize = 14.sp,
-                                        modifier = chipModifier
-                                    )
-
-                                    Text(
-                                        text = "Total Distance: $distanceDisplay",
-                                        color = Color.White,
-                                        fontSize = 14.sp,
-                                        modifier = chipModifier
-                                    )
-
-                                    route.averageSpeed?.let {
-                                        Text(
-                                            text = "Avg Speed: %.2f km/h".format(it),
-                                            color = Color.White,
-                                            fontSize = 14.sp,
-                                            modifier = chipModifier
-                                        )
-                                        Text(
-                                            text = "Pace: $paceDisplay",
-                                            color = Color.White,
-                                            fontSize = 14.sp,
-                                            modifier = chipModifier
-                                        )
-                                    }
                                 }
-                            }
-                        }
-                    }
-                }
-            }
-
-            if (!isRecording) {
-                Column(
-                    modifier = Modifier
-                        .align(Alignment.BottomCenter)
-                        .padding(bottom = 16.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally
-                ) {
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Button(
-                            onClick = {
-                                if (selectedRoute != null) {
-                                    showRecordingChoiceDialog.value = true
-                                } else {
-                                    // Reset zoom and offsets before starting recording
-                                    zoomLevel.floatValue = 1f
-                                    offsetX = 0f
-                                    offsetY = 0f
-                                    viewModel.startRecording()
-                                }
-                            },
-                            colors = ButtonDefaults.buttonColors(containerColor = Color.Red)
-                        ) {
-                            Text("Record")
-                        }
-
-                        if (showRecordingChoiceDialog.value) {
-                            AlertDialog(
-                                onDismissRequest = { showRecordingChoiceDialog.value = false },
-                                title = { Text("Recording Options") },
-                                text = { Text("Do you want to continue recording for the selected route or start new recording?") },
-                                confirmButton = {
-                                    Button(onClick = {
-                                        // Reset zoom and offsets before continuing recording
-                                        zoomLevel.floatValue = 1f
-                                        offsetX = 0f
-                                        offsetY = 0f
-                                        showRecordingChoiceDialog.value = false
-                                        viewModel.continueRecordingFromSelectedRoute()
-                                    }) {
-                                        Text("Continue Recording")
-                                    }
-                                },
-                                dismissButton = {
-                                    Button(onClick = {
-                                        // Reset zoom and offsets before starting new recording
-                                        zoomLevel.floatValue = 1f
-                                        offsetX = 0f
-                                        offsetY = 0f
-                                        showRecordingChoiceDialog.value = false
-                                        viewModel.startRecording() // this will clear selectedRoute
-                                    }) {
-                                        Text("New Recording")
-                                    }
-                                }
-                            )
-                        }
-                    }
-                }
-            }
-
-            if (!isRecording) {
-
-                /* visual constants */
-                val pillShape = RoundedCornerShape(4.dp)
-                val pillBackground = Color.Black.copy(alpha = 0.60f)
-
-                /* composable helpers (✓) */
-                val densitySavedRoutes = LocalDensity.current
-                val textMeasurer = rememberTextMeasurer()
-
-                /* width of the pill text – measured once */
-                val pillWidthDp by remember {
-                    mutableStateOf(
-                        with(densitySavedRoutes) {
-                            val w = textMeasurer
-                                .measure("Saved Routes", TextStyle(fontSize = 16.sp))
-                                .size.width
-                            (w + 16).toDp()           // 8dp start + 8dp end
-                        }
-                    )
-                }
-
-                /* width of the longest list item – recomputed only while open */
-                val listWidthDp by remember(isDropdownExpanded, savedRoutes) {
-                    derivedStateOf {
-                        if (!isDropdownExpanded) 0.dp
-                        else {
-                            val longestPx = savedRoutes.maxOfOrNull { r ->
-                                textMeasurer
-                                    .measure(
-                                        "${r.routeName ?: "Route ${r.id}"} (${formatTime(r.startTime)})",
-                                        TextStyle(fontSize = 14.sp)
-                                    ).size.width
-                            } ?: 0
-                            with(densitySavedRoutes) { (longestPx + 16).toDp() } // 8dp + 8dp padding
-                        }
-                    }
-                }
-
-                Box(
-                    modifier = Modifier
-                        .align(Alignment.TopEnd)
-                        .padding(16.dp)
-                ) {
-
-                    /* ───────── toggle pill ───────── */
-                    Box(
-                        modifier = Modifier
-                            .clip(pillShape)
-                            .background(pillBackground)
-                            .clickable { isDropdownExpanded = !isDropdownExpanded }
-                            .padding(horizontal = 8.dp, vertical = 4.dp)
-                            .align(Alignment.TopEnd)
-                    ) {
-                        Text("Saved Routes", color = Color.White, fontSize = 16.sp)
-                    }
-
-                    /* ───────── dropdown panel ───────── */
-                    if (isDropdownExpanded) {
-
-                        val fixedWidth = maxOf(listWidthDp, pillWidthDp)
-                        val listState =
-                            rememberLazyListState()          // we need this for the thumb
-
-                        Column(
-                            modifier = Modifier
-                                .align(Alignment.TopEnd)
-                                .offset(y = 32.5.dp)                       // right below the pill
-                                .width(fixedWidth)
-                                .clip(pillShape)
-                                .background(pillBackground)
-                        ) {
-                            Row {                                        // list + thumb side‑by‑side
-
-                                /* ---------- list ---------- */
-                                LazyColumn(
-                                    state = listState,
-                                    modifier = Modifier
-                                        .weight(1f)                      // take all remaining width
-                                        .heightIn(max = 200.dp)
-                                        .padding(horizontal = 8.dp, vertical = 4.dp)
-                                ) {
-                                    items(savedRoutes) { savedRoute ->
-                                        val selected = savedRoute == selectedRoute
-                                        Text(
-                                            text = "${savedRoute.routeName ?: "Route ${savedRoute.id}"} " +
-                                                    "(${formatTime(savedRoute.startTime)})",
-                                            color = if (selected) Color.Yellow else Color.White,
-                                            fontSize = 14.sp,
-                                            modifier = Modifier
-                                                .padding(vertical = 2.dp)
-                                                .clickable {
-                                                    viewModel.selectRoute(savedRoute.id)
-                                                    isDropdownExpanded = false
-                                                }
-                                        )
-                                    }
-                                }
-
-                                /* ---------- vertical thumb ---------- */
-                                ScrollThumb(
-                                    listState = listState,
-                                    modifier = Modifier
-                                        .heightIn(max = 200.dp)
-                                        .width(4.dp)
-                                        .padding(vertical = 4.dp)        // little air top/bottom
-                                )
                             }
                         }
                     }

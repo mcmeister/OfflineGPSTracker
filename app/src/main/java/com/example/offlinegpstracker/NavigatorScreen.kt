@@ -137,7 +137,7 @@ fun NavigatorScreen(
         )
         Spacer(modifier = Modifier.height(8.dp))
         Text(
-            text = "Current Altitude: ${currentAltitude.roundToInt()} meters",
+            text = "Current Elevation: ${currentAltitude.roundToInt()} meters",
             fontWeight = FontWeight.Bold
         )
         Spacer(modifier = Modifier.height(16.dp))

@@ -55,6 +55,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Directions
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.Navigation
@@ -87,6 +88,7 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
@@ -255,7 +257,11 @@ fun LocationDetailsScreen(
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    // Clear focus when tapping anywhere outside
+                    .background(
+                        brush = Brush.verticalGradient(
+                            colors = listOf(Color(0xFFF5F7FA), Color(0xFFE0E7FF))
+                        )
+                    )
                     .clickable(
                         indication = null,
                         interactionSource = remember { MutableInteractionSource() }
@@ -290,7 +296,10 @@ fun LocationDetailsScreen(
                                     contentDescription = "Back",
                                     modifier = Modifier
                                         .size(24.dp)
-                                        .clickable { navController.popBackStack() }
+                                        .clickable(indication = null,
+                                            interactionSource = remember { MutableInteractionSource() }
+                                        )
+                                        { navController.popBackStack() }
                                 )
                                 // ✎ Edit, ⇪ Share, 🗑 Delete
                                 Row(
@@ -305,15 +314,24 @@ fun LocationDetailsScreen(
                                     Icon(
                                         Icons.Filled.Share,
                                         "Share",
-                                        Modifier.size(20.dp).clickable {
-                                            shareLocationDetails(context, latitude.text, longitude.text)
+                                        Modifier.size(20.dp).clickable(indication = null,
+                                            interactionSource = remember { MutableInteractionSource() }
+                                        ) {
+                                            shareLocationDetails(
+                                                context,
+                                                latitude.text,
+                                                longitude.text
+                                            )
                                         }
                                     )
                                     Icon(
                                         Icons.Filled.Delete,
                                         "Delete",
                                         tint = Color.Red,
-                                        modifier = Modifier.size(20.dp).clickable { showDeleteDialog = true }
+                                        modifier = Modifier.size(20.dp)
+                                            .clickable(indication = null,
+                                                interactionSource = remember { MutableInteractionSource() }
+                                            ) { showDeleteDialog = true }
                                     )
                                 }
                             }
@@ -460,7 +478,8 @@ private fun LatLonCard(
             .padding(vertical = 8.dp),
         shape = RoundedCornerShape(8.dp),
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
-        colors = CardDefaults.outlinedCardColors(containerColor = Color.Transparent)
+        elevation = CardDefaults.elevatedCardElevation(4.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
     ) {
         Column(
             Modifier
@@ -488,18 +507,19 @@ private fun LatLonCard(
                         interactionSource = remember { MutableInteractionSource() }
                     ) { onNavigate() },
                 horizontalArrangement = Arrangement.Center,
-                verticalAlignment   = Alignment.CenterVertically
+                verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
                     "Navigate to Location",
-                    fontSize   = 16.sp,
-                    fontWeight = FontWeight.Medium
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.Medium,
+                    color = Color(0xFF1E40AF) // Dark blue for emphasis
                 )
                 Icon(
-                    imageVector        = Icons.Filled.Navigation,
+                    imageVector = Icons.Filled.Navigation,
                     contentDescription = null,
-                    tint               = MaterialTheme.colorScheme.primary,
-                    modifier           = Modifier.padding(start = 4.dp)
+                    tint = Color(0xFF1E40AF),
+                    modifier = Modifier.padding(start = 4.dp)
                 )
             }
         }
@@ -713,6 +733,7 @@ fun ScrollThumbLocationDetails(
         Box(
             Modifier
                 .fillMaxSize()
+                .clip(RoundedCornerShape(8.dp))
                 .background(trackColor)
         )
 
@@ -777,13 +798,15 @@ fun PhotosSection(
                 modifier = Modifier.fillMaxWidth(),
                 shape  = RoundedCornerShape(8.dp),
                 border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
-                colors = CardDefaults.cardColors(containerColor = Color.Transparent)
+                elevation = CardDefaults.elevatedCardElevation(4.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
             ) {
                 Column(Modifier.padding(12.dp)) {
                     Text(
                         text       = "Photos from gallery within 1 km radius of this Location",
                         fontSize   = 14.sp,
-                        fontWeight = FontWeight.SemiBold,
+                        fontWeight = FontWeight.Bold,
+                        color = Color(0xFF374151),
                         modifier   = Modifier.fillMaxWidth()
                     )
 
@@ -921,10 +944,8 @@ fun NearbyRoutesList(
     modifier: Modifier = Modifier
 ) {
     val scope = rememberCoroutineScope()
-    // Create a scroll state for both list + thumb
     val listState = rememberLazyListState()
 
-    // Cache your points for distance calc
     val pointsMap = remember { mutableStateMapOf<Int, List<RoutePoint>>() }
     LaunchedEffect(nearbyRoutes) {
         nearbyRoutes.forEach { r ->
@@ -941,7 +962,8 @@ fun NearbyRoutesList(
         modifier = modifier.fillMaxHeight(),
         shape = RoundedCornerShape(8.dp),
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
-        colors = CardDefaults.cardColors(containerColor = Color.Transparent)
+        elevation = CardDefaults.elevatedCardElevation(4.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
     ) {
         Column(
             Modifier
@@ -951,7 +973,8 @@ fun NearbyRoutesList(
             Text(
                 "Saved routes within 3 km radius of this Location (${nearbyRoutes.size})",
                 fontSize = 14.sp,
-                fontWeight = FontWeight.SemiBold
+                fontWeight = FontWeight.Bold,
+                color = Color(0xFF374151)
             )
 
             Spacer(Modifier.height(8.dp))
@@ -959,15 +982,15 @@ fun NearbyRoutesList(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .fillMaxHeight() // Ensure the Row fills the remaining height
-                    .weight(1f) // Take up all available space after the title and spacer
+                    .fillMaxHeight()
+                    .weight(1f)
             ) {
                 LazyColumn(
                     state = listState,
                     modifier = Modifier
-                        .weight(1f) // Ensure LazyColumn takes up all available space in the Row
-                        .fillMaxHeight() // Fill the height of the Row
-                        .padding(end = 8.dp) // Only padding on the end for the scrollbar
+                        .weight(1f)
+                        .fillMaxHeight()
+                        .padding(end = 8.dp, bottom = 16.dp)
                 ) {
                     items(nearbyRoutes) { r ->
                         val routeName = r.routeName?.takeIf { it.isNotBlank() } ?: "Route ${r.id}"
@@ -982,16 +1005,24 @@ fun NearbyRoutesList(
                         AssistChip(
                             onClick = { navController.navigate("view_route/${r.id}") },
                             label = {
-                                Column {
-                                    // line 1
-                                    Text("$routeName  •  $timeLabel", color = Color.Red.copy(alpha = 0.7f))
-                                    // line 2
-                                    Text("Distance: $distanceText\nDuration: $durationText\nSpeed: $speedText")
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(
+                                        imageVector = Icons.Filled.Directions,
+                                        contentDescription = null,
+                                        tint = Color.Red.copy(alpha = 0.7f),
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                    Spacer(Modifier.width(4.dp))
+                                    Column {
+                                        Text("$routeName  •  $timeLabel", color = Color.Red.copy(alpha = 0.7f))
+                                        Text("Distance: $distanceText\nDuration: $durationText\nSpeed: $speedText")
+                                    }
                                 }
                             },
                             shape = RoundedCornerShape(16.dp),
+                            elevation = AssistChipDefaults.assistChipElevation(4.dp),
                             colors = AssistChipDefaults.assistChipColors(
-                                containerColor = Color.Transparent,
+                                containerColor = MaterialTheme.colorScheme.surface,
                                 labelColor = MaterialTheme.colorScheme.primary
                             ),
                             modifier = Modifier
@@ -1001,7 +1032,6 @@ fun NearbyRoutesList(
                     }
                 }
 
-                // Your thumb, driven by the same listState
                 ScrollThumbLocationDetails(
                     listState = listState,
                     modifier = Modifier
@@ -1067,7 +1097,7 @@ fun SavedRoutesDrawer(
             }
     ) {
         // Hide underlying content
-        Box(Modifier.matchParentSize().background(MaterialTheme.colorScheme.background))
+        // Box(Modifier.matchParentSize().background(MaterialTheme.colorScheme.background))
 
         // The draggable pill (only visible if expandable)
         if (canExpand) {
