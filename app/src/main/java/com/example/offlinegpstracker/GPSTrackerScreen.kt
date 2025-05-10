@@ -898,6 +898,25 @@ fun GPSTrackerScreen(
                     }
                 }
             }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // Fake banner placeholder (replace with real AdView later)
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(64.dp)
+                    .background(Color(0xFFFFEB3B)), // Google Ad yellow
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = "Banner Ad Placeholder",
+                    color = Color.Black,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+
+            Spacer(modifier = Modifier.height(36.dp))
         }
     }
 }

@@ -11,34 +11,31 @@ import android.provider.MediaStore
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.animation.core.animateDpAsState
-import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
-import androidx.compose.foundation.gestures.detectTapGestures
-import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.LazyRow
@@ -77,7 +74,6 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
@@ -345,13 +341,19 @@ fun LocationDetailsScreen(
                                 confirmButton = {
                                     TextButton(onClick = {
                                         locationViewModel.updateLocation(location.copy(status = "deleted"))
-                                        Toast.makeText(context, "Location deleted", Toast.LENGTH_SHORT).show()
+                                        Toast.makeText(
+                                            context,
+                                            "Location deleted",
+                                            Toast.LENGTH_SHORT
+                                        ).show()
                                         navController.popBackStack()
                                         showDeleteDialog = false
                                     }) { Text("Yes") }
                                 },
                                 dismissButton = {
-                                    TextButton(onClick = { showDeleteDialog = false }) { Text("No") }
+                                    TextButton(onClick = { showDeleteDialog = false }) {
+                                        Text("No")
+                                    }
                                 }
                             )
                         }
@@ -419,18 +421,42 @@ fun LocationDetailsScreen(
                         // Saved Routes Drawer placed here within the scrollable Column
                         if (nearbyRoutes.isNotEmpty()) {
                             SavedRoutesDrawer(
-                                nearbyRoutes = nearbyRoutes,
+                                nearbyRoutes    = nearbyRoutes,
                                 routeRepository = routeRepository,
-                                navController = navController,
-                                pullUpDistance = 220.dp
+                                navController   = navController,
+                                pullUpDistance  = 250.dp,
+                                modifier        = Modifier
+                                    .align(Alignment.CenterHorizontally)
+                                    .navigationBarsPadding()   // keeps its bottom just above the nav-bar
                             )
                         } else {
-                            Text(
-                                text = "No saved routes available for this Location",
-                                fontSize = 14.sp,
-                                fontWeight = FontWeight.SemiBold,
+                            Box(
                                 modifier = Modifier
-                                    .padding(top = 16.dp)
+                                    .fillMaxWidth()
+                                    .height(100.dp),                // same height as photos box
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    text = "No saved routes available for this Location",
+                                    fontSize = 16.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    textAlign = TextAlign.Center
+                                )
+                            }
+                        }
+
+                        // Fake banner placeholder (replace with real AdView later)
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(64.dp)
+                                .background(Color(0xFFFFEB3B)), // Google Ad yellow
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = "Banner Ad Placeholder",
+                                color = Color.Black,
+                                fontWeight = FontWeight.Bold
                             )
                         }
                     }
@@ -685,70 +711,78 @@ private fun parseGpsValue(raw: String, ref: String): Double? {
 fun ScrollThumbLocationDetails(
     listState      : LazyListState,
     modifier       : Modifier = Modifier,
-    thumbColor     : Color     = Color.Black.copy(alpha = 0.3f),
+    thumbColor     : Color     = Color.Black.copy(alpha = .30f),
     trackColor     : Color     = Color.LightGray.copy(alpha = .25f),
-    minThumbHeight : Dp = 14.dp,
+    minThumbHeight : Dp        = 14.dp,
     thumbWidth     : Dp        = 4.dp
 ) {
-    BoxWithConstraints(
-        modifier               // ←– your width / height
-            .zIndex(1f)        // ✱ keep thumb above list
+    /* show nothing if everything fits on-screen */
+    val canScroll by remember {
+        derivedStateOf {
+            val info = listState.layoutInfo
+            info.totalItemsCount > info.visibleItemsInfo.size
+        }
+    }
+    if (!canScroll) return
+
+    /* true viewport height of the list (in both px and dp) */
+    val density = LocalDensity.current
+    val viewportPx  by remember {
+        derivedStateOf { listState.layoutInfo.viewportSize.height }
+    }
+    if (viewportPx == 0) return        // list not laid out yet
+
+    val viewportDp = with(density) { viewportPx.toDp() }
+
+    /* thumb size + offset */
+    val metrics by remember {
+        derivedStateOf {
+            val info        = listState.layoutInfo
+            val total       = info.totalItemsCount
+            val visible     = info.visibleItemsInfo.size
+            val firstIndex  = listState.firstVisibleItemIndex.toFloat()
+            val firstOffset = listState.firstVisibleItemScrollOffset
+            val itemHeight  = info.visibleItemsInfo.firstOrNull()?.size ?: 1
+
+            val progress = ((firstIndex + firstOffset / itemHeight) /
+                    (total - visible).coerceAtLeast(1))
+                .coerceIn(0f, 1f)
+
+            val ratio   = visible.toFloat() / total
+            val rawH    = viewportDp * ratio
+            val thumbH  = maxOf(rawH, minThumbHeight)
+
+            progress to thumbH          // Pair(progress, height)
+        }
+    }
+
+    /* track + thumb */
+    Box(
+        modifier
+            .width(thumbWidth)
+            .height(viewportDp)          // <<–– exact list viewport height
+            .zIndex(1f)
     ) {
-
-        /* show thumb only when list is longer than viewport */
-        val showThumb by remember {
-            derivedStateOf {
-                val total   = listState.layoutInfo.totalItemsCount
-                val visible = listState.layoutInfo.visibleItemsInfo.size
-                total > 0 && visible < total
-            }
-        }
-
-        /* progress & thumb height */
-        val metrics by remember {
-            derivedStateOf {
-                val total   = listState.layoutInfo.totalItemsCount
-                val visible = listState.layoutInfo.visibleItemsInfo.size
-
-                val firstIndex  = listState.firstVisibleItemIndex.toFloat()
-                val firstOffset = listState.firstVisibleItemScrollOffset
-                val itemHeight  = listState.layoutInfo.visibleItemsInfo
-                    .firstOrNull()?.size ?: 1
-                val progress = ((firstIndex + firstOffset / itemHeight) /
-                        (total - visible).coerceAtLeast(1)).coerceIn(0f, 1f)
-
-                val ratio   = visible.toFloat() / total
-                val rawH    = maxHeight * ratio
-                val thumbH  = maxOf(rawH, minThumbHeight)
-
-                progress to thumbH
-            }
-        }
-
-        /* drawing */
-        val density        = LocalDensity.current
-        val trackHeightPx  = with(density) { maxHeight.toPx() }
-        val thumbHeightPx  = with(density) { metrics.second.toPx() }
-        val yOffsetPx      = (trackHeightPx - thumbHeightPx) * metrics.first
-
+        /* track */
         Box(
             Modifier
-                .fillMaxSize()
+                .matchParentSize()
                 .clip(RoundedCornerShape(8.dp))
                 .background(trackColor)
         )
 
-        /* draw thumb only when needed */
-        if (showThumb) {
-            Box(
-                Modifier
-                    .offset { IntOffset(0, yOffsetPx.roundToInt()) }
-                    .width(thumbWidth)
-                    .height(metrics.second)
-                    .clip(RoundedCornerShape(percent = 50))
-                    .background(thumbColor)
-            )
-        }
+        /* thumb */
+        val thumbHeightPx = with(density) { metrics.second.toPx() }
+        val yOffsetPx     = (viewportPx - thumbHeightPx) * metrics.first
+
+        Box(
+            Modifier
+                .offset { IntOffset(0, yOffsetPx.roundToInt()) }
+                .width(thumbWidth)
+                .height(metrics.second)
+                .clip(RoundedCornerShape(percent = 50))
+                .background(thumbColor)
+        )
     }
 }
 
@@ -947,6 +981,7 @@ fun NearbyRoutesList(
     val scope = rememberCoroutineScope()
     val listState = rememberLazyListState()
 
+    // Cache route points so we can calculate distance/etc
     val pointsMap = remember { mutableStateMapOf<Int, List<RoutePoint>>() }
     LaunchedEffect(nearbyRoutes) {
         nearbyRoutes.forEach { r ->
@@ -960,15 +995,17 @@ fun NearbyRoutesList(
     }
 
     Card(
-        modifier = modifier.fillMaxHeight(),
+        modifier = modifier
+            .fillMaxWidth()
+            .wrapContentHeight(),                // <-- allow Card to size to content
         shape = RoundedCornerShape(8.dp),
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
         elevation = CardDefaults.elevatedCardElevation(4.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
     ) {
         Column(
-            Modifier
-                .fillMaxHeight()
+            modifier = Modifier
+                .wrapContentHeight()             // <-- Column shrinks to content
                 .padding(12.dp)
         ) {
             Text(
@@ -981,64 +1018,71 @@ fun NearbyRoutesList(
             Spacer(Modifier.height(8.dp))
 
             Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .fillMaxHeight()
-                    .weight(1f)
+                modifier = Modifier.fillMaxWidth()
             ) {
-                LazyColumn(
-                    state = listState,
+                Box(
                     modifier = Modifier
-                        .weight(1f)
-                        .fillMaxHeight()
-                        .padding(end = 8.dp, bottom = 16.dp)
+                        .weight(1f)          // keep previous width behaviour
+                        .wrapContentHeight() // let content dictate height
                 ) {
-                    items(nearbyRoutes) { r ->
-                        val routeName = r.routeName?.takeIf { it.isNotBlank() } ?: "Route ${r.id}"
-                        val timeLabel = formatTime(r.startTime)
+                    LazyColumn(
+                        state = listState,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(max = 400.dp)
+                            .padding(end = 8.dp),               // right-hand gutter for the thumb
+                        verticalArrangement = Arrangement.spacedBy(8.dp),   // <─ spacing *between* chips
+                        contentPadding = PaddingValues(bottom = 0.dp)        // no tail gap
+                    ) {
+                        items(nearbyRoutes) { r ->
+                            val routeName =
+                                r.routeName?.takeIf { it.isNotBlank() } ?: "Route ${r.id}"
+                            val timeLabel = formatTime(r.startTime)
 
-                        val pts = pointsMap[r.id] ?: emptyList()
-                        val totalDist = calculateDistance(pts)
-                        val distanceText = formatDistance(totalDist)
-                        val durationText = formatDuration(r.startTime, r.endTime)
-                        val speedText = formatSpeed(totalDist, r.startTime, r.endTime)
+                            val pts = pointsMap[r.id] ?: emptyList()
+                            val totalDist = calculateDistance(pts)
+                            val distanceText = formatDistance(totalDist)
+                            val durationText = formatDuration(r.startTime, r.endTime)
+                            val speedText = formatSpeed(totalDist, r.startTime, r.endTime)
 
-                        AssistChip(
-                            onClick = { navController.navigate("view_route/${r.id}") },
-                            label = {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Icon(
-                                        imageVector = Icons.Filled.Directions,
-                                        contentDescription = null,
-                                        tint = Color.Red.copy(alpha = 0.7f),
-                                        modifier = Modifier.size(16.dp)
-                                    )
-                                    Spacer(Modifier.width(4.dp))
-                                    Column {
-                                        Text("$routeName  •  $timeLabel", color = Color.Red.copy(alpha = 0.7f))
-                                        Text("Distance: $distanceText\nDuration: $durationText\nSpeed: $speedText")
+                            AssistChip(
+                                onClick = { navController.navigate("view_route/${r.id}") },
+                                label = {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Icon(
+                                            imageVector = Icons.Filled.Directions,
+                                            contentDescription = null,
+                                            tint = Color.Red.copy(alpha = 0.7f),
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                        Spacer(Modifier.width(4.dp))
+                                        Column {
+                                            Text(
+                                                "$routeName  •  $timeLabel",
+                                                color = Color.Red.copy(alpha = 0.7f)
+                                            )
+                                            Text("Distance: $distanceText\nDuration: $durationText\nSpeed: $speedText")
+                                        }
                                     }
-                                }
-                            },
-                            shape = RoundedCornerShape(16.dp),
-                            elevation = AssistChipDefaults.assistChipElevation(4.dp),
-                            colors = AssistChipDefaults.assistChipColors(
-                                containerColor = MaterialTheme.colorScheme.surface,
-                                labelColor = MaterialTheme.colorScheme.primary
-                            ),
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(vertical = 4.dp)
-                        )
+                                },
+                                shape = RoundedCornerShape(16.dp),
+                                elevation = AssistChipDefaults.assistChipElevation(4.dp),
+                                colors = AssistChipDefaults.assistChipColors(
+                                    containerColor = MaterialTheme.colorScheme.surface,
+                                    labelColor = MaterialTheme.colorScheme.primary
+                                ),
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                        }
                     }
-                }
 
-                ScrollThumbLocationDetails(
-                    listState = listState,
-                    modifier = Modifier
-                        .fillMaxHeight()
-                        .width(4.dp)
-                )
+                    // Scroll thumb stays full-height of the list
+                    ScrollThumbLocationDetails(
+                        listState = listState,
+                        modifier = Modifier
+                            .align(Alignment.TopEnd)
+                    )
+                }
             }
         }
     }
@@ -1046,95 +1090,29 @@ fun NearbyRoutesList(
 
 @Composable
 fun SavedRoutesDrawer(
-    nearbyRoutes: List<Route>,
+    nearbyRoutes   : List<Route>,
     routeRepository: RouteRepository,
-    navController: NavHostController,
-    pullUpDistance: Dp
+    navController  : NavHostController,
+    pullUpDistance : Dp,
+    modifier       : Modifier = Modifier
 ) {
-    val density = LocalDensity.current
-    val pullUpPx = with(density) { pullUpDistance.toPx() }
-    val screenHeight = LocalConfiguration.current.screenHeightDp.dp
-    val navigationBarHeight = 56.dp // Approximate height of bottom navigation bar
-    val headerHeight = 250.dp // Approximate height of content above (Location Name, Lat/Lon, Photos)
-    val collapsedHeight = screenHeight - headerHeight - navigationBarHeight - 16.dp // Fill to 16dp above bottom nav bar
-    val maxHeight = screenHeight - navigationBarHeight - 16.dp // Max height when expanded
-
-    var isExpanded by remember { mutableStateOf(false) } // Initially collapsed
-    var isDragging by remember { mutableStateOf(false) }
-    var dragOffsetPx by remember { mutableFloatStateOf(0f) }
-
-    // Determine if the drawer can be expanded (more than 3 routes)
-    val canExpand = nearbyRoutes.size > 3
-
-    // Animate Y offset (only if expandable)
-    val animatedOffsetPx by animateFloatAsState(
-        targetValue = when {
-            !canExpand -> 0f // No dragging if not expandable
-            isDragging -> dragOffsetPx
-            isExpanded -> -pullUpPx
-            else -> 0f
-        },
-        animationSpec = tween(300), label = ""
-    )
-
-    // Animate height
-    val targetH = if (isExpanded && canExpand) maxHeight else collapsedHeight
-    val animatedH by animateDpAsState(targetValue = targetH, animationSpec = tween(300), label = "")
+    /* same calculation as before – this is the *maximum* height */
+    val screenHeight        = LocalConfiguration.current.screenHeightDp.dp
+    val navigationBarHeight = 56.dp
+    val drawerMaxHeight = (screenHeight - pullUpDistance - navigationBarHeight - 16.dp)
+        .coerceAtLeast(0.dp)
 
     Box(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
-            .height(animatedH)
-            .offset { IntOffset(0, animatedOffsetPx.roundToInt()) }
-            // Add tap gesture to toggle expand/collapse (only if expandable)
-            .pointerInput(Unit) {
-                if (canExpand) {
-                    detectTapGestures(
-                        onTap = {
-                            isExpanded = !isExpanded // Toggle expand/collapse on tap
-                        }
-                    )
-                }
-            }
+            .wrapContentHeight()           // grow just enough for content…
+            .heightIn(max = drawerMaxHeight) // …but never taller than max
     ) {
-        // Hide underlying content
-        // Box(Modifier.matchParentSize().background(MaterialTheme.colorScheme.background))
-
-        // The draggable pill (only visible if expandable)
-        if (canExpand) {
-            Box(
-                Modifier
-                    .align(Alignment.TopCenter)
-                    .padding(vertical = 8.dp)
-                    .size(40.dp, 4.dp)
-                    .clip(RoundedCornerShape(2.dp))
-                    .background(Color.LightGray)
-                    .pointerInput(Unit) {
-                        detectVerticalDragGestures(
-                            onDragStart = { isDragging = true },
-                            onVerticalDrag = { ch, dy ->
-                                ch.consume()
-                                dragOffsetPx = (dragOffsetPx + dy).coerceIn(-pullUpPx, 0f)
-                            },
-                            onDragEnd = {
-                                isDragging = false
-                                isExpanded = dragOffsetPx < -pullUpPx / 2
-                                dragOffsetPx = 0f
-                            }
-                        )
-                    }
-            )
-        }
-
-        // The list with matching width
         NearbyRoutesList(
-            nearbyRoutes = nearbyRoutes,
+            nearbyRoutes    = nearbyRoutes,
             routeRepository = routeRepository,
-            navController = navController,
-            modifier = Modifier
-                .fillMaxWidth() // Ensure width matches LatLonCard and PhotosSection
-                .padding(top = if (canExpand) 16.dp else 0.dp) // Adjust padding based on pill visibility
-                .fillMaxHeight() // Ensure the list fills the entire height of the drawer
+            navController   = navController,
+            modifier        = Modifier.fillMaxWidth()
         )
     }
 }
